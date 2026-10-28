@@ -1,9 +1,13 @@
 """Live canvas server providing real-time bidirectional synchronization between Python backend and browser UI."""
 
 import asyncio
+import atexit
 import json
 import logging
+import os
+import signal
 import socket
+import sys
 import threading
 import time
 from typing import Any
@@ -293,6 +297,127 @@ class _LiveCanvasUvicornServer(uvicorn.Server):
         self.ready_event.set()
 
 
+_active_servers: set["LiveCanvasServer"] = set()
+_active_servers_lock = threading.Lock()
+_original_signal_handlers: dict[int, Any] = {}
+_signals_installed = False
+_atexit_registered = False
+
+
+def _handle_exit_signal(sig: int, frame: Any) -> None:
+    """Process exit signal handler ensuring all active background live servers are cleanly stopped."""
+    with _active_servers_lock:
+        servers_to_stop = list(_active_servers)
+        prev_handler = _original_signal_handlers.get(sig)
+
+    for s in servers_to_stop:
+        try:
+            s.stop()
+        except Exception:
+            pass
+
+    _uninstall_signal_handlers()
+
+    if callable(prev_handler):
+        prev_handler(sig, frame)
+    elif prev_handler == signal.SIG_DFL or prev_handler == 0:
+        if sig == signal.SIGINT:
+            raise KeyboardInterrupt()
+        elif sys.platform != "win32" and sig in (signal.SIGTERM, getattr(signal, "SIGHUP", None)):
+            signal.signal(sig, signal.SIG_DFL)
+            os.kill(os.getpid(), sig)
+        else:
+            sys.exit(128 + sig)
+
+
+def _handle_atexit() -> None:
+    """atexit handler ensuring any remaining live canvas servers are stopped on Python exit."""
+    with _active_servers_lock:
+        servers_to_stop = list(_active_servers)
+    for s in servers_to_stop:
+        try:
+            s.stop()
+        except Exception:
+            pass
+
+
+def _install_signal_handlers() -> None:
+    """Install process-level signal handlers on the main thread for graceful live server shutdown."""
+    global _signals_installed
+    if _signals_installed:
+        return
+
+    # Signal handlers can only be registered from the main thread
+    if threading.current_thread() is not threading.main_thread():
+        return
+
+    signals_to_catch = [signal.SIGINT, signal.SIGTERM]
+    if hasattr(signal, "SIGHUP"):
+        signals_to_catch.append(signal.SIGHUP)
+
+    for sig in signals_to_catch:
+        try:
+            prev = signal.getsignal(sig)
+            if prev != _handle_exit_signal:
+                _original_signal_handlers[sig] = prev
+                signal.signal(sig, _handle_exit_signal)
+        except (ValueError, OSError):
+            pass
+
+    _signals_installed = True
+
+
+def _uninstall_signal_handlers() -> None:
+    """Restore previous signal handlers when no live servers are active."""
+    global _signals_installed
+    if not _signals_installed:
+        return
+
+    if threading.current_thread() is not threading.main_thread():
+        return
+
+    for sig, prev in list(_original_signal_handlers.items()):
+        try:
+            signal.signal(sig, prev)
+        except (ValueError, OSError):
+            pass
+
+    _original_signal_handlers.clear()
+    _signals_installed = False
+
+
+def _register_active_server(server: "LiveCanvasServer") -> None:
+    """Register an active server and install signal/atexit handlers."""
+    global _atexit_registered
+    with _active_servers_lock:
+        _active_servers.add(server)
+        if not _atexit_registered:
+            atexit.register(_handle_atexit)
+            _atexit_registered = True
+        _install_signal_handlers()
+
+
+def _unregister_active_server(server: "LiveCanvasServer") -> None:
+    """Unregister a server and restore signal handlers if no servers remain."""
+    with _active_servers_lock:
+        _active_servers.discard(server)
+        if not _active_servers:
+            _uninstall_signal_handlers()
+
+
+def install_signal_handlers() -> bool:
+    """Explicitly install signal handlers on the main thread for live canvas lifecycle management."""
+    with _active_servers_lock:
+        _install_signal_handlers()
+        return _signals_installed
+
+
+def uninstall_signal_handlers() -> None:
+    """Explicitly restore previous signal handlers."""
+    with _active_servers_lock:
+        _uninstall_signal_handlers()
+
+
 class LiveCanvasServer:
     """Manages the background Uvicorn live canvas server."""
 
@@ -305,7 +430,7 @@ class LiveCanvasServer:
         self.thread: threading.Thread | None = None
         self.active_websockets: set[WebSocket] = set()
         self._ws_lock = threading.Lock()
-        self._start_lock = threading.Lock()
+        self._start_lock = threading.RLock()
         self._unsubscribe_state: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self.is_running = False
@@ -440,6 +565,7 @@ class LiveCanvasServer:
         self.is_running = False
         with self._ws_lock:
             self.active_websockets.clear()
+        _unregister_active_server(self)
 
     def start(
         self,
@@ -535,6 +661,9 @@ class LiveCanvasServer:
             # Subscribe to scene mutations
             self._unsubscribe_state = self.service.state.subscribe(self._on_state_change)
 
+            # Register in active servers registry for graceful process signal & atexit shutdown
+            _register_active_server(self)
+
             return {
                 "status": "started",
                 "url": f"http://{self.host}:{self.port}",
@@ -547,10 +676,22 @@ class LiveCanvasServer:
         with self._start_lock:
             was_running = self.is_running or (self.thread is not None and self.thread.is_alive())
             if not was_running and self.server is None:
+                _unregister_active_server(self)
                 return {"status": "not_running"}
 
             self._cleanup_failed_start()
+            _unregister_active_server(self)
             return {"status": "stopped"}
+
+    @classmethod
+    def install_signal_handlers(cls) -> bool:
+        """Class method to explicitly install process signal handlers from the main thread."""
+        return install_signal_handlers()
+
+    @classmethod
+    def uninstall_signal_handlers(cls) -> None:
+        """Class method to restore original process signal handlers."""
+        uninstall_signal_handlers()
 
     def get_status(self) -> dict[str, Any]:
         """Get live canvas server status."""

@@ -230,6 +230,122 @@ class LiveServerReadinessTests(unittest.TestCase):
         status_stopped = self.service.get_live_server_status()
         self.assertFalse(status_stopped["is_running"])
 
+    def test_signal_handlers_installed_and_restored_on_lifecycle(self):
+        """Signal handlers are installed on server start and restored on server stop."""
+        import signal
+        from excalidraw_mcp.live_server import _handle_exit_signal
+
+        orig_sigint = signal.getsignal(signal.SIGINT)
+        res = self.server.start(port=0)
+        self.assertEqual(res["status"], "started")
+
+        # Handlers should now be registered
+        current_sigint = signal.getsignal(signal.SIGINT)
+        self.assertEqual(current_sigint, _handle_exit_signal)
+
+        # Stop server
+        self.server.stop()
+
+        # Handlers should be restored
+        restored_sigint = signal.getsignal(signal.SIGINT)
+        self.assertEqual(restored_sigint, orig_sigint)
+
+    def test_sigterm_stops_active_servers_cleanly(self):
+        """Receiving SIGTERM triggers graceful server shutdown and socket closure."""
+        import signal
+        from excalidraw_mcp.live_server import _handle_exit_signal
+
+        res = self.server.start(port=0)
+        port = res["port"]
+        self.assertTrue(self.server.is_running)
+
+        # Simulate SIGTERM signal delivery to handler
+        with patch("os.kill") as mock_kill, patch("sys.exit") as mock_exit:
+            _handle_exit_signal(signal.SIGTERM, None)
+
+        self.assertFalse(self.server.is_running)
+        self.assertIsNone(self.server.server)
+        self.assertIsNone(self.server.thread)
+
+        # Verify socket connection refused (port is free)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_sock:
+            test_sock.settimeout(1.0)
+            with self.assertRaises((ConnectionRefusedError, OSError)):
+                test_sock.connect(("127.0.0.1", port))
+
+    def test_sigint_triggers_graceful_shutdown_and_raises_keyboard_interrupt(self):
+        """Receiving SIGINT shuts down the server and propagates KeyboardInterrupt to main thread."""
+        import signal
+        from excalidraw_mcp.live_server import _handle_exit_signal
+
+        res = self.server.start(port=0)
+        port = res["port"]
+        self.assertTrue(self.server.is_running)
+
+        with self.assertRaises(KeyboardInterrupt):
+            _handle_exit_signal(signal.SIGINT, None)
+
+        self.assertFalse(self.server.is_running)
+        self.assertIsNone(self.server.server)
+        self.assertIsNone(self.server.thread)
+
+        # Verify socket released
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as test_sock:
+            test_sock.settimeout(1.0)
+            with self.assertRaises((ConnectionRefusedError, OSError)):
+                test_sock.connect(("127.0.0.1", port))
+
+    def test_atexit_hook_stops_active_servers(self):
+        """atexit handler ensures active background servers are stopped on interpreter shutdown."""
+        from excalidraw_mcp.live_server import _handle_atexit
+
+        res = self.server.start(port=0)
+        self.assertTrue(self.server.is_running)
+
+        _handle_atexit()
+
+        self.assertFalse(self.server.is_running)
+        self.assertIsNone(self.server.server)
+        self.assertIsNone(self.server.thread)
+
+    def test_subprocess_sigterm_graceful_shutdown(self):
+        """Subprocess running LiveCanvasServer cleanly shuts down upon receiving SIGTERM."""
+        import subprocess
+        import sys
+
+        script = """
+import time
+from excalidraw_mcp.service import SceneService
+from excalidraw_mcp.live_server import LiveCanvasServer
+
+service = SceneService()
+server = LiveCanvasServer(service, host="127.0.0.1", port=0)
+res = server.start()
+print(f"READY:{res['port']}", flush=True)
+while True:
+    time.sleep(0.1)
+"""
+        proc = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+        try:
+            line = proc.stdout.readline()
+            self.assertTrue(line.startswith("READY:"))
+            port = int(line.strip().split(":")[1])
+
+            import signal
+            proc.send_signal(signal.SIGTERM)
+            proc.wait(timeout=3.0)
+
+            # Port should be released immediately
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                with self.assertRaises((ConnectionRefusedError, OSError)):
+                    s.connect(("127.0.0.1", port))
+        finally:
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.poll() is None:
+                proc.kill()
+
 
 if __name__ == "__main__":
     unittest.main()
