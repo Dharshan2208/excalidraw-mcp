@@ -148,16 +148,9 @@ A & B --> C & D
         server = None
         try:
             server = LiveCanvasServer(self.service)
-            # Suppress noisy expected bind error log output from Uvicorn
-            uvicorn_logger = logging.getLogger("uvicorn.error")
-            prev_level = uvicorn_logger.level
-            uvicorn_logger.setLevel(logging.CRITICAL)
-            try:
-                res = server.start(port=occupied_port)
-            finally:
-                uvicorn_logger.setLevel(prev_level)
-            self.assertEqual(res["status"], "failed")
-            self.assertIn("error", res)
+            with self.assertRaises(SceneError) as ctx:
+                server.start(port=occupied_port)
+            self.assertIn(str(occupied_port), str(ctx.exception))
             self.assertFalse(server.is_running)
         finally:
             if server:

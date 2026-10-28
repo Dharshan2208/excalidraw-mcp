@@ -3408,7 +3408,11 @@ class SceneService:
 
         if self._live_server is None:
             self._live_server = LiveCanvasServer(service=self, host=host, port=port)
-        return self._live_server.start(host=host, port=port)
+        try:
+            return self._live_server.start(host=host, port=port)
+        except Exception:
+            self._live_server = None
+            raise
 
     def stop_live_server(self):
         if self._live_server is not None:

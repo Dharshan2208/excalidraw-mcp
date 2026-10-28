@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import socket
 import threading
 import time
 from typing import Any
@@ -225,6 +226,73 @@ HTML_PAGE = """<!DOCTYPE html>
 """
 
 
+class _LiveCanvasUvicornServer(uvicorn.Server):
+    """Custom Uvicorn server providing deterministic startup synchronization and clean error propagation."""
+
+    def __init__(self, config: uvicorn.Config, ready_event: threading.Event):
+        super().__init__(config)
+        self.ready_event = ready_event
+        self.startup_error: BaseException | None = None
+
+    async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        await self.lifespan.startup()
+        if self.lifespan.should_exit:
+            self.should_exit = True
+            if getattr(self.lifespan, "startup_failed", False):
+                self.startup_error = RuntimeError("ASGI lifespan startup failed")
+                raise self.startup_error
+            return
+
+        config = self.config
+
+        def create_protocol(
+            _loop: asyncio.AbstractEventLoop | None = None,
+        ) -> asyncio.Protocol:
+            return config.http_protocol_class(
+                config=config,
+                server_state=self.server_state,
+                app_state=self.lifespan.state,
+                _loop=_loop,
+            )
+
+        loop = asyncio.get_running_loop()
+
+        if sockets is not None:
+            self.servers = []
+            for sock in sockets:
+                server = await loop.create_server(
+                    create_protocol,
+                    sock=sock,
+                    ssl=config.ssl,
+                    backlog=config.backlog,
+                )
+                self.servers.append(server)
+            listeners = sockets
+        else:
+            try:
+                server = await loop.create_server(
+                    create_protocol,
+                    host=config.host,
+                    port=config.port,
+                    ssl=config.ssl,
+                    backlog=config.backlog,
+                )
+            except OSError as exc:
+                self.startup_error = exc
+                await self.lifespan.shutdown()
+                raise exc
+
+            assert server.sockets is not None
+            listeners = server.sockets
+            self.servers = [server]
+
+        if sockets is None:
+            self._log_started_message(listeners)
+
+        self.started = True
+        self.ready_event.set()
+
+
 class LiveCanvasServer:
     """Manages the background Uvicorn live canvas server."""
 
@@ -233,10 +301,11 @@ class LiveCanvasServer:
         self.host = host
         self.port = port
         self.app = self._create_app()
-        self.server: uvicorn.Server | None = None
+        self.server: _LiveCanvasUvicornServer | None = None
         self.thread: threading.Thread | None = None
         self.active_websockets: set[WebSocket] = set()
         self._ws_lock = threading.Lock()
+        self._start_lock = threading.Lock()
         self._unsubscribe_state: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self.is_running = False
@@ -349,86 +418,8 @@ class LiveCanvasServer:
         except Exception:
             pass
 
-    def start(self, host: str | None = None, port: int | None = None) -> dict[str, Any]:
-        """Start the live canvas server in a background thread."""
-        if self.is_running:
-            return {
-                "status": "already_running",
-                "url": f"http://{self.host}:{self.port}",
-                "host": self.host,
-                "port": self.port,
-            }
-
-        if host:
-            self.host = host
-        if port:
-            self.port = port
-
-        app = self._create_app()
-        config = uvicorn.Config(
-            app=app,
-            host=self.host,
-            port=self.port,
-            log_level="error",
-        )
-        self.server = uvicorn.Server(config)
-
-        # Event loop capture
-        started_event = threading.Event()
-        server_error = None
-
-        def run_server():
-            nonlocal server_error
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self._loop = loop
-            started_event.set()
-            try:
-                loop.run_until_complete(self.server.serve())
-            except BaseException as exc:
-                server_error = exc
-            finally:
-                try:
-                    loop.close()
-                except Exception:
-                    pass
-
-        self.thread = threading.Thread(target=run_server, daemon=True, name="ExcalidrawLiveCanvas")
-        self.thread.start()
-        started_event.wait(timeout=3.0)
-
-        # Wait briefly for socket binding
-        time.sleep(0.3)
-        if not self.thread.is_alive():
-            self.thread = None
-            self.server = None
-            self._loop = None
-            err_msg = str(server_error) if server_error else f"Could not bind to port {self.port}"
-            return {
-                "status": "failed",
-                "error": err_msg,
-                "host": self.host,
-                "port": self.port,
-            }
-
-        self.is_running = True
-
-        # Subscribe to scene mutations
-        self._unsubscribe_state = self.service.state.subscribe(self._on_state_change)
-
-        return {
-            "status": "started",
-            "url": f"http://{self.host}:{self.port}",
-            "host": self.host,
-            "port": self.port,
-        }
-
-    def stop(self) -> dict[str, Any]:
-        """Stop the background live canvas server."""
-        was_running = self.is_running or (self.thread is not None and self.thread.is_alive())
-        if not was_running and self.server is None:
-            return {"status": "not_running"}
-
+    def _cleanup_failed_start(self):
+        """Safely cleans up partially initialized server, thread, and state."""
         if self._unsubscribe_state:
             try:
                 self._unsubscribe_state()
@@ -444,13 +435,122 @@ class LiveCanvasServer:
                 self.thread.join(timeout=2.0)
             self.thread = None
 
-        self.is_running = False
         self.server = None
         self._loop = None
+        self.is_running = False
         with self._ws_lock:
             self.active_websockets.clear()
 
-        return {"status": "stopped"}
+    def start(
+        self,
+        host: str | None = None,
+        port: int | None = None,
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        """Start the live canvas server in a background thread with deterministic readiness synchronization.
+
+        Args:
+            host: Host IP or hostname to bind to.
+            port: Port to listen on (0 for dynamic allocation).
+            timeout: Maximum seconds to wait for server socket binding and readiness.
+
+        Returns:
+            Dict containing status ('started' or 'already_running'), url, host, and port.
+
+        Raises:
+            SceneError: If startup fails (e.g. port already bound) or times out.
+        """
+        with self._start_lock:
+            if self.is_running:
+                return {
+                    "status": "already_running",
+                    "url": f"http://{self.host}:{self.port}",
+                    "host": self.host,
+                    "port": self.port,
+                }
+
+            if host is not None:
+                self.host = host
+            if port is not None:
+                self.port = port
+
+            app = self._create_app()
+            config = uvicorn.Config(
+                app=app,
+                host=self.host,
+                port=self.port,
+                log_level="error",
+            )
+            ready_event = threading.Event()
+            server = _LiveCanvasUvicornServer(config, ready_event=ready_event)
+            self.server = server
+
+            server_error: BaseException | None = None
+
+            def run_server():
+                nonlocal server_error
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._loop = loop
+                try:
+                    loop.run_until_complete(server.serve())
+                except BaseException as exc:
+                    server_error = exc
+                finally:
+                    ready_event.set()
+                    try:
+                        loop.close()
+                    except Exception:
+                        pass
+
+            self.thread = threading.Thread(
+                target=run_server,
+                daemon=True,
+                name="ExcalidrawLiveCanvas",
+            )
+            self.thread.start()
+
+            is_ready = ready_event.wait(timeout=timeout)
+            effective_error = server.startup_error or server_error
+
+            if not is_ready:
+                self._cleanup_failed_start()
+                raise SceneError(
+                    f"Live canvas server startup timed out after {timeout:.1f}s on {self.host}:{self.port}"
+                )
+
+            if not server.started or effective_error is not None:
+                self._cleanup_failed_start()
+                err_detail = str(effective_error) if effective_error else "Unknown initialization failure"
+                raise SceneError(
+                    f"Failed to start live canvas server on {self.host}:{self.port}: {err_detail}"
+                ) from effective_error
+
+            # Retrieve actual port if dynamically assigned (port=0)
+            if self.port == 0 and server.servers and server.servers[0].sockets:
+                self.port = server.servers[0].sockets[0].getsockname()[1]
+
+            self.is_running = True
+
+            # Subscribe to scene mutations
+            self._unsubscribe_state = self.service.state.subscribe(self._on_state_change)
+
+            return {
+                "status": "started",
+                "url": f"http://{self.host}:{self.port}",
+                "host": self.host,
+                "port": self.port,
+            }
+
+    def stop(self) -> dict[str, Any]:
+        """Stop the background live canvas server."""
+        with self._start_lock:
+            was_running = self.is_running or (self.thread is not None and self.thread.is_alive())
+            if not was_running and self.server is None:
+                return {"status": "not_running"}
+
+            self._cleanup_failed_start()
+            return {"status": "stopped"}
 
     def get_status(self) -> dict[str, Any]:
         """Get live canvas server status."""
