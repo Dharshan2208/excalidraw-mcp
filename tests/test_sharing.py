@@ -512,6 +512,15 @@ class TestSecurityAndStructuredLogging(unittest.TestCase):
         self.assertIn("[REDACTED]", logged_text)
         self.assertIn("secure-doc-abc", logged_text)
 
+    def test_sharing_module_does_not_import_unittest_mock(self):
+        """Ensure sharing module does not import unittest or unittest.mock in production code."""
+        import excalidraw_mcp.sharing as sharing_mod
+
+        self.assertFalse(
+            hasattr(sharing_mod, "unittest"),
+            "excalidraw_mcp.sharing should not import unittest or unittest.mock",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

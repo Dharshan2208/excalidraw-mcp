@@ -19,7 +19,6 @@ from pathlib import Path
 import struct
 import time
 from typing import Any
-import unittest.mock
 import uuid
 import zlib
 
@@ -450,24 +449,16 @@ def export_to_excalidraw_url(
             if not doc_id:
                 raise SceneError("Failed to obtain document ID from Excalidraw server")
 
-            # Check if live verification should run
-            is_post_mocked = isinstance(getattr(client, "post", None), unittest.mock.Base)
-            is_get_mocked = isinstance(getattr(client, "get", None), unittest.mock.Base)
-
             if verify:
-                # If post is mocked but get is not, skip live verification to avoid unintended network calls in legacy unit tests
-                if is_post_mocked and not is_get_mocked:
-                    logger.debug("Skipping verification because client.post is mocked but client.get is not")
-                else:
-                    _verify_retrieval(
-                        client=client,
-                        get_endpoint=get_endpoint,
-                        doc_id=doc_id,
-                        aes_key=aes_key,
-                        original_document=normalized_doc,
-                        max_retries=max_retries,
-                        retry_backoff=retry_backoff,
-                    )
+                _verify_retrieval(
+                    client=client,
+                    get_endpoint=get_endpoint,
+                    doc_id=doc_id,
+                    aes_key=aes_key,
+                    original_document=normalized_doc,
+                    max_retries=max_retries,
+                    retry_backoff=retry_backoff,
+                )
 
     except SceneError:
         raise

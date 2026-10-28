@@ -4,6 +4,7 @@ import json
 import os
 import socket
 import tempfile
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -148,7 +149,7 @@ class ExportToExcalidrawUrlTests(unittest.TestCase):
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
 
-        result = self.service.export_to_excalidraw_url()
+        result = self.service.export_to_excalidraw_url(verify=False)
         self.assertEqual(result["id"], "test-scene-123")
         self.assertTrue(result["url"].startswith("https://excalidraw.com/#json=test-scene-123,"))
         self.assertEqual(result["status"], "published")
