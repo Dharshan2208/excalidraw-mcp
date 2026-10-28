@@ -4,6 +4,7 @@ Validates security confinement, MCP contract alignments, parser enhancements,
 live server thread safety/bind failure handling, and geometry edge cases.
 """
 
+import logging
 import os
 import socket
 import tempfile
@@ -20,6 +21,12 @@ from excalidraw_mcp.service import SceneService
 class AuditRemediationTests(unittest.TestCase):
     def setUp(self):
         self.service = SceneService()
+
+    def tearDown(self):
+        try:
+            self.service.stop_live_server()
+        except Exception:
+            pass
 
     def test_importer_path_traversal_protection(self):
         """Ensure importer rejects arbitrary system paths and non-diagram extensions."""
@@ -115,13 +122,23 @@ A & B --> C & D
         sock.listen(1)
         occupied_port = sock.getsockname()[1]
 
+        server = None
         try:
             server = LiveCanvasServer(self.service)
-            res = server.start(port=occupied_port)
+            # Suppress noisy expected bind error log output from Uvicorn
+            uvicorn_logger = logging.getLogger("uvicorn.error")
+            prev_level = uvicorn_logger.level
+            uvicorn_logger.setLevel(logging.CRITICAL)
+            try:
+                res = server.start(port=occupied_port)
+            finally:
+                uvicorn_logger.setLevel(prev_level)
             self.assertEqual(res["status"], "failed")
             self.assertIn("error", res)
             self.assertFalse(server.is_running)
         finally:
+            if server:
+                server.stop()
             sock.close()
 
     def test_draw_graph_parallel_edges_offset(self):

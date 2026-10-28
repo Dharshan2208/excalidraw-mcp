@@ -425,18 +425,23 @@ class LiveCanvasServer:
 
     def stop(self) -> dict[str, Any]:
         """Stop the background live canvas server."""
-        if not self.is_running:
+        was_running = self.is_running or (self.thread is not None and self.thread.is_alive())
+        if not was_running and self.server is None:
             return {"status": "not_running"}
 
         if self._unsubscribe_state:
-            self._unsubscribe_state()
+            try:
+                self._unsubscribe_state()
+            except Exception:
+                pass
             self._unsubscribe_state = None
 
         if self.server:
             self.server.should_exit = True
 
         if self.thread:
-            self.thread.join(timeout=2.0)
+            if self.thread.is_alive():
+                self.thread.join(timeout=2.0)
             self.thread = None
 
         self.is_running = False

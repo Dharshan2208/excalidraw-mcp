@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import socket
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -382,6 +383,16 @@ class LiveCanvasServerTests(unittest.TestCase):
         self.server = LiveCanvasServer(self.service)
         self.client = TestClient(self.server.app)
 
+    def tearDown(self):
+        try:
+            self.service.stop_live_server()
+        except Exception:
+            pass
+        try:
+            self.server.stop()
+        except Exception:
+            pass
+
     def test_root_canvas_endpoint(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
@@ -448,13 +459,18 @@ class LiveCanvasServerTests(unittest.TestCase):
         status1 = self.service.get_live_server_status()
         self.assertFalse(status1["is_running"])
 
-        start_res = self.service.start_live_server(port=9876)
+        # Dynamically allocate an open port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            free_port = s.getsockname()[1]
+
+        start_res = self.service.start_live_server(port=free_port)
         self.assertEqual(start_res["status"], "started")
-        self.assertEqual(start_res["port"], 9876)
-        self.assertIn("http://127.0.0.1:9876", start_res["url"])
+        self.assertEqual(start_res["port"], free_port)
+        self.assertIn(f"http://127.0.0.1:{free_port}", start_res["url"])
 
         # Calling start again returns current running status
-        start_again = self.service.start_live_server(port=9876)
+        start_again = self.service.start_live_server(port=free_port)
         self.assertEqual(start_again["status"], "already_running")
 
         status2 = self.service.get_live_server_status()
