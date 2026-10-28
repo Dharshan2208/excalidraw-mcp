@@ -152,6 +152,7 @@ class BatchOperation(BaseModel):
         "ungroup",
         "duplicate",
         "duplicate_elements",
+        "resolve_layout",
     ]
     client_id: str | None = None
     x: float | None = None
@@ -190,6 +191,10 @@ class BatchOperation(BaseModel):
     strokeStyle: StrokeStyle | None = None
     opacity: int | None = None
     roughness: int | None = None
+    min_gap_x: float | None = None
+    min_gap_y: float | None = None
+    layer_gap: float | None = None
+    frame_padding: float | None = None
 
 
 class BatchResult(TypedDict):

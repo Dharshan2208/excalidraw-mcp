@@ -115,6 +115,29 @@ A & B --> C & D
         self.assertEqual(op.theme, "monokai")
         self.assertFalse(op.line_numbers)
 
+    def test_batch_operation_resolve_layout_contract(self):
+        """Ensure BatchOperation contract schema accepts resolve_layout action and parameters."""
+        op = BatchOperation(
+            action="resolve_layout",
+            min_gap_x=30.0,
+            min_gap_y=40.0,
+            layer_gap=50.0,
+            frame_padding=25.0,
+        )
+        self.assertEqual(op.action, "resolve_layout")
+        self.assertEqual(op.min_gap_x, 30.0)
+        self.assertEqual(op.min_gap_y, 40.0)
+        self.assertEqual(op.layer_gap, 50.0)
+        self.assertEqual(op.frame_padding, 25.0)
+
+        # Ensure batch_mutate executes the validated operation successfully
+        self.service.add_shape("rectangle", 0, 0, 100, 100)
+        self.service.add_shape("rectangle", 50, 50, 100, 100)
+        result = self.service.batch_mutate([op.model_dump(exclude_unset=False)])
+        self.assertEqual(result["status"], "batch executed")
+        self.assertEqual(result["operations_executed"], 1)
+        self.assertEqual(result["results"][0]["status"], "resolved")
+
     def test_live_server_port_conflict_reporting(self):
         """Ensure live server detects bind failure gracefully without hanging or false positive."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
