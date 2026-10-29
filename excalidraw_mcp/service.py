@@ -3543,6 +3543,7 @@ class SceneService:
         if self._live_server is not None:
             return self._live_server.get_status()
         return {
+            "status": "stopped",
             "is_running": False,
             "url": None,
             "host": "127.0.0.1",

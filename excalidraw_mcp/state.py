@@ -100,9 +100,8 @@ class SceneState:
             ).encode("utf-8")
         )
         if size > self._max_history_bytes:
-            self._history.clear()
-            self._history_sizes.clear()
-            self._history_bytes = 0
+            # Skip recording snapshot that exceeds the maximum history budget,
+            # but preserve existing valid history checkpoints.
             return
         self._history.append(deepcopy(document))
         self._history_sizes.append(size)

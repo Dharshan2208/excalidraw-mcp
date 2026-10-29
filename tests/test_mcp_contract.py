@@ -33,7 +33,7 @@ class MCPContractTests(unittest.TestCase):
         self.assertTrue(tools["clear"].annotations.destructiveHint)
         self.assertTrue(tools["save"].annotations.openWorldHint)
         self.assertTrue(tools["draw_graph"].annotations.destructiveHint)
-        self.assertTrue(all(not tool.run_in_thread for tool in tools.values()))
+        self.assertTrue(all(tool.run_in_thread for tool in tools.values()))
 
     def test_graph_schema_rejects_unknown_fields_and_has_enums(self):
         schema = self.metadata(create_server(toolset="full"))["draw_graph"].parameters

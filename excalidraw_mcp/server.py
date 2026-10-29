@@ -122,7 +122,7 @@ def create_server(
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def add_rectangle(
         x: Coordinate,
         y: Coordinate,
@@ -161,7 +161,7 @@ def create_server(
             service.add_shape, "rectangle", x, y, w, h, label, frame_id=frame_id, **style
         )
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def add_circle(
         x: Coordinate,
         y: Coordinate,
@@ -194,7 +194,7 @@ def create_server(
             service.add_shape, "ellipse", x, y, size, size, label, frame_id=frame_id, **style
         )
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def add_diamond(
         x: Coordinate,
         y: Coordinate,
@@ -230,7 +230,7 @@ def create_server(
             service.add_shape, "diamond", x, y, w, h, label, frame_id=frame_id, **style
         )
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def add_arrow(
         x: Coordinate,
         y: Coordinate,
@@ -261,7 +261,7 @@ def create_server(
         )
         return invoke(service.add_arrow, x, y, x2, y2, label, elbowed=elbowed, **style)
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def add_frame(
         name: Label,
         x: Coordinate,
@@ -305,7 +305,6 @@ def create_server(
         annotations=ToolAnnotations(
             destructiveHint=True, idempotentHint=True, openWorldHint=False
         ),
-        run_in_thread=False,
     )
     def clear() -> StatusResult:
         """Remove all elements, app state and files from the scene."""
@@ -315,7 +314,6 @@ def create_server(
         annotations=ToolAnnotations(
             destructiveHint=True, idempotentHint=False, openWorldHint=False
         ),
-        run_in_thread=False,
     )
     def delete(element_id: ElementId) -> DeleteResult:
         """Delete an element and its owned label; detach surviving connectors."""
@@ -323,7 +321,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
     )
     def move(element_id: ElementId, x: Coordinate, y: Coordinate) -> MoveResult:
         """Move an element and its label. Shape connectors follow; directly moved arrows detach."""
@@ -331,18 +328,17 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
-        run_in_thread=False,
     )
     def save(name: SceneName, overwrite: Boolean = False) -> SaveResult:
         """Save a consistent snapshot. Set overwrite=true to replace an existing file."""
         return invoke(service.save, name, overwrite=overwrite)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def get_scene(offset: Offset = 0, limit: PageLimit = 50) -> ScenePage:
         """List active elements with pagination and the current revision."""
         return invoke(service.get_scene, offset, limit)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def get_element(element_id: ElementId) -> ElementResult:
         """Return one active element by ID."""
         return invoke(service.get_element, element_id)
@@ -350,13 +346,12 @@ def create_server(
     if is_full:
         @mcp.tool(
             annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
-            run_in_thread=False,
         )
         def list_saved_scenes() -> SavedScenesResult:
             """List scene names available in the configured storage directory."""
             return invoke(service.list_saved_scenes)
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def add_text(
         x: Coordinate,
         y: Coordinate,
@@ -381,7 +376,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
     )
     def update_element(
         element_id: ElementId,
@@ -420,7 +414,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
     )
     def resize(
         element_id: ElementId, width: Dimension, height: Dimension
@@ -428,7 +421,7 @@ def create_server(
         """Resize a shape and recenter its label."""
         return invoke(service.resize, element_id, width, height)
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def connect(
         source_id: ElementId,
         target_id: ElementId,
@@ -460,7 +453,7 @@ def create_server(
             ),
         )
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def find_elements(
         query: str | None = None,
         type: ElementType | None = None,
@@ -482,7 +475,7 @@ def create_server(
             limit=limit,
         )
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def get_resource(
         uri: str | None = None,
         resource_type: str | None = None,
@@ -497,7 +490,7 @@ def create_server(
         )
 
     if is_full:
-        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        @mcp.tool(annotations=MUTATING)
         def batch_mutate(
             operations: list[BatchOperation],
         ) -> BatchResult:
@@ -507,7 +500,7 @@ def create_server(
                 [op.model_dump(exclude_unset=False) for op in operations],
             )
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    @mcp.tool(annotations=MUTATING)
     def auto_fix_layout(
         name: SceneName | None = None,
         dry_run: Boolean = False,
@@ -527,13 +520,12 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        run_in_thread=False,
     )
     def undo() -> UndoResult:
         """Restore the scene before the most recent successful mutation."""
         return invoke(service.undo)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def export_scene() -> EmbeddedResource:
         """Return an embedded .excalidraw document for the client to save/import. No file is written."""
         payload = invoke(service.export_scene)
@@ -549,7 +541,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
-        run_in_thread=False,
     )
     def load(name: SceneName) -> LoadResult:
         """Replace the scene with a saved document; concurrent changes cause a retry error."""
@@ -560,7 +551,7 @@ def create_server(
         """Read a validated saved scene without changing the active scene."""
         return invoke(service.read_saved_scene, name)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def preview(
         scale: PreviewScale = 1.0,
         padding: PreviewPadding = 40,
@@ -577,7 +568,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
-        run_in_thread=False,
     )
     def export_png(
         name: SceneName,
@@ -599,7 +589,7 @@ def create_server(
         )
 
     if is_full:
-        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        @mcp.tool(annotations=MUTATING)
         def add_code_block(
             code: str,
             language: str = "python",
@@ -631,7 +621,7 @@ def create_server(
                 frame_id=frame_id,
             )
 
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        @mcp.tool(annotations=READ_ONLY)
         def list_fonts(
             category: FontCategory | None = None,
         ) -> FontListResult:
@@ -640,7 +630,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        run_in_thread=False,
     )
     def draw_architecture(
         prompt: NonEmptyText,
@@ -678,7 +667,6 @@ def create_server(
     if is_full:
         @mcp.tool(
             annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def draw_graph(
             nodes: list[GraphNode],
@@ -711,7 +699,6 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def set_element_locked(
             element_ids: list[ElementId],
@@ -722,7 +709,6 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def lock_elements(element_ids: list[ElementId]) -> LockResult:
             """Lock elements and their bound labels to protect them from unintended mutations."""
@@ -730,13 +716,12 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def unlock_elements(element_ids: list[ElementId]) -> UnlockResult:
             """Unlock previously locked elements and their bound labels."""
             return invoke(service.set_element_locked, element_ids, locked=False)
 
-        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        @mcp.tool(annotations=MUTATING)
         def manage_groups(
             element_ids: list[ElementId] | None = None,
             group_id: str | None = None,
@@ -745,12 +730,12 @@ def create_server(
             """Group or ungroup multiple elements together."""
             return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action=action)
 
-        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        @mcp.tool(annotations=MUTATING)
         def group_elements(element_ids: list[ElementId]) -> GroupResult:
             """Group multiple elements together so they move and behave as a cohesive group."""
             return invoke(service.manage_groups, element_ids=element_ids, action="group")
 
-        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        @mcp.tool(annotations=MUTATING)
         def ungroup_elements(
             element_ids: list[ElementId] | None = None,
             group_id: str | None = None,
@@ -760,7 +745,6 @@ def create_server(
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        run_in_thread=False,
     )
     def draw_mermaid(
         mermaid_code: NonEmptyText,
@@ -780,14 +764,13 @@ def create_server(
         )
 
     if is_full:
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        @mcp.tool(annotations=READ_ONLY)
         def get_viewport() -> ViewportResult:
             """Get current canvas camera viewport settings (scroll coordinates, zoom level, background color)."""
             return invoke(service.get_viewport)
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def set_viewport(
             scroll_x: Coordinate | None = None,
@@ -810,7 +793,6 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def focus_elements(
             element_ids: list[ElementId] | None = None,
@@ -819,7 +801,7 @@ def create_server(
             """Center and zoom the viewport camera to frame specified elements or the entire diagram."""
             return invoke(service.set_viewport, focus_element_ids=element_ids, padding=padding)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def get_scene_summary() -> SceneSummaryResult:
         """Return structured numerical metrics and topological metadata (counts, element dimensions, layers, code blocks, text contents) for layout planning."""
         return invoke(service.get_scene_summary)
@@ -827,24 +809,23 @@ def create_server(
     if is_full:
         @mcp.tool(
             annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
-            run_in_thread=False,
         )
         def export_to_excalidraw_url(name: SceneName | None = None) -> ShareUrlResult:
             """Publish the scene to excalidraw.com with client-side encryption and return a shareable URL."""
             return invoke(service.export_to_excalidraw_url, name=name)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    @mcp.tool(annotations=READ_ONLY)
     def describe_scene(detailed: Boolean = True) -> SceneDescriptionResult:
         """Generate a human/agent-readable natural language prose description of the diagram's spatial layout, clusters, and connectivity for cognitive verification."""
         return invoke(service.describe_scene, detailed=detailed)
 
     if is_full:
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        @mcp.tool(annotations=READ_ONLY)
         def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
             """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
             return invoke(service.read_diagram_guide, topic=topic)
 
-        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        @mcp.tool(annotations=MUTATING)
         def duplicate_elements(
             element_ids: list[ElementId],
             offset_x: Coordinate = 20.0,
@@ -860,7 +841,6 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def import_scene(
             data: str,
@@ -879,7 +859,6 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=True),
-            run_in_thread=False,
         )
         def start_live_server(host: str = "127.0.0.1", port: int = 8080) -> LiveServerResult:
             """Start the background browser-connected Excalidraw live canvas server with real-time synchronization."""
@@ -887,13 +866,12 @@ def create_server(
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-            run_in_thread=False,
         )
         def stop_live_server() -> LiveServerResult:
             """Stop the background live canvas server."""
             return invoke(service.stop_live_server)
 
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        @mcp.tool(annotations=READ_ONLY)
         def get_live_server_status() -> LiveServerResult:
             """Check status of the browser-connected live canvas server."""
             return invoke(service.get_live_server_status)

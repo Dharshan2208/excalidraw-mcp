@@ -698,6 +698,7 @@ class LiveCanvasServer:
         with self._ws_lock:
             client_count = len(self.active_websockets)
         return {
+            "status": "running" if self.is_running else "stopped",
             "is_running": self.is_running,
             "url": f"http://{self.host}:{self.port}" if self.is_running else None,
             "host": self.host,
