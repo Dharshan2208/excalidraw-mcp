@@ -24,6 +24,7 @@ Issues = "https://github.com/Dharshan2208/excalidraw-mcp/issues"
 
 [project.scripts]
 exca-mcp = "excalidraw_mcp.server:main"
+excalidraw-mcp = "excalidraw_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["excalidraw_mcp"]

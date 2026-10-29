@@ -799,7 +799,7 @@ def create_server(
             padding: PreviewPadding = 50,
         ) -> FocusResult:
             """Center and zoom the viewport camera to frame specified elements or the entire diagram."""
-            return invoke(service.set_viewport, focus_element_ids=element_ids, padding=padding)
+            return invoke(service.focus_elements, element_ids=element_ids, padding=padding)
 
     @mcp.tool(annotations=READ_ONLY)
     def get_scene_summary() -> SceneSummaryResult:
