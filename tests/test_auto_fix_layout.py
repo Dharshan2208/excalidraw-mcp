@@ -22,8 +22,10 @@ from excalidraw_mcp.auto_fix import (
     auto_fix_scene_layout,
     diagnose_layout_issues,
     is_intentional_overlap,
+    measure_shape_text_containment,
     plan_layout_repairs,
 )
+from excalidraw_mcp.text_padding import required_container_size
 from excalidraw_mcp.elements import arrow, frame, rect, text
 from excalidraw_mcp.errors import SceneError
 from excalidraw_mcp.fonts import measure_text_dimensions
@@ -68,6 +70,50 @@ class AutoFixDiagnosticsAndDiscriminationTests(unittest.TestCase):
         issues2 = diagnose_layout_issues(doc2)
         text_clips2 = [i for i in issues2 if i["type"] == "text_clipping"]
         self.assertEqual(len(text_clips2), 0)
+
+    def test_diamond_created_with_long_label_not_resized_by_auto_fix(self):
+        """Diamond created by add_diamond with a long label is not resized by auto_fix_layout."""
+        d = self.service.add_shape(
+            "diamond",
+            100,
+            100,
+            100,
+            60,
+            label="Multi-tier Decision Gateway Authentication Verification",
+        )
+        d_el = self.service.state.get(d["diamond_id"])
+        init_w, init_h = d_el["width"], d_el["height"]
+
+        res = self.service.auto_fix_layout()
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(len(res["applied_changes"]), 0)
+
+        post_el = self.service.state.get(d["diamond_id"])
+        self.assertEqual(post_el["width"], init_w)
+        self.assertEqual(post_el["height"], init_h)
+
+    def test_all_shapes_agree_between_creation_and_repair_sizing(self):
+        """All shapes agree between creation and repair sizing via required_container_size."""
+        for shape_type in ("rectangle", "ellipse", "diamond"):
+            self.service.clear()
+            res = self.service.add_shape(
+                shape_type,
+                100,
+                100,
+                50,
+                50,
+                label=f"Comprehensive {shape_type} padding test label",
+            )
+            key = {"rectangle": "rectangle_id", "ellipse": "circle_id", "diamond": "diamond_id"}[shape_type]
+            shape_el = self.service.state.get(res[key])
+            label_el = self.service.state.get(res["label_id"])
+
+            is_clipped, req_w, req_h, def_w, def_h = measure_shape_text_containment(shape_el, label_el)
+            self.assertFalse(is_clipped)
+            self.assertEqual(def_w, 0.0)
+            self.assertEqual(def_h, 0.0)
+            self.assertAlmostEqual(shape_el["width"], req_w, places=1)
+            self.assertAlmostEqual(shape_el["height"], req_h, places=1)
 
     def test_intentional_overlap_allow_overlap_flag(self):
         """Shapes with customData allow_overlap=True are NOT flagged as collisions."""

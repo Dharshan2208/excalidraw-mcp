@@ -23,6 +23,7 @@ from excalidraw_mcp.document import serialize_document
 from excalidraw_mcp.models import _finite_number, new_document
 from excalidraw_mcp.scene import list_scenes, load_scene, save_scene
 from excalidraw_mcp.state import SceneState
+from excalidraw_mcp.text_padding import required_container_size
 from excalidraw_mcp.layout import boundary_point, clustered_layout, layered_layout, linear_layout, wrap_label
 from excalidraw_mcp.parser import parse_architecture
 
@@ -53,15 +54,7 @@ def _shape_elements(shape, x, y, w, h, label, style, frame_id=None):
         )
 
         # Calculate minimum required shape dimensions for internal padding containment
-        if shape == "ellipse":
-            min_size = math.hypot(text_w, text_h) + 40.0
-            min_w, min_h = min_size, min_size
-        elif shape == "diamond":
-            min_w = text_w * 1.6 + 48.0
-            min_h = text_h * 1.6 + 40.0
-        else:
-            min_w = text_w + 36.0
-            min_h = text_h + 28.0
+        min_w, min_h = required_container_size(shape, text_w, text_h)
 
         # Auto-expand container if requested size is too small for text
         if min_w > w or min_h > h:
@@ -602,15 +595,7 @@ class SceneService:
                     el["width"] = tw
                     el["height"] = th
 
-                    if c_type == "ellipse":
-                        min_size = math.hypot(tw, th) + 40.0
-                        min_w, min_h = min_size, min_size
-                    elif c_type == "diamond":
-                        min_w = tw * 1.6 + 48.0
-                        min_h = th * 1.6 + 40.0
-                    else:
-                        min_w = tw + 36.0
-                        min_h = th + 28.0
+                    min_w, min_h = required_container_size(c_type, tw, th)
 
                     if min_w > c_w or min_h > c_h:
                         new_w = max(c_w, min_w)
@@ -666,15 +651,7 @@ class SceneService:
                                 tw, th, _ = measure_text_dimensions(
                                     wrapped, font_family=f_fam, font_size=f_size
                                 )
-                                if c_type == "ellipse":
-                                    min_size = math.hypot(tw, th) + 40.0
-                                    min_w, min_h = min_size, min_size
-                                elif c_type == "diamond":
-                                    min_w = tw * 1.6 + 48.0
-                                    min_h = th * 1.6 + 40.0
-                                else:
-                                    min_w = tw + 36.0
-                                    min_h = th + 28.0
+                                min_w, min_h = required_container_size(c_type, tw, th)
 
                                 if min_w > c_w or min_h > c_h:
                                     new_w = max(c_w, min_w)
@@ -733,15 +710,7 @@ class SceneService:
                             target["width"] = tw
                             target["height"] = th
 
-                            if c_type == "ellipse":
-                                min_size = math.hypot(tw, th) + 40.0
-                                min_w, min_h = min_size, min_size
-                            elif c_type == "diamond":
-                                min_w = tw * 1.6 + 48.0
-                                min_h = th * 1.6 + 40.0
-                            else:
-                                min_w = tw + 36.0
-                                min_h = th + 28.0
+                            min_w, min_h = required_container_size(c_type, tw, th)
 
                             if min_w > c_w or min_h > c_h:
                                 new_w = max(c_w, min_w)
@@ -782,15 +751,7 @@ class SceneService:
                         )
                         target["width"] = tw
                         target["height"] = th
-                        if c_type == "ellipse":
-                            min_size = math.hypot(tw, th) + 40.0
-                            min_w, min_h = min_size, min_size
-                        elif c_type == "diamond":
-                            min_w = tw * 1.6 + 48.0
-                            min_h = th * 1.6 + 40.0
-                        else:
-                            min_w = tw + 36.0
-                            min_h = th + 28.0
+                        min_w, min_h = required_container_size(c_type, tw, th)
 
                         if min_w > c_w or min_h > c_h:
                             new_w = max(c_w, min_w)

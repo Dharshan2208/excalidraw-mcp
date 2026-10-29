@@ -12,9 +12,14 @@ from excalidraw_mcp.errors import SceneError
 from excalidraw_mcp.fonts import measure_text_dimensions
 from excalidraw_mcp.layout import wrap_text_to_shape
 from excalidraw_mcp.routing import reroute_scene_arrows, segment_intersects_rect
+from excalidraw_mcp.text_padding import required_container_size
 
 VALID_SCOPES = ("all", "overlaps", "connectors", "containment", "text", "spacing")
 VALID_AGGRESSIVENESS = ("gentle", "balanced", "aggressive")
+
+TEXT_DEFICIT_THRESHOLD_PX = 1.0   # used by BOTH diagnose and repair
+SPACING_RATIO_THRESHOLD = 0.65    # used by BOTH diagnose and repair
+AGGRESSIVENESS_MULT = {"gentle": 0.8, "balanced": 1.0, "aggressive": 1.35}
 
 
 def _validate_params(repair_scope: str, aggressiveness: str, min_gap: float) -> tuple[str, str, float]:
@@ -210,32 +215,13 @@ def measure_shape_text_containment(
         tw = abs(_coord(text_el, "width"))
         th = abs(_coord(text_el, "height"))
 
-    is_clipped = False
-    req_w = cur_w
-    req_h = cur_h
-
-    if stype == "ellipse":
-        corner_dist = math.hypot(tw / 2.0, th / 2.0)
-        radius = min(cur_w, cur_h) / 2.0
-        if corner_dist > max(1.0, radius - 6.0):
-            is_clipped = True
-            needed_d = max(cur_w, cur_h, math.hypot(tw, th) + 40.0)
-            req_w = needed_d
-            req_h = needed_d
-    elif stype == "diamond":
-        corner_ratio = (tw / cur_w) + (th / cur_h) if (cur_w > 0 and cur_h > 0) else 2.0
-        if corner_ratio > 0.95:
-            is_clipped = True
-            req_w = max(cur_w, tw * 1.65 + 40.0)
-            req_h = max(cur_h, th * 1.65 + 35.0)
-    else:  # rectangle
-        if tw > cur_w - 16.0 or th > cur_h - 12.0:
-            is_clipped = True
-            req_w = max(cur_w, tw + 36.0)
-            req_h = max(cur_h, th + 28.0)
+    min_w, min_h = required_container_size(stype, tw, th)
+    req_w = max(cur_w, min_w)
+    req_h = max(cur_h, min_h)
 
     deficit_w = max(0.0, req_w - cur_w)
     deficit_h = max(0.0, req_h - cur_h)
+    is_clipped = deficit_w > 0.0 or deficit_h > 0.0
     return is_clipped, round(req_w, 1), round(req_h, 1), round(deficit_w, 1), round(deficit_h, 1)
 
 
@@ -255,11 +241,18 @@ def _compute_frame_depths(frames: list[dict[str, Any]]) -> dict[str, int]:
     return frame_depths
 
 
-def diagnose_layout_issues(document_or_elements: Any, min_gap: float = 30.0) -> list[dict[str, Any]]:
+def diagnose_layout_issues(
+    document_or_elements: Any,
+    min_gap: float = 30.0,
+    aggressiveness: str = "balanced",
+) -> list[dict[str, Any]]:
     """Detect and classify all layout defects in a scene with semantic distinction between defects and intentional geometry."""
     active, _ = _extract_active_elements(document_or_elements)
     if not active:
         return []
+
+    gap_mult = AGGRESSIVENESS_MULT.get(aggressiveness, 1.0)
+    effective_min_gap = min_gap * gap_mult
 
     shapes = [
         e
@@ -308,7 +301,7 @@ def diagnose_layout_issues(document_or_elements: Any, min_gap: float = 30.0) -> 
         cur_h = abs(_coord(s, "height"))
 
         is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, t)
-        if is_clipped and (deficit_w > 2.0 or deficit_h > 2.0):
+        if is_clipped and (deficit_w > TEXT_DEFICIT_THRESHOLD_PX or deficit_h > TEXT_DEFICIT_THRESHOLD_PX):
             severity = "critical" if (deficit_w > 25.0 or deficit_h > 20.0) else "warning"
             issues.append(
                 {
@@ -552,7 +545,7 @@ def diagnose_layout_issues(document_or_elements: Any, min_gap: float = 30.0) -> 
             v_overlap = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
             if v_overlap > 10.0:
                 h_gap = max(x1_min, x2_min) - min(x1_max, x2_max)
-                if 0.5 < h_gap < min_gap * 0.65:
+                if 0.5 < h_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
                     lbl1 = (bound_map.get(id1) or {}).get("text") or id1
                     lbl2 = (bound_map.get(id2) or {}).get("text") or id2
                     issues.append(
@@ -570,7 +563,7 @@ def diagnose_layout_issues(document_or_elements: Any, min_gap: float = 30.0) -> 
             h_overlap = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
             if h_overlap > 10.0:
                 v_gap = max(y1_min, y2_min) - min(y1_max, y2_max)
-                if 0.5 < v_gap < min_gap * 0.65:
+                if 0.5 < v_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
                     lbl1 = (bound_map.get(id1) or {}).get("text") or id1
                     lbl2 = (bound_map.get(id2) or {}).get("text") or id2
                     issues.append(
@@ -596,7 +589,7 @@ def plan_layout_repairs(
 ) -> list[dict[str, Any]]:
     """Build an explicit, deterministic repair plan describing proposed transformations before mutation."""
     scope, aggr, m_gap = _validate_params(repair_scope, aggressiveness, min_gap)
-    gap_mult = {"gentle": 0.8, "balanced": 1.0, "aggressive": 1.35}[aggr]
+    gap_mult = AGGRESSIVENESS_MULT[aggr]
     effective_min_gap = m_gap * gap_mult
 
     active, _ = _extract_active_elements(document_or_elements)
@@ -896,7 +889,7 @@ def apply_layout_repairs(
         (elements, applied_changes, skipped_repairs, warnings)
     """
     scope, aggr, m_gap = _validate_params(repair_scope, aggressiveness, min_gap)
-    gap_mult = {"gentle": 0.8, "balanced": 1.0, "aggressive": 1.35}[aggr]
+    gap_mult = AGGRESSIVENESS_MULT[aggr]
     effective_min_gap = m_gap * gap_mult
 
     if isinstance(document_or_elements, dict) and "elements" in document_or_elements:
@@ -970,7 +963,7 @@ def apply_layout_repairs(
                 continue
 
             is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, t)
-            if is_clipped and (deficit_w > 1.0 or deficit_h > 1.0):
+            if is_clipped and (deficit_w > TEXT_DEFICIT_THRESHOLD_PX or deficit_h > TEXT_DEFICIT_THRESHOLD_PX):
                 cur_w = abs(_coord(s, "width"))
                 cur_h = abs(_coord(s, "height"))
                 old_state = {"x": s.get("x"), "y": s.get("y"), "width": cur_w, "height": cur_h}
@@ -1213,7 +1206,7 @@ def apply_layout_repairs(
                     x2_min = _coord(s2, "x")
                     h_gap = x2_min - x1_max
 
-                    if h_gap < effective_min_gap * 0.65:
+                    if h_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
                         cluster1 = _get_shape_cluster(s1, shapes)
                         cluster2 = _get_shape_cluster(s2, shapes)
                         c1_locked = _is_cluster_locked(cluster1)
@@ -1301,7 +1294,7 @@ def apply_layout_repairs(
                     y2_min = _coord(s2, "y")
                     v_gap = y2_min - y1_max
 
-                    if v_gap < effective_min_gap * 0.65:
+                    if v_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
                         cluster1 = _get_shape_cluster(s1, shapes)
                         cluster2 = _get_shape_cluster(s2, shapes)
                         c1_locked = _is_cluster_locked(cluster1)
@@ -1440,7 +1433,7 @@ def auto_fix_scene_layout(
         }
 
     # Step 3: Run comprehensive initial diagnostics
-    initial_issues = diagnose_layout_issues(snapshot_original, min_gap=m_gap)
+    initial_issues = diagnose_layout_issues(snapshot_original, min_gap=m_gap, aggressiveness=aggr)
 
     # Step 4: If scene is already valid and has no defects
     if not initial_issues:
@@ -1479,7 +1472,7 @@ def auto_fix_scene_layout(
     )
 
     # Step 7: Re-run diagnostics on post-repair geometry
-    final_issues = diagnose_layout_issues(draft, min_gap=m_gap)
+    final_issues = diagnose_layout_issues(draft, min_gap=m_gap, aggressiveness=aggr)
 
     initial_severe_ids = _severe_ids(initial_issues)
     final_severe_ids = _severe_ids(final_issues)
