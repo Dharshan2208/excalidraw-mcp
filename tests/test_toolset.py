@@ -81,36 +81,18 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("start_live_server", tool_names)
         self.assertNotIn("stop_live_server", tool_names)
         self.assertNotIn("get_live_server_status", tool_names)
-        self.assertNotIn("get_canvas_screenshot", tool_names)
 
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 49)
+        self.assertEqual(len(tools), 48)
         tool_names = {t.name for t in tools}
         self.assertIn("draw_graph", tool_names)
         self.assertIn("batch_mutate", tool_names)
         self.assertIn("find_elements", tool_names)
         self.assertIn("start_live_server", tool_names)
-        self.assertIn("get_canvas_screenshot", tool_names)
         self.assertIn("set_element_locked", tool_names)
         self.assertIn("manage_groups", tool_names)
-
-    async def test_get_canvas_screenshot_emits_deprecation_warning(self):
-        server = create_server(toolset="full")
-        tools = {t.name: t.fn for t in await server.list_tools()}
-        self.assertIn("get_canvas_screenshot", tools)
-
-        with warnings.catch_warnings(record=True) as recorded:
-            warnings.simplefilter("always")
-            tools["get_canvas_screenshot"]()
-            self.assertTrue(
-                any(
-                    issubclass(w.category, DeprecationWarning)
-                    and "get_canvas_screenshot is deprecated; use preview instead." in str(w.message)
-                    for w in recorded
-                )
-            )
 
     async def test_capabilities_resource_provides_metadata(self):
         for mode in ("core", "full"):
@@ -121,7 +103,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["active_toolset"], mode)
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 46 if mode == "full" else 27)
+            self.assertEqual(data["tool_count"], 48 if mode == "full" else 27)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 

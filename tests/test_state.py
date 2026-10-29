@@ -197,7 +197,6 @@ class StateTests(unittest.TestCase):
                 "get_scene_summary",
                 "export_to_excalidraw_url",
                 "describe_scene",
-                "get_canvas_screenshot",
                 "get_resource",
                 "read_diagram_guide",
                 "duplicate_elements",

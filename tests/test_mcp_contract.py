@@ -18,7 +18,7 @@ class MCPContractTests(unittest.TestCase):
 
     def test_tools_have_constraints_outputs_and_behavior_annotations(self):
         tools = self.metadata(create_server(toolset="full"))
-        structured = set(tools) - {"export_scene", "preview", "get_canvas_screenshot"}
+        structured = set(tools) - {"export_scene", "preview"}
         self.assertTrue(all(tools[name].output_schema for name in structured))
         width = tools["add_rectangle"].parameters["properties"]["w"]
         self.assertEqual((width["exclusiveMinimum"], width["maximum"]), (0, 100000))

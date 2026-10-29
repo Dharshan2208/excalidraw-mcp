@@ -840,22 +840,6 @@ def create_server(
 
     if is_full:
         @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-        def get_canvas_screenshot(
-            scale: PreviewScale = 1.0,
-            padding: PreviewPadding = 40,
-            background: Boolean = True,
-        ) -> Image:
-            """Alias for preview (DEPRECATED: Use preview instead). Render an inline PNG screenshot of the current canvas with embedded metadata."""
-            import warnings
-
-            warnings.warn(
-                "get_canvas_screenshot is deprecated; use preview instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return preview(scale=scale, padding=padding, background=background)
-
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
         def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
             """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
             return invoke(service.read_diagram_guide, topic=topic)
@@ -924,7 +908,8 @@ def create_server(
             "active_toolset": active_toolset,
             "available_toolsets": ["core", "full"],
             "server_version": "0.1.0",
-            "tool_count": 46 if is_full else 27,
+            # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (48 tools / ~14,376 tokens) -> ~45.2% token savings
+            "tool_count": 48 if is_full else 27,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),

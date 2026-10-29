@@ -184,10 +184,10 @@ class CanvasScreenshotTests(unittest.TestCase):
         self.assertIn("elements", embedded_doc)
         self.assertEqual(len(embedded_doc["elements"]), 2)  # Rectangle + label
 
-    def test_server_get_canvas_screenshot_tool(self):
+    def test_server_preview_tool(self):
         server = create_server(self.service, toolset="full")
         tools = {tool.name: tool.fn for tool in asyncio.run(server.list_tools())}
-        img = tools["get_canvas_screenshot"]()
+        img = tools["preview"]()
         self.assertTrue(img.data.startswith(b"\x89PNG\r\n\x1a\n"))
         pil_img = PILImage.open(io.BytesIO(img.data))
         self.assertIn("application/vnd.excalidraw+json", pil_img.info)

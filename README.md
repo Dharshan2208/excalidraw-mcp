@@ -19,7 +19,7 @@ Built on [FastMCP](https://github.com/jlowin/fastmcp) using **Hatchling** as the
 
 ### Key Capabilities
 
-- **Two-Tier Toolset Optimization (`EXCALIDRAW_TOOLSET`)**: Ships with a streamlined 27-tool `core` set enabled by default, reducing schema context overhead by **45.2%** (~6,560 tokens saved per LLM turn). Power users and interactive agents can enable all 49 tools by setting `EXCALIDRAW_TOOLSET=full`. Zero-token capability discovery is available via `excalidraw://capabilities`.
+- **Two-Tier Toolset Optimization (`EXCALIDRAW_TOOLSET`)**: Ships with a streamlined 27-tool `core` set enabled by default, reducing schema context overhead by **45.2%** (~6,560 tokens saved per LLM turn). Power users and interactive agents can enable all 48 tools by setting `EXCALIDRAW_TOOLSET=full`. Zero-token capability discovery is available via `excalidraw://capabilities`.
 - **Obstacle Aware Orthogonal Arrow Routing**: Manhattan A* corridor pathfinding routes connectors cleanly around intermediate boxes, frames, and text with configurable clearance ($15\text{px}$). Arrows attach perpendicularly to cardinal faces (top, bottom, left, right) on rectangles, diamonds, and ellipses, preventing clipped arrowheads and wire collisions.
 - **Multi Edge Parallel Lanes**: Automatically routes multiple connectors between the same components into distinct, parallel tracks ($20\text{px}$ lane spacing) so arrows and labels never superimpose.
 - **Collision Free Label Positioning**: Ranks corridor segments to position connector labels along the longest clear segment away from arrowheads and obstacle boxes.
@@ -270,7 +270,7 @@ This repository comes pre-packaged with a root [`mcp.json`](mcp.json) descriptor
 }
 ```
 
-When an MCP compliant agent tool (e.g. `fastmcp list mcp.json`, Cursor, or Zed) scans your workspace, it will automatically detect the server and register the default 25 `core` tools (or all 49 tools when `EXCALIDRAW_TOOLSET=full`) with zero manual configuration.
+When an MCP compliant agent tool (e.g. `fastmcp list mcp.json`, Cursor, or Zed) scans your workspace, it will automatically detect the server and register the default 27 `core` tools (or all 48 tools when `EXCALIDRAW_TOOLSET=full`) with zero manual configuration.
 
 ---
 
@@ -278,7 +278,7 @@ When an MCP compliant agent tool (e.g. `fastmcp list mcp.json`, Cursor, or Zed) 
 
 The server supports two configurable toolsets controlled by `EXCALIDRAW_TOOLSET`:
 - **`CORE` Set (27 tools, Default)**: The essential generation-edit-inspect-validate-export workflow for autonomous coding agents. Saves **45.2% in schema tokens** (~6,560 tokens per turn).
-- **`FULL` Set (49 tools)**: Includes all `CORE` tools plus advanced layered graph generators (`draw_graph`), atomic batch transactions (`batch_mutate`), element locking, grouping, camera viewports, and the background live canvas server.
+- **`FULL` Set (48 tools)**: Includes all `CORE` tools plus advanced layered graph generators (`draw_graph`), atomic batch transactions (`batch_mutate`), element locking, grouping, camera viewports, and the background live canvas server.
 
 All tools are strictly typed with JSON Schema bounds and explicit safety hints (`readOnly`, `destructive`, `idempotent`).
 
@@ -346,7 +346,6 @@ All tools are strictly typed with JSON Schema bounds and explicit safety hints (
 | `get_resource` | **CORE** | `uri: str | None = None`<br>`resource_type: str | None = None`<br>`identifier: str | None = None` | `ResourceResult`<br>`{ resource_type, identifier, document, theme, library, element, ... }` | Retrieves scene, library (`architecture`, `flowchart`, `cloud`), theme (`default`, `dark`, `light`, `monokai`, `nord`, `solarized`), or element resources through a unified interface. |
 | `import_scene` | FULL | `data: str`<br>`mode: str = "replace"` (`replace`, `merge`)<br>`offset_x: float = 0.0`<br>`offset_y: float = 0.0` | `ImportResult`<br>`{ status, mode, elements_imported, total_elements, id_mapping, revision }` | Imports Excalidraw scenes from raw JSON, `.excalidraw` files, Obsidian `.excalidraw.md` files, or embedded PNGs with reference preservation and collision remapping. |
 | `export_to_excalidraw_url` | FULL | `name: str | None = None` | `ShareUrlResult`<br>`{ status, url, id, revision }` | Publishes active or saved scene to excalidraw.com using 128-bit AES-GCM client-side encryption and returns a shareable URL. |
-| `get_canvas_screenshot` | FULL | `scale: float = 1.0`<br>`padding: int = 40`<br>`background: bool = True` | `ImageContent`<br>(`image/png`) | **Deprecated**: Alias for `preview`. Renders the current canvas into an inline PNG screenshot. Use `preview` instead. |
 
 ### 5. Live Canvas Server & Browser Synchronization
 
@@ -434,7 +433,7 @@ The server operates with secure defaults and zero required environment variables
 
 | Variable | Default | Allowed Values | Description |
 |---|---|---|---|
-| `EXCALIDRAW_TOOLSET` | `core` | `core`, `full` | Configures exposed tool footprint. `core` registers 25 essential tools (saving 45.2% schema tokens); `full` registers all 49 tools including legacy wrappers and live server tools. |
+| `EXCALIDRAW_TOOLSET` | `core` | `core`, `full` | Configures exposed tool footprint. `core` registers 27 essential tools (saving 45.2% schema tokens); `full` registers all 48 tools including legacy wrappers and live server tools. |
 | `EXCALIDRAW_SCENE_DIR` | Platform User Data | Absolute path | Directory where scenes are persisted. Defaults to `$XDG_DATA_HOME/excalidraw-mcp/scenes` on Linux, `~/Library/Application Support/excalidraw-mcp/scenes` on macOS, and `%APPDATA%\excalidraw-mcp\scenes` on Windows. |
 | `EXCALIDRAW_EXPORT_DIR` | `$EXCALIDRAW_SCENE_DIR/exports` | Absolute path | Configurable directory where PNG diagram exports are saved by default. |
 | `EXCALIDRAW_DEFAULT_FONT` | Platform Sans Font | Font family name | Preferred system font family for regular diagram text and labels. |
