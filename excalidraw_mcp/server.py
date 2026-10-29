@@ -8,6 +8,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
 from mcp.types import EmbeddedResource, TextResourceContents
 from mcp.types import ToolAnnotations
+from pydantic import AnyUrl
 
 from excalidraw_mcp.contracts import (
     Aggressiveness,
@@ -533,7 +534,7 @@ def create_server(
         return EmbeddedResource(
             type="resource",
             resource=TextResourceContents(
-                uri=f"excalidraw://export/{snapshot_id}/scene.excalidraw",
+                uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw"),
                 mimeType=MIME_TYPE,
                 text=payload,
             ),

@@ -474,29 +474,29 @@ def render_scene_image(
                     obstacles=shapes,
                     clearance=15.0,
                 )
-                pts = [[pt[0] - ax, pt[1] - ay] for pt in routed]
+                arrow_pts: list[Any] = [[pt[0] - ax, pt[1] - ay] for pt in routed]
             else:
                 p0, p1 = points[0], points[1]
                 dx = float(p1[0]) - float(p0[0])
                 dy = float(p1[1]) - float(p0[1])
                 if abs(dx) > abs(dy):
-                    pts = [
+                    arrow_pts = [
                         p0,
                         [float(p0[0]) + dx / 2.0, float(p0[1])],
                         [float(p0[0]) + dx / 2.0, float(p1[1])],
                         p1,
                     ]
                 else:
-                    pts = [
+                    arrow_pts = [
                         p0,
                         [float(p0[0]), float(p0[1]) + dy / 2.0],
                         [float(p1[0]), float(p0[1]) + dy / 2.0],
                         p1,
                     ]
         else:
-            pts = points
+            arrow_pts = points
 
-        screen_pts = [(tx(ax + pt[0]), ty(ay + pt[1])) for pt in pts]
+        screen_pts = [(tx(ax + pt[0]), ty(ay + pt[1])) for pt in arrow_pts]
         if len(screen_pts) >= 2:
             _draw_polyline(draw, screen_pts, fill=stroke_color, width=stroke_w, stroke_style=a.get("strokeStyle", "solid"))
 

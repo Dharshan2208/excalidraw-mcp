@@ -121,8 +121,8 @@ def normalize_font_family(family: int | str | None) -> int:
 
 
 def text(
-    x: int,
-    y: int,
+    x: float | int,
+    y: float | int,
     content: str,
     fontSize: int = 20,
     fontFamily: int | str = 2,

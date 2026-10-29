@@ -2935,8 +2935,8 @@ class SceneService:
 
         nodes, edges, clusters, parsed_direction, parsed_layout = parse_mermaid(
             mermaid_code=mermaid_code,
-            direction=direction,
-            layout=layout,
+            direction=direction,  # type: ignore[arg-type]
+            layout=layout,  # type: ignore[arg-type]
         )
         return self.draw_graph(
             nodes=[node.model_dump() for node in nodes],

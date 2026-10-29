@@ -252,7 +252,7 @@ def _safe_wrap_and_measure(
     """Safely wrap and measure text for a shape container, falling back and warning on failure."""
     raw_text = text_el.get("text") or ""
     raw_fs = text_el.get("fontSize")
-    fs = raw_fs if isinstance(raw_fs, (int, float)) and raw_fs > 0 else 20
+    fs = int(raw_fs) if isinstance(raw_fs, (int, float)) and raw_fs > 0 else 20
     ff = text_el.get("fontFamily")
     stype = shape.get("type", "rectangle")
     sid = shape.get("id", "unknown")
@@ -382,11 +382,11 @@ def diagnose_layout_issues(
         sid = s.get("id")
         if not sid:
             continue
-        t = bound_map.get(sid)
-        if not t:
+        bound_t = bound_map.get(sid)
+        if not bound_t:
             continue
 
-        raw_text = t.get("text") or ""
+        raw_text = bound_t.get("text") or ""
         if not raw_text.strip():
             continue
 
@@ -535,7 +535,8 @@ def diagnose_layout_issues(
             total_overflow = overflow_left + overflow_right + overflow_top + overflow_bottom
 
             if total_overflow > 2.0:
-                clbl = (bound_map.get(cid) or {}).get("text") or c.get("name") or c.get("text") or cid or "unnamed"
+                bound_el = bound_map.get(cid) if cid else None
+                clbl = (bound_el or {}).get("text") or c.get("name") or c.get("text") or cid or "unnamed"
                 issues.append(
                     {
                         "id": f"containment-{fid}-{cid}",
@@ -558,8 +559,10 @@ def diagnose_layout_issues(
         aid = a.get("id")
         if not aid:
             continue
-        sb = a.get("startBinding").get("elementId") if isinstance(a.get("startBinding"), dict) else None
-        eb = a.get("endBinding").get("elementId") if isinstance(a.get("endBinding"), dict) else None
+        start_bind = a.get("startBinding")
+        sb = start_bind.get("elementId") if isinstance(start_bind, dict) else None
+        end_bind = a.get("endBinding")
+        eb = end_bind.get("elementId") if isinstance(end_bind, dict) else None
 
         ax = _coord(a, "x")
         ay = _coord(a, "y")
@@ -1205,11 +1208,11 @@ def apply_layout_repairs(
                 warnings.append(f"Skipped resizing locked container '{sid}'.")
                 continue
 
-            t = bound_map.get(sid)
-            if not t:
+            bound_t = bound_map.get(sid)
+            if not bound_t:
                 continue
 
-            raw_text = t.get("text") or ""
+            raw_text = bound_t.get("text") or ""
             if not raw_text.strip():
                 continue
 
@@ -1692,10 +1695,29 @@ def auto_fix_scene_layout(
         }
 
     # Step 10: Status classification
-    final_severe = len(final_severe_ids)
+    scope_type_map = {
+        "text": {"text_clipping"},
+        "overlaps": {"shape_overlap"},
+        "containment": {"frame_containment"},
+        "connectors": {"connector_collision"},
+        "spacing": {"crowded_spacing"},
+    }
+    target_issue_types = scope_type_map.get(scope) if scope != "all" else None
+    if target_issue_types is not None:
+        scoped_final_severe = {
+            i["id"]
+            for i in final_issues
+            if i.get("severity") in ("critical", "warning") and i.get("type") in target_issue_types
+        }
+        scoped_skipped = [s for s in skipped_repairs if s.get("type") in target_issue_types]
+    else:
+        scoped_final_severe = final_severe_ids
+        scoped_skipped = skipped_repairs
+
+    final_severe = len(scoped_final_severe)
     if not applied_changes:
         status = "no_changes_needed"
-    elif final_severe > 0 or (final_issues and skipped_repairs):
+    elif final_severe > 0 or (final_issues and scoped_skipped):
         status = "partially_repaired"
     elif applied_changes:
         status = "repaired"

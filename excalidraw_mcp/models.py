@@ -3,7 +3,7 @@
 import json
 import math
 from copy import deepcopy
-from typing import Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict, cast
 
 from excalidraw_mcp.config import max_elements
 from excalidraw_mcp.errors import SceneError
@@ -94,7 +94,7 @@ def validate_document(document: dict[str, Any]) -> SceneDocument:
             value = element.get(field)
             if not _finite_number(value):
                 raise SceneError(f"Element {element_id} needs a finite {field}")
-            if field in ("width", "height") and value < 0:
+            if field in ("width", "height") and (value is None or value < 0):
                 raise SceneError(f"Element {element_id} has negative {field}")
     try:
         json.dumps(document, allow_nan=False)
@@ -103,7 +103,7 @@ def validate_document(document: dict[str, Any]) -> SceneDocument:
     result = deepcopy(document)
     result.setdefault("appState", {})
     result.setdefault("files", {})
-    return result
+    return cast(SceneDocument, result)
 
 
 def normalize_relationships(document: SceneDocument) -> None:
@@ -113,7 +113,7 @@ def normalize_relationships(document: SceneDocument) -> None:
     """
     active = {el["id"]: el for el in document["elements"] if not el.get("isDeleted")}
     known_containers = {"rectangle", "ellipse", "diamond", "arrow"}
-    reverse = {element_id: [] for element_id in active}
+    reverse: dict[str, list[dict[str, str]]] = {element_id: [] for element_id in active}
     labels = set()
     for el in active.values():
         frame_id = el.get("frameId")
@@ -182,7 +182,8 @@ def normalize_relationships(document: SceneDocument) -> None:
                 if not isinstance(ref, dict):
                     preserved.append(ref)
                     continue
-                referenced = active.get(ref.get("id"))
+                ref_id = ref.get("id")
+                referenced = active.get(ref_id) if isinstance(ref_id, str) else None
                 known_ref = ref.get("type") in ("text", "arrow") and (
                     referenced is None
                     or referenced.get("type") in ("text", "arrow")

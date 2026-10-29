@@ -948,7 +948,7 @@ def architectural_layout(
         t_name = tier.get("name", f"Tier {tier_idx + 1}")
         tier_id = tier.get("id", f"tier-{tier_idx + 1}")
 
-        rows = [[]]
+        rows: list[list[dict[str, Any]]] = [[]]
         cur_row_w = 0.0
         for n in t_nodes:
             w, h = node_sizes[n["id"]]

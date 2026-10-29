@@ -252,7 +252,8 @@ class _LiveCanvasUvicornServer(uvicorn.Server):
         def create_protocol(
             _loop: asyncio.AbstractEventLoop | None = None,
         ) -> asyncio.Protocol:
-            return config.http_protocol_class(
+            protocol_factory: Any = config.http_protocol_class
+            return protocol_factory(
                 config=config,
                 server_state=self.server_state,
                 app_state=self.lifespan.state,
@@ -287,7 +288,7 @@ class _LiveCanvasUvicornServer(uvicorn.Server):
                 raise exc
 
             assert server.sockets is not None
-            listeners = server.sockets
+            listeners = list(server.sockets)
             self.servers = [server]
 
         if sockets is None:

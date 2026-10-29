@@ -3,8 +3,8 @@
 import uuid
 from typing import Any
 
-from pygments.lexers import TextLexer, get_lexer_by_name, guess_lexer
-from pygments.styles import get_style_by_name
+from pygments.lexers import TextLexer, get_lexer_by_name, guess_lexer  # type: ignore[import-untyped]
+from pygments.styles import get_style_by_name  # type: ignore[import-untyped]
 
 from excalidraw_mcp.elements import bind_text, text
 from excalidraw_mcp.fonts import get_font, registry

@@ -35,12 +35,14 @@ def _extract_from_png_bytes(png_bytes: bytes) -> dict[str, Any]:
         "excalidraw_data",
     )
     raw_payload = None
+    img_text = getattr(img, "text", {})
+    img_info = getattr(img, "info", {})
     for k in candidate_keys:
-        if k in getattr(img, "text", {}):
-            raw_payload = img.text[k]
+        if isinstance(img_text, dict) and k in img_text:
+            raw_payload = img_text[k]
             break
-        if k in getattr(img, "info", {}):
-            raw_payload = img.info[k]
+        if isinstance(img_info, dict) and k in img_info:
+            raw_payload = img_info[k]
             break
 
     if not raw_payload:
@@ -108,7 +110,7 @@ def parse_scene_payload(data: str) -> dict[str, Any]:
             parsed = json.loads(cleaned)
             if isinstance(parsed, list):
                 # Array of elements passed
-                return new_document(parsed)
+                return dict(new_document(parsed))
             if isinstance(parsed, dict):
                 return parsed
         except json.JSONDecodeError as err:

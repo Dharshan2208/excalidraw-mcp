@@ -301,7 +301,7 @@ def route_orthogonal_connector(
                 [p_start, stub_s],
             )
         ]
-        visited = {}
+        visited: dict[tuple[float, float, str], float] = {}
         path_found = None
         total_cost = float("inf")
 
@@ -442,8 +442,8 @@ def reroute_scene_arrows(
             continue
         sb = (a.get("startBinding") or {}).get("elementId")
         eb = (a.get("endBinding") or {}).get("elementId")
-        if sb in element_index and eb in element_index:
-            pair_key = (min(sb, eb), max(sb, eb))
+        if sb and eb and sb in element_index and eb in element_index:
+            pair_key = (min(str(sb), str(eb)), max(str(sb), str(eb)))
             pair_arrows.setdefault(pair_key, []).append(a)
 
     for pair_key, group in pair_arrows.items():

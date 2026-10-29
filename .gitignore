@@ -6,3 +6,5 @@ excalidraw_mcp/__pycache__
 *.egg-info/
 build/
 dist/
+.coverage
+.pytest_cache/
