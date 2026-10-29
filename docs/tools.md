@@ -28,6 +28,15 @@ or approve calls.
   without deleting them.
 - `batch_mutate`: execute multiple creation, movement, connection, styling, and resizing operations atomically in a single
   revision step. Supports dynamic `client_id` reference resolution across operations and rolls back 100% on any failure.
+- `auto_fix_layout(name=None, dry_run=False, repair_scope="all", aggressiveness="balanced", min_gap=30.0)`:
+  diagnose, plan, and automatically repair layout defects (overlaps, text clipping, containment violations, connector collisions, and crowded spacing) with transactional rollback safety.
+  Executes repairs in 5 topological phases:
+  1. Container resizing for text containment (expanding outward from center).
+  2. Minimal-displacement de-collision with group alignment preservation.
+  3. Frame boundary expansion with configurable padding.
+  4. Obstacle-aware orthogonal connector rerouting with clearance corridors.
+  5. Spacing adjustments for crowded components.
+  Supports `dry_run=True` for non-mutating preview and automatically rolls back if regressions are detected. Returns `AutoFixLayoutResult`.
 - `clear`: reset elements, app state, and embedded files.
 - `undo`: restore the snapshot before the latest successful mutation. History is
   bounded by `EXCALIDRAW_HISTORY_LIMIT` and `EXCALIDRAW_MAX_HISTORY_BYTES`;

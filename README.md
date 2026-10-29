@@ -26,6 +26,7 @@ Built on [FastMCP](https://github.com/jlowin/fastmcp) using **Hatchling** as the
 - **Two Pass Architecture Layout Engine**: Content first sizing calculates text dimensions before positioning containers, automatically aligning multi tier architectures (Main Stack, Side Columns, Banners) with zero overlaps.
 - **Dynamic 8K Canvas Scaling**: Content aware export bounds calculate margins from all visible elements, generating crystal clear high resolution PNGs up to 8192px without downscaling or text truncation.
 - **Automated Geometry Diagnostics**: `check_diagram_geometry` automatically detects shape to shape overlaps, gap violations, frame containment escapes, and connector collisions.
+- **Automated Layout Repair & Rollback Safety**: `auto_fix_layout` diagnoses, plans, and repairs layout defects (overlaps, text clipping, containment violations, connector collisions, and crowded spacing) across 5 strict topological phases with transactional rollback safety.
 - **Mermaid & Architecture Shorthand**: Directly parse Mermaid flowcharts (`draw_mermaid`) or shorthand prompts (`draw_architecture`) into structured, fully editable Excalidraw scenes.
 - **Syntax Highlighted Code Blocks**: `add_code_block` renders syntax highlighted code with line numbers, dark/light themes, and window controls.
 - **Interactive Live Canvas & WebSocket Sync**: Built in HTTP and WebSocket server (`start_live_server`) synchronizes canvas changes with browser clients in real time.
@@ -310,7 +311,8 @@ The server exports 46 typed tools designed with strict JSON schema bounds and ex
 | `ungroup_elements` | `element_ids: list[str] = None`<br>`group_id: str = None` | `UngroupResult`<br>`{ status, affected_elements, removed_group_ids, revision }` | Disbands an element group by `group_id` or removes outermost groups from specified elements. |
 | `lock_elements` | `element_ids: list[str]` | `LockResult`<br>`{ status, element_ids, revision }` | Locks elements and bound labels to protect them from unintended moves, resizes, updates, or deletions. |
 | `unlock_elements` | `element_ids: list[str]` | `UnlockResult`<br>`{ status, element_ids, revision }` | Unlocks previously locked elements and bound labels for subsequent editing. |
-| `batch_mutate` | `operations: list[dict]` | `BatchResult`<br>`{ status, operations_executed, ref_map, results, revision }` | Atomically executes multiple creation, connection, movement, resize, lock, group, duplicate, or update actions in a single revision step with dynamic `client_id` resolution. |
+| `batch_mutate` | `operations: list[dict]` | `BatchResult`<br>`{ status, operations_executed, ref_map, results, revision }` | Atomically executes multiple creation, connection, movement, resize, lock, group, duplicate, auto_fix_layout, or update actions in a single revision step with dynamic `client_id` resolution. |
+| `auto_fix_layout` | `name: str \| None = None`<br>`dry_run: bool = False`<br>`repair_scope: str = "all"`<br>`aggressiveness: str = "balanced"`<br>`min_gap: float = 30.0` | `AutoFixLayoutResult`<br>`{ status, dry_run, initial_issues, final_issues, fixed_issues_count, unresolved_issues, planned_changes, applied_changes, changed_element_ids, skipped_repairs, warnings, rolled_back, revision }` | Diagnoses, plans, and repairs layout defects (overlaps, text clipping, containment violations, connector collisions, and crowded spacing) with transactional rollback safety across 5 strict topological phases. |
 | `clear` | None | `DeleteResult`<br>`{ status }` | Wipes the entire scene, active elements, and embedded state. |
 | `undo` | None | `UndoResult`<br>`{ status, revision }` | Rolls back the scene to the state immediately preceding the latest mutation. |
 
@@ -345,6 +347,58 @@ The server exports 46 typed tools designed with strict JSON schema bounds and ex
 | `start_live_server` | `host: str = "127.0.0.1"`<br>`port: int = 8080` | `LiveServerResult`<br>`{ status, url, host, port }` | Launches the interactive browser connected live canvas server with real-time WebSocket synchronization. |
 | `stop_live_server` | None | `LiveServerResult`<br>`{ status }` | Gracefully shuts down the background live canvas server and closes active client connections. |
 | `get_live_server_status` | None | `LiveServerResult`<br>`{ is_running, url, host, port, active_clients }` | Reports operational status, connection URL, and connected client count of the live canvas server. |
+
+---
+
+## Automated Layout Repair Engine (`auto_fix_layout`)
+
+The `auto_fix_layout` tool provides deterministic layout repair with transactional rollback safety. It detects, plans, and repairs layout defects across five strict topological phases:
+
+1. **Text Containment & Box Resizing**: Expands containers outward from center to enclose multiline text without clipping and without drifting off-center. User text content is never altered.
+2. **Minimal-Displacement De-Collision**: Resolves node-to-node overlaps along the axis of least resistance while keeping grouped peers strictly aligned. Discriminates intentional overlaps (elements in explicit groups, `allow_overlap` custom data, or nested child containers).
+3. **Frame Boundary Expansion**: Expands frames to encompass all member children plus configurable padding.
+4. **Obstacle-Aware Connector Rerouting**: Reroutes crossing arrows around intermediate obstacles with orthogonal clearance corridors.
+5. **Spacing Adjustments**: Automatically widens sub-optimal gaps between crowded components.
+
+### Parameters
+- `name` (*str*, optional): Target a saved scene file on disk. If omitted, operates on the active in-memory scene.
+- `dry_run` (*bool*, default `False`): Preview planned changes, predicted final issues, and applied transformations without mutating scene state.
+- `repair_scope` (*str*, default `"all"`): Constrain repairs to specific defect categories:
+  - `"all"`: Executes all 5 repair phases.
+  - `"overlaps"`: Node-to-node collisions.
+  - `"connectors"`: Connector collisions with obstacle shapes.
+  - `"containment"`: Frame boundary containment expansion only.
+  - `"text"`: Text clipping container expansion only.
+  - `"spacing"`: Component gap widening only.
+- `aggressiveness` (*str*, default `"balanced"`): Margin and clearance multiplier:
+  - `"gentle"`: `0.8x` multiplier for compact diagrams.
+  - `"balanced"`: `1.0x` standard layout spacing.
+  - `"aggressive"`: `1.35x` generous clearance corridors.
+- `min_gap` (*float*, default `30.0`): Minimum clearance distance in pixels between shapes.
+
+### Transactional Rollback Guarantee
+Before mutating any elements, an immutable snapshot of the scene is created. After repair execution, diagnostics are automatically re-run. If severe defects increase (regression detected), all modifications are discarded, restoring the pre-repair snapshot with `rolled_back = True`. If the diagram is already clean or repairs produce no changes, idempotency guarantees zero mutations (`status = "no_changes_needed"`).
+
+### Usage Example
+
+```python
+# Repair active canvas with dry-run preview
+preview_result = await client.call_tool("auto_fix_layout", {
+    "dry_run": True,
+    "repair_scope": "all",
+    "aggressiveness": "balanced",
+    "min_gap": 30.0,
+})
+
+# Apply atomic repairs in a batch transaction
+batch_result = await client.call_tool("batch_mutate", {
+    "operations": [
+        {"action": "add_rectangle", "client_id": "r1", "x": 100, "y": 100, "w": 100, "h": 60, "label": "Service A"},
+        {"action": "add_rectangle", "client_id": "r2", "x": 140, "y": 100, "w": 100, "h": 60, "label": "Service B"},
+        {"action": "auto_fix_layout", "repair_scope": "all", "min_gap": 35.0},
+    ]
+})
+```
 
 ---
 
