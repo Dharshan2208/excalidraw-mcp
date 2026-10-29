@@ -591,6 +591,29 @@ class AutoFixNamedScenesAndBatchMutateTests(unittest.TestCase):
         s1, s2 = shapes[0], shapes[1]
         self.assertGreaterEqual(abs(s1["x"] - s2["x"]), 100.0)
 
+    def test_named_file_repair_increments_revision_and_is_undoable(self):
+        """Named-file repair runs through self.state.apply, increments revision, updates live state, and is undoable."""
+        self.service.add_shape("rectangle", 100, 100, 100, 100, label="Box 1")
+        self.service.add_shape("rectangle", 120, 100, 100, 100, label="Box 2")
+        self.service.save("scene_undo_test", overwrite=True)
+
+        rev_before = self.service.state.revision
+        res = self.service.auto_fix_layout(name="scene_undo_test")
+
+        self.assertEqual(res["status"], "repaired")
+        self.assertGreater(self.service.state.revision, rev_before)
+        self.assertEqual(res["revision"], self.service.state.revision)
+
+        # In-memory state matches disk
+        disk_doc = load_scene("scene_undo_test")
+        active_doc = self.service.state.document()
+        self.assertEqual(len(active_doc["elements"]), len(disk_doc["elements"]))
+
+        # Can undo
+        undo_res = self.service.undo()
+        self.assertEqual(undo_res["status"], "undone")
+        self.assertGreater(self.service.state.revision, res["revision"])
+
     def test_named_scene_dry_run_does_not_modify_disk(self):
         """Named scene repair in dry_run mode does not modify disk file."""
         self.service.add_shape("rectangle", 100, 100, 100, 100, label="Box 1")
@@ -805,8 +828,9 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([r1, r2])
         res = auto_fix_scene_layout(doc)
-        # Both locked elements cannot be displaced: must not crash and report partially_repaired
-        self.assertEqual(res["status"], "partially_repaired")
+        # Both locked elements cannot be displaced: must not crash and report no_changes_needed
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
         self.assertGreater(len(res["skipped_repairs"]), 0)
         self.assertGreater(len(res["warnings"]), 0)
         # Positions untouched
@@ -855,7 +879,7 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         self.assertEqual(coll_issues[0]["id"], "collision-poly-arrow-obstacle")
 
     def test_unattached_arrow_crossing_obstacle_reports_partially_repaired(self):
-        """Unattached arrow crossing obstacle cannot be routed and reports partially_repaired."""
+        """Unattached arrow crossing obstacle cannot be routed and reports no_changes_needed when no changes applied."""
         obs = rect(250, 80, 80, 100)
         obs["id"] = "obs"
         a = arrow(180, 130, 400, 130)
@@ -863,7 +887,8 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([obs, a])
         res = auto_fix_scene_layout(doc, repair_scope="connectors")
-        self.assertEqual(res["status"], "partially_repaired")
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
         self.assertGreater(len(res["unresolved_issues"]), 0)
 
     def test_connector_routing_tracks_translated_arrow_origin(self):
@@ -889,7 +914,8 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([f, r])
         res = auto_fix_scene_layout(doc, repair_scope="containment")
-        self.assertEqual(res["status"], "partially_repaired")
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
         self.assertGreater(len(res["skipped_repairs"]), 0)
         self.assertGreater(len(res["warnings"]), 0)
         f_after = next(e for e in res["document"]["elements"] if e["id"] == "f-locked")
@@ -986,7 +1012,7 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         self.assertEqual(res2["status"], "no_changes_needed")
 
     def test_both_crowded_elements_locked_reports_partially_repaired(self):
-        """When two crowded elements in spacing phase are both locked, partially_repaired is reported."""
+        """When two crowded elements in spacing phase are both locked, no_changes_needed is reported."""
         s1 = rect(100, 100, 100, 100)
         s1["id"] = "s1-locked"
         s1["locked"] = True
@@ -996,7 +1022,8 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([s1, s2])
         res = auto_fix_scene_layout(doc, repair_scope="spacing")
-        self.assertEqual(res["status"], "partially_repaired")
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
         self.assertGreater(len(res["skipped_repairs"]), 0)
         self.assertGreater(len(res["warnings"]), 0)
 
@@ -1026,7 +1053,8 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([obs, a])
         res = auto_fix_scene_layout(doc, repair_scope="connectors")
-        self.assertEqual(res["status"], "partially_repaired")
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
         self.assertGreater(len(res["skipped_repairs"]), 0)
         # Arrow points must not have changed
         a_after = next(e for e in res["document"]["elements"] if e["id"] == "a-locked")
@@ -1075,7 +1103,8 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([p_lock, s1, s2])
         res = auto_fix_scene_layout(doc, repair_scope="spacing")
-        self.assertEqual(res["status"], "partially_repaired")
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
 
         p_after = next(e for e in res["document"]["elements"] if e["id"] == "p-lock")
         s1_after = next(e for e in res["document"]["elements"] if e["id"] == "s1")
@@ -1197,7 +1226,8 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
 
         doc = new_document([s1, s2])
         res = auto_fix_scene_layout(doc, repair_scope="overlaps")
-        self.assertEqual(res["status"], "partially_repaired")
+        self.assertEqual(res["status"], "no_changes_needed")
+        self.assertEqual(res["applied_changes"], [])
         self.assertEqual(len(res["skipped_repairs"]), 1)
         self.assertEqual(len(res["warnings"]), 1)
 

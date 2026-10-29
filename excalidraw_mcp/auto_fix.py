@@ -1523,7 +1523,9 @@ def auto_fix_scene_layout(
 
     # Step 10: Status classification
     final_severe = len(final_severe_ids)
-    if final_severe > 0 or (final_issues and skipped_repairs):
+    if not applied_changes:
+        status = "no_changes_needed"
+    elif final_severe > 0 or (final_issues and skipped_repairs):
         status = "partially_repaired"
     elif applied_changes:
         status = "repaired"

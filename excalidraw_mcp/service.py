@@ -1269,20 +1269,38 @@ class SceneService:
             raise SceneError("min_gap must be a non-negative finite number")
 
         if name is not None:
-            doc = load_scene(name)
-            fix_res = auto_fix_scene_layout(
-                doc,
-                dry_run=bool(dry_run),
-                repair_scope=repair_scope,
-                aggressiveness=aggressiveness,
-                min_gap=float(min_gap),
-            )
-            if (
-                not dry_run
-                and not fix_res.get("rolled_back")
-                and fix_res.get("status") in ("repaired", "partially_repaired")
-            ):
-                save_scene(name, fix_res["document"], overwrite=True)
+            if dry_run:
+                doc = load_scene(name)
+                fix_res = auto_fix_scene_layout(
+                    doc,
+                    dry_run=True,
+                    repair_scope=repair_scope,
+                    aggressiveness=aggressiveness,
+                    min_gap=float(min_gap),
+                )
+                fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+                return {**fix_res_clean, "revision": self.state.revision}
+
+            def apply_named_fix(active_draft):
+                doc = load_scene(name)
+                fix_res = auto_fix_scene_layout(
+                    doc,
+                    dry_run=False,
+                    repair_scope=repair_scope,
+                    aggressiveness=aggressiveness,
+                    min_gap=float(min_gap),
+                )
+                if (
+                    not fix_res.get("rolled_back")
+                    and fix_res.get("status") in ("repaired", "partially_repaired")
+                ):
+                    save_scene(name, fix_res["document"], overwrite=True)
+                    active_draft["elements"] = fix_res["document"]["elements"]
+                    if "appState" in fix_res.get("document", {}):
+                        active_draft["appState"] = fix_res["document"]["appState"]
+                return fix_res
+
+            fix_res = self.state.apply(apply_named_fix)
             fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
             return {**fix_res_clean, "revision": self.state.revision}
 
