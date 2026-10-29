@@ -889,7 +889,8 @@ class SceneService:
     def save(self, name, overwrite=False):
         document = self.state.document()
         path = save_scene(name, document, overwrite=overwrite)
-        return {"path": path, "elements": len(document["elements"]), "status": "saved"}
+        active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
+        return {"path": path, "elements": active_count, "status": "saved"}
 
     def export_scene(self):
         """Export a detached snapshot without filesystem access."""
@@ -902,10 +903,11 @@ class SceneService:
         revision = self.state.revision
         document = load_scene(name)
         self.state.replace(document, expected_revision=revision)
+        active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
         return {
-            "loaded": len(document["elements"]),
+            "loaded": active_count,
             "name": name,
-            "status": "scene loaded",
+            "status": "loaded",
         }
 
     def preview(self, scale=1.0, padding=40, background=True):
@@ -1012,7 +1014,8 @@ class SceneService:
         temp_file = target_dir / temp_name
 
         try:
-            with open(temp_file, "wb") as stream:
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as stream:
                 stream.write(png_bytes)
                 stream.flush()
                 os.fsync(stream.fileno())
