@@ -88,8 +88,8 @@ def _parse_node_token(token: str) -> tuple[str, str, str]:
                 label = node_id
             return node_id, label, shape
 
-    # Fallback: extract alphanumeric prefix as id
-    m = re.match(r"^([A-Za-z0-9_-]+)", token)
+    # Fallback: standalone identifier token (must be full match)
+    m = re.fullmatch(r"^([A-Za-z0-9_-]+)$", token.strip())
     if m:
         nid = m.group(1)
         return nid, nid, "rectangle"

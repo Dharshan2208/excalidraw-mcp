@@ -127,7 +127,8 @@ def parse_scene_payload(data: str) -> dict[str, Any]:
             pass
 
     # Check 3: Is it inline Obsidian markdown text?
-    if "# Excalidraw Data" in cleaned or "## Drawing" in cleaned:
+    obsidian_markers = ("# Excalidraw Data", "## Drawing", "excalidraw-plugin", "```json:excalidraw", "```excalidraw")
+    if any(marker in cleaned for marker in obsidian_markers):
         return _extract_from_obsidian_markdown(cleaned)
 
     # Check 4: Is it an existing file path within allowed directories?
@@ -202,12 +203,11 @@ def import_scene(
 
     raw_doc = parse_scene_payload(data)
 
-    # Validate structure and wrap elements if needed
-    if not isinstance(raw_doc.get("elements"), list):
-        if "type" not in raw_doc:
-            raw_doc = new_document([])
-        else:
-            raise SceneError("Imported document must contain an 'elements' list")
+    # Validate structure and ensure it's a valid Excalidraw document
+    if not isinstance(raw_doc, dict) or not isinstance(raw_doc.get("elements"), list):
+        raise SceneError("Imported document must be an Excalidraw scene object containing an 'elements' list")
+    if raw_doc.get("type") not in (None, "excalidraw"):
+        raise SceneError(f"Imported document has invalid type '{raw_doc.get('type')}'; expected 'excalidraw'")
 
     imported_doc = normalize_document(raw_doc)
     incoming_elements = [
