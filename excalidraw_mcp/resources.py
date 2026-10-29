@@ -362,7 +362,23 @@ def get_resource(
             "revision": rev,
         }
 
+    elif res_type == "capabilities":
+        from .config import scene_directory, max_elements, configured_toolset
+        toolset = configured_toolset()
+        is_full = toolset == "full"
+        return {
+            "resource_type": "capabilities",
+            "identifier": "capabilities",
+            "active_toolset": toolset,
+            "server_version": "0.2.0",
+            "tool_count": 48 if is_full else 27,
+            "config": {
+                "scene_dir": str(scene_directory()),
+                "max_elements": max_elements(),
+            },
+        }
+
     else:
         raise SceneError(
-            f"Unsupported resource type '{res_type}'. Supported types: scene, library, theme, element"
+            f"Unsupported resource type '{res_type}'. Supported types: scene, library, theme, element, capabilities"
         )

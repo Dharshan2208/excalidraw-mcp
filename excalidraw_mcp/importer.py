@@ -140,8 +140,20 @@ def parse_scene_payload(data: str) -> dict[str, Any]:
                 allowed_roots = [
                     Path(scene_directory()).resolve(),
                     Path.cwd().resolve(),
-                    Path(tempfile.gettempdir()).resolve(),
                 ]
+                tmp_root = Path(tempfile.gettempdir()).resolve()
+                if resolved == tmp_root or resolved.is_relative_to(tmp_root):
+                    # In multi-user Unix systems, ensure temporary file is owned by current user
+                    if hasattr(os, "getuid"):
+                        try:
+                            if candidate_path.stat().st_uid != os.getuid():
+                                raise SceneError(
+                                    f"Access to file '{candidate_path}' is denied; file in temporary directory is not owned by current user"
+                                )
+                        except OSError as err:
+                            raise SceneError(f"Cannot verify ownership of '{candidate_path}': {err}") from err
+                    allowed_roots.append(tmp_root)
+
                 if not any(
                     resolved == r or resolved.is_relative_to(r) for r in allowed_roots
                 ):
