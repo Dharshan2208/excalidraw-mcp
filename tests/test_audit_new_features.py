@@ -305,7 +305,7 @@ class SceneUnderstandingTests(unittest.TestCase):
 class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_mcp_tools_end_to_end(self):
         from excalidraw_mcp.server import create_server
-        server = create_server()
+        server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
 
         # 1. Add rectangles

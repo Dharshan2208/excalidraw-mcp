@@ -278,7 +278,7 @@ class CodeBlockTests(unittest.TestCase):
 
 class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_export_png_and_code_blocks(self):
-        server = create_server()
+        server = create_server(toolset="full")
         async with Client(server, timeout=5) as client:
             # 1. Test list_fonts
             fonts_res = await client.call_tool("list_fonts", {"category": "monospace"})

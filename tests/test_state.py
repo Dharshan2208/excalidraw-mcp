@@ -154,8 +154,8 @@ class StateTests(unittest.TestCase):
         async def tools(server):
             return {tool.name: tool.fn for tool in await server.list_tools()}
 
-        first = asyncio.run(tools(create_server()))
-        second = asyncio.run(tools(create_server()))
+        first = asyncio.run(tools(create_server(toolset="full")))
+        second = asyncio.run(tools(create_server(toolset="full")))
         self.assertEqual(
             set(first),
             {

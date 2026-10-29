@@ -79,6 +79,7 @@ from excalidraw_mcp.contracts import (
     UpdateResult,
     ViewportResult,
 )
+from excalidraw_mcp.config import configured_toolset
 from excalidraw_mcp.document import MIME_TYPE
 from excalidraw_mcp.service import SceneService
 
@@ -104,8 +105,15 @@ def _style_kwargs(
     return {k: v for k, v in locals().items() if v is not None}
 
 
-def create_server(service: SceneService | None = None) -> FastMCP:
+def create_server(
+    service: SceneService | None = None,
+    toolset: str | None = None,
+) -> FastMCP:
     service = service if service is not None else SceneService()
+    active_toolset = (
+        toolset if toolset is not None else configured_toolset()
+    ).strip().lower()
+    is_full = active_toolset == "full"
     mcp = FastMCP("Excalidraw MCP")
 
     def invoke(operation, *args, **kwargs):
@@ -339,13 +347,14 @@ def create_server(service: SceneService | None = None) -> FastMCP:
         """Return one active element by ID."""
         return invoke(service.get_element, element_id)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
-        run_in_thread=False,
-    )
-    def list_saved_scenes() -> SavedScenesResult:
-        """List scene names available in the configured storage directory."""
-        return invoke(service.list_saved_scenes)
+    if is_full:
+        @mcp.tool(
+            annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+            run_in_thread=False,
+        )
+        def list_saved_scenes() -> SavedScenesResult:
+            """List scene names available in the configured storage directory."""
+            return invoke(service.list_saved_scenes)
 
     @mcp.tool(annotations=MUTATING, run_in_thread=False)
     def add_text(
@@ -451,37 +460,38 @@ def create_server(service: SceneService | None = None) -> FastMCP:
             ),
         )
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def find_elements(
-        query: str | None = None,
-        type: ElementType | None = None,
-        frame_id: ElementId | None = None,
-        element_id: ElementId | None = None,
-        connected_to: ElementId | None = None,
-        include_bound_labels: bool = False,
-        limit: PageLimit = 50,
-    ) -> FindResult:
-        """Find active elements matching query string, type, frame, or connection criteria."""
-        return invoke(
-            service.find_elements,
-            query=query,
-            type=type,
-            frame_id=frame_id,
-            element_id=element_id,
-            connected_to=connected_to,
-            include_bound_labels=include_bound_labels,
-            limit=limit,
-        )
+    if is_full:
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def find_elements(
+            query: str | None = None,
+            type: ElementType | None = None,
+            frame_id: ElementId | None = None,
+            element_id: ElementId | None = None,
+            connected_to: ElementId | None = None,
+            include_bound_labels: bool = False,
+            limit: PageLimit = 50,
+        ) -> FindResult:
+            """Find active elements matching query string, type, frame, or connection criteria."""
+            return invoke(
+                service.find_elements,
+                query=query,
+                type=type,
+                frame_id=frame_id,
+                element_id=element_id,
+                connected_to=connected_to,
+                include_bound_labels=include_bound_labels,
+                limit=limit,
+            )
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
-    def batch_mutate(
-        operations: list[BatchOperation],
-    ) -> BatchResult:
-        """Atomically execute a batch of creation, editing, and deletion operations."""
-        return invoke(
-            service.batch_mutate,
-            [op.model_dump(exclude_unset=False) for op in operations],
-        )
+        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        def batch_mutate(
+            operations: list[BatchOperation],
+        ) -> BatchResult:
+            """Atomically execute a batch of creation, editing, and deletion operations."""
+            return invoke(
+                service.batch_mutate,
+                [op.model_dump(exclude_unset=False) for op in operations],
+            )
 
     @mcp.tool(annotations=MUTATING, run_in_thread=False)
     def auto_fix_layout(
@@ -574,44 +584,45 @@ def create_server(service: SceneService | None = None) -> FastMCP:
             overwrite=overwrite,
         )
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
-    def add_code_block(
-        code: str,
-        language: str = "python",
-        x: Coordinate = 0,
-        y: Coordinate = 0,
-        title: str | None = None,
-        theme: CodeTheme = "dark",
-        font_size: FontSize = 14,
-        font_family: str | None = "monospace",
-        line_numbers: Boolean = True,
-        w: Dimension | None = None,
-        h: Dimension | None = None,
-        frame_id: ElementId | None = None,
-    ) -> CodeBlockResult:
-        """Add a syntax-highlighted code block with window controls and line numbers."""
-        return invoke(
-            service.add_code_block,
-            code=code,
-            language=language,
-            x=x,
-            y=y,
-            title=title,
-            theme=theme,
-            font_size=font_size,
-            font_family=font_family,
-            line_numbers=line_numbers,
-            w=w,
-            h=h,
-            frame_id=frame_id,
-        )
+    if is_full:
+        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        def add_code_block(
+            code: str,
+            language: str = "python",
+            x: Coordinate = 0,
+            y: Coordinate = 0,
+            title: str | None = None,
+            theme: CodeTheme = "dark",
+            font_size: FontSize = 14,
+            font_family: str | None = "monospace",
+            line_numbers: Boolean = True,
+            w: Dimension | None = None,
+            h: Dimension | None = None,
+            frame_id: ElementId | None = None,
+        ) -> CodeBlockResult:
+            """Add a syntax-highlighted code block with window controls and line numbers."""
+            return invoke(
+                service.add_code_block,
+                code=code,
+                language=language,
+                x=x,
+                y=y,
+                title=title,
+                theme=theme,
+                font_size=font_size,
+                font_family=font_family,
+                line_numbers=line_numbers,
+                w=w,
+                h=h,
+                frame_id=frame_id,
+            )
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def list_fonts(
-        category: FontCategory | None = None,
-    ) -> FontListResult:
-        """Discover and list available system fonts and semantic font categories."""
-        return invoke(service.list_fonts, category=category)
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def list_fonts(
+            category: FontCategory | None = None,
+        ) -> FontListResult:
+            """Discover and list available system fonts and semantic font categories."""
+            return invoke(service.list_fonts, category=category)
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
@@ -650,67 +661,68 @@ def create_server(service: SceneService | None = None) -> FastMCP:
         )
         return invoke(service.draw_architecture, prompt, **style)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def draw_graph(
-        nodes: list[GraphNode],
-        edges: list[GraphEdge],
-        clusters: list[GraphCluster] | None = None,
-        layout: LayoutType = "layered",
-        direction: Direction = "horizontal",
-        elbowed: Boolean = False,
-        roundness: Roundness | None = None,
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
-        cycle_fallback: Boolean = False,
-    ) -> GraphResult:
-        """Replace the scene with a structured graph and return stable ID mappings."""
-        return invoke(
-            service.draw_graph,
-            [node.model_dump() for node in nodes],
-            [edge.model_dump() for edge in edges],
-            clusters=[cluster.model_dump() for cluster in clusters]
-            if clusters
-            else None,
-            layout=layout,
-            direction=direction,
-            elbowed=elbowed,
-            roundness=roundness,
-            font_family=font_family,
-            font_size=font_size,
-            cycle_fallback=cycle_fallback,
+    if is_full:
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
+            run_in_thread=False,
         )
+        def draw_graph(
+            nodes: list[GraphNode],
+            edges: list[GraphEdge],
+            clusters: list[GraphCluster] | None = None,
+            layout: LayoutType = "layered",
+            direction: Direction = "horizontal",
+            elbowed: Boolean = False,
+            roundness: Roundness | None = None,
+            font_family: FontFamily | None = None,
+            font_size: FontSize | None = None,
+            cycle_fallback: Boolean = False,
+        ) -> GraphResult:
+            """Replace the scene with a structured graph and return stable ID mappings."""
+            return invoke(
+                service.draw_graph,
+                [node.model_dump() for node in nodes],
+                [edge.model_dump() for edge in edges],
+                clusters=[cluster.model_dump() for cluster in clusters]
+                if clusters
+                else None,
+                layout=layout,
+                direction=direction,
+                elbowed=elbowed,
+                roundness=roundness,
+                font_family=font_family,
+                font_size=font_size,
+                cycle_fallback=cycle_fallback,
+            )
 
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def lock_elements(element_ids: list[ElementId]) -> LockResult:
-        """Lock elements and their bound labels to protect them from unintended mutations."""
-        return invoke(service.lock_elements, element_ids)
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            run_in_thread=False,
+        )
+        def lock_elements(element_ids: list[ElementId]) -> LockResult:
+            """Lock elements and their bound labels to protect them from unintended mutations."""
+            return invoke(service.lock_elements, element_ids)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def unlock_elements(element_ids: list[ElementId]) -> UnlockResult:
-        """Unlock previously locked elements and their bound labels."""
-        return invoke(service.unlock_elements, element_ids)
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            run_in_thread=False,
+        )
+        def unlock_elements(element_ids: list[ElementId]) -> UnlockResult:
+            """Unlock previously locked elements and their bound labels."""
+            return invoke(service.unlock_elements, element_ids)
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
-    def group_elements(element_ids: list[ElementId]) -> GroupResult:
-        """Group multiple elements together so they move and behave as a cohesive group."""
-        return invoke(service.group_elements, element_ids)
+        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        def group_elements(element_ids: list[ElementId]) -> GroupResult:
+            """Group multiple elements together so they move and behave as a cohesive group."""
+            return invoke(service.group_elements, element_ids)
 
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
-    def ungroup_elements(
-        element_ids: list[ElementId] | None = None,
-        group_id: str | None = None,
-    ) -> UngroupResult:
-        """Disband an element group by group_id or remove elements from their groups."""
-        return invoke(service.ungroup_elements, element_ids=element_ids, group_id=group_id)
+        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        def ungroup_elements(
+            element_ids: list[ElementId] | None = None,
+            group_id: str | None = None,
+        ) -> UngroupResult:
+            """Disband an element group by group_id or remove elements from their groups."""
+            return invoke(service.ungroup_elements, element_ids=element_ids, group_id=group_id)
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
@@ -733,140 +745,196 @@ def create_server(service: SceneService | None = None) -> FastMCP:
             roundness=roundness,
         )
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def get_viewport() -> ViewportResult:
-        """Get current canvas camera viewport settings (scroll coordinates, zoom level, background color)."""
-        return invoke(service.get_viewport)
+    if is_full:
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def get_viewport() -> ViewportResult:
+            """Get current canvas camera viewport settings (scroll coordinates, zoom level, background color)."""
+            return invoke(service.get_viewport)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def set_viewport(
-        scroll_x: Coordinate | None = None,
-        scroll_y: Coordinate | None = None,
-        zoom: float | None = None,
-        background_color: Color | None = None,
-    ) -> ViewportResult:
-        """Set canvas camera viewport scroll offsets, zoom level, or background color."""
-        return invoke(
-            service.set_viewport,
-            scroll_x=scroll_x,
-            scroll_y=scroll_y,
-            zoom=zoom,
-            background_color=background_color,
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            run_in_thread=False,
         )
+        def set_viewport(
+            scroll_x: Coordinate | None = None,
+            scroll_y: Coordinate | None = None,
+            zoom: float | None = None,
+            background_color: Color | None = None,
+        ) -> ViewportResult:
+            """Set canvas camera viewport scroll offsets, zoom level, or background color."""
+            return invoke(
+                service.set_viewport,
+                scroll_x=scroll_x,
+                scroll_y=scroll_y,
+                zoom=zoom,
+                background_color=background_color,
+            )
 
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def focus_elements(
-        element_ids: list[ElementId] | None = None,
-        padding: PreviewPadding = 50,
-    ) -> FocusResult:
-        """Center and zoom the viewport camera to frame specified elements or the entire diagram."""
-        return invoke(service.focus_elements, element_ids=element_ids, padding=padding)
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            run_in_thread=False,
+        )
+        def focus_elements(
+            element_ids: list[ElementId] | None = None,
+            padding: PreviewPadding = 50,
+        ) -> FocusResult:
+            """Center and zoom the viewport camera to frame specified elements or the entire diagram."""
+            return invoke(service.focus_elements, element_ids=element_ids, padding=padding)
 
     @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
     def get_scene_summary() -> SceneSummaryResult:
         """Return structured numerical metrics and topological metadata (counts, element dimensions, layers, code blocks, text contents) for layout planning."""
         return invoke(service.get_scene_summary)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
-        run_in_thread=False,
-    )
-    def export_to_excalidraw_url(name: SceneName | None = None) -> ShareUrlResult:
-        """Publish the scene to excalidraw.com with client-side encryption and return a shareable URL."""
-        return invoke(service.export_to_excalidraw_url, name=name)
+    if is_full:
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
+            run_in_thread=False,
+        )
+        def export_to_excalidraw_url(name: SceneName | None = None) -> ShareUrlResult:
+            """Publish the scene to excalidraw.com with client-side encryption and return a shareable URL."""
+            return invoke(service.export_to_excalidraw_url, name=name)
 
     @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
     def describe_scene(detailed: Boolean = True) -> SceneDescriptionResult:
         """Generate a human/agent-readable natural language prose description of the diagram's spatial layout, clusters, and connectivity for cognitive verification."""
         return invoke(service.describe_scene, detailed=detailed)
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def get_canvas_screenshot(
-        scale: PreviewScale = 1.0,
-        padding: PreviewPadding = 40,
-        background: Boolean = True,
-    ) -> Image:
-        """Alias for preview. Render an inline PNG screenshot of the current canvas with embedded metadata."""
-        return preview(scale=scale, padding=padding, background=background)
+    if is_full:
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def get_canvas_screenshot(
+            scale: PreviewScale = 1.0,
+            padding: PreviewPadding = 40,
+            background: Boolean = True,
+        ) -> Image:
+            """Alias for preview (DEPRECATED: Use preview instead). Render an inline PNG screenshot of the current canvas with embedded metadata."""
+            import warnings
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def get_resource(
-        uri: str | None = None,
-        resource_type: str | None = None,
-        identifier: str | None = None,
-    ) -> ResourceResult:
-        """Retrieve scene, library, theme, or element resources through a unified interface."""
-        return invoke(
-            service.get_resource,
-            uri=uri,
-            resource_type=resource_type,
-            identifier=identifier,
+            warnings.warn(
+                "get_canvas_screenshot is deprecated; use preview instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return preview(scale=scale, padding=padding, background=background)
+
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def get_resource(
+            uri: str | None = None,
+            resource_type: str | None = None,
+            identifier: str | None = None,
+        ) -> ResourceResult:
+            """Retrieve scene, library, theme, or element resources through a unified interface."""
+            return invoke(
+                service.get_resource,
+                uri=uri,
+                resource_type=resource_type,
+                identifier=identifier,
+            )
+
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
+            """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
+            return invoke(service.read_diagram_guide, topic=topic)
+
+        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        def duplicate_elements(
+            element_ids: list[ElementId],
+            offset_x: Coordinate = 20.0,
+            offset_y: Coordinate = 20.0,
+        ) -> DuplicateResult:
+            """Duplicate multiple elements with spatial offsets, relationship remapping, and internal binding preservation."""
+            return invoke(
+                service.duplicate_elements,
+                element_ids=element_ids,
+                offset_x=offset_x,
+                offset_y=offset_y,
+            )
+
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
+            run_in_thread=False,
         )
+        def import_scene(
+            data: str,
+            mode: Literal["replace", "merge"] = "replace",
+            offset_x: Coordinate = 0.0,
+            offset_y: Coordinate = 0.0,
+        ) -> ImportResult:
+            """Import scene from raw JSON, .excalidraw file, Obsidian .excalidraw.md, or embedded PNG with collision prevention."""
+            return invoke(
+                service.import_scene,
+                data=data,
+                mode=mode,
+                offset_x=offset_x,
+                offset_y=offset_y,
+            )
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
-        """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
-        return invoke(service.read_diagram_guide, topic=topic)
-
-    @mcp.tool(annotations=MUTATING, run_in_thread=False)
-    def duplicate_elements(
-        element_ids: list[ElementId],
-        offset_x: Coordinate = 20.0,
-        offset_y: Coordinate = 20.0,
-    ) -> DuplicateResult:
-        """Duplicate multiple elements with spatial offsets, relationship remapping, and internal binding preservation."""
-        return invoke(
-            service.duplicate_elements,
-            element_ids=element_ids,
-            offset_x=offset_x,
-            offset_y=offset_y,
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=True),
+            run_in_thread=False,
         )
+        def start_live_server(host: str = "127.0.0.1", port: int = 8080) -> LiveServerResult:
+            """Start the background browser-connected Excalidraw live canvas server with real-time synchronization."""
+            return invoke(service.start_live_server, host=host, port=port)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def import_scene(
-        data: str,
-        mode: Literal["replace", "merge"] = "replace",
-        offset_x: Coordinate = 0.0,
-        offset_y: Coordinate = 0.0,
-    ) -> ImportResult:
-        """Import scene from raw JSON, .excalidraw file, Obsidian .excalidraw.md, or embedded PNG with collision prevention."""
-        return invoke(
-            service.import_scene,
-            data=data,
-            mode=mode,
-            offset_x=offset_x,
-            offset_y=offset_y,
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            run_in_thread=False,
         )
+        def stop_live_server() -> LiveServerResult:
+            """Stop the background live canvas server."""
+            return invoke(service.stop_live_server)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=True),
-        run_in_thread=False,
-    )
-    def start_live_server(host: str = "127.0.0.1", port: int = 8080) -> LiveServerResult:
-        """Start the background browser-connected Excalidraw live canvas server with real-time synchronization."""
-        return invoke(service.start_live_server, host=host, port=port)
+        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+        def get_live_server_status() -> LiveServerResult:
+            """Check status of the browser-connected live canvas server."""
+            return invoke(service.get_live_server_status)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        run_in_thread=False,
-    )
-    def stop_live_server() -> LiveServerResult:
-        """Stop the background live canvas server."""
-        return invoke(service.stop_live_server)
+    @mcp.resource("excalidraw://capabilities", mime_type="application/json")
+    def capabilities_resource() -> str:
+        """Read active server capabilities, toolset mode, and configuration metadata."""
+        import json
+        from .config import scene_directory, max_elements
 
-    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-    def get_live_server_status() -> LiveServerResult:
-        """Check status of the browser-connected live canvas server."""
-        return invoke(service.get_live_server_status)
+        info = {
+            "active_toolset": active_toolset,
+            "available_toolsets": ["core", "full"],
+            "server_version": "0.1.0",
+            "tool_count": 46 if is_full else 25,
+            "capabilities": {
+                "generators": ["mermaid", "architecture_dsl"]
+                + (["sugiyama_graph"] if is_full else []),
+                "export": ["png", "excalidraw_json"],
+                "repair": "5-phase topological auto_fix_layout with rollback",
+                "full_only_features": [
+                    "live_server",
+                    "draw_graph",
+                    "batch_mutate",
+                    "add_code_block",
+                    "get_viewport",
+                    "set_viewport",
+                    "focus_elements",
+                    "lock_elements",
+                    "unlock_elements",
+                    "group_elements",
+                    "ungroup_elements",
+                    "find_elements",
+                    "duplicate_elements",
+                    "import_scene",
+                    "export_to_excalidraw_url",
+                    "list_saved_scenes",
+                    "list_fonts",
+                    "read_diagram_guide",
+                    "get_resource",
+                ],
+            },
+            "config": {
+                "scene_dir": str(scene_directory()),
+                "max_elements": max_elements(),
+            },
+            "upgrade_instructions": "To enable advanced tools, set environment variable EXCALIDRAW_TOOLSET=full.",
+        }
+        return json.dumps(info, indent=2)
 
     return mcp
 

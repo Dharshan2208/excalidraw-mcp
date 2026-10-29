@@ -185,7 +185,7 @@ class CanvasScreenshotTests(unittest.TestCase):
         self.assertEqual(len(embedded_doc["elements"]), 2)  # Rectangle + label
 
     def test_server_get_canvas_screenshot_tool(self):
-        server = create_server(self.service)
+        server = create_server(self.service, toolset="full")
         tools = {tool.name: tool.fn for tool in asyncio.run(server.list_tools())}
         img = tools["get_canvas_screenshot"]()
         self.assertTrue(img.data.startswith(b"\x89PNG\r\n\x1a\n"))
