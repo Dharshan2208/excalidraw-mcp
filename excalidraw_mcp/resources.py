@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from excalidraw_mcp.config import scene_directory
+from excalidraw_mcp.config import configured_toolset, max_elements, scene_directory
 from excalidraw_mcp.errors import SceneError
 from excalidraw_mcp.scene import load_scene
 
@@ -363,7 +363,6 @@ def get_resource(
         }
 
     elif res_type == "capabilities":
-        from .config import scene_directory, max_elements, configured_toolset
         toolset = configured_toolset()
         is_full = toolset == "full"
         return {

@@ -189,6 +189,39 @@ Add to `.cursor/mcp.json` in your project root or user configuration:
 }
 ```
 
+### Zed
+Add to your Zed `settings.json` (`~/.config/zed/settings.json` on macOS/Linux or `%APPDATA%\Zed\settings.json` on Windows):
+
+**Using `uvx` (Recommended):**
+```json
+{
+  "context_servers": {
+    "excalidraw": {
+      "command": {
+        "path": "uvx",
+        "args": [
+          "exca-mcp"
+        ]
+      }
+    }
+  }
+}
+```
+
+**Using `pip` (Installed Executable):**
+```json
+{
+  "context_servers": {
+    "excalidraw": {
+      "command": {
+        "path": "exca-mcp",
+        "args": []
+      }
+    }
+  }
+}
+```
+
 ### OpenCode
 Add to `opencode.json` (or the MCP configuration section of your OpenCode settings):
 
@@ -479,7 +512,7 @@ pip install -e .
 
 ### 2. Run the Test Suite
 
-The test suite contains **434 comprehensive unit and contract tests** verifying Excalidraw serialization, obstacle aware arrow routing, text containment and font metrics, two pass architecture layout, 8K dynamic scaling, storage safety, PNG export, code blocks, live server synchronization, sharing, and MCP schemas:
+The test suite contains **450 comprehensive unit and contract tests** verifying Excalidraw serialization, obstacle aware arrow routing, text containment and font metrics, two pass architecture layout, 8K dynamic scaling, storage safety, PNG export, code blocks, live server synchronization, sharing, and MCP schemas:
 
 ```bash
 uv run --locked python -B -m unittest discover -s tests -v
@@ -508,7 +541,7 @@ You can execute the development server locally via the installed CLI script or u
 exca-mcp
 
 # Or directly using the Python module:
-python -m excalidraw_mcp.server
+python -m excalidraw_mcp
 ```
 
 ### 5. Packaging Verification
@@ -527,7 +560,7 @@ Contributions are warmly welcomed! Please follow these guidelines:
 
 1. **Fork the Repository**: Create a descriptive feature branch (`git checkout -b feat/custom-styling`).
 2. **Adhere to Code Standards**: Ensure clean type annotations, preserve existing docstrings, and maintain standard exception hierarchies.
-3. **Verify Tests**: Run `uv run --locked python -B -m unittest discover -s tests -v` and ensure all 434 tests pass.
+3. **Verify Tests**: Run `uv run --locked python -B -m unittest discover -s tests -v` and ensure all 450 tests pass.
 4. **Compile Check**: Confirm no byte compilation warnings via:
    ```bash
    uv run python -B -m compileall -q -f main.py excalidraw_mcp tests

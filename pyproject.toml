@@ -36,3 +36,11 @@ exclude = [
     "/.coverage",
     "/dist",
 ]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:websockets.legacy is deprecated:DeprecationWarning",
+    "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
+    "ignore:remove second argument of ws_handler:DeprecationWarning",
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]
