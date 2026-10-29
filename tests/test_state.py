@@ -205,6 +205,7 @@ class StateTests(unittest.TestCase):
                 "start_live_server",
                 "stop_live_server",
                 "get_live_server_status",
+                "auto_fix_layout",
             },
         )
         result = first["add_rectangle"](0, 0, 10, 10, label="A")
