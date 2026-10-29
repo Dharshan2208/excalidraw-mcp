@@ -187,23 +187,24 @@ def is_intentional_overlap(s1: dict[str, Any], s2: dict[str, Any]) -> bool:
     y2_max = y2_min + h2
 
     # Geometrically nested: one shape is inside the other and substantially smaller
-    if (w1 * h1) > 0 and (w2 * h2) > 0:
-        if (
-            x1_min <= x2_min + 2.0
-            and y1_min <= y2_min + 2.0
-            and x1_max >= x2_max - 2.0
-            and y1_max >= y2_max - 2.0
-            and (w1 * h1) >= (w2 * h2) * 1.3
-        ):
-            return True
-        if (
-            x2_min <= x1_min + 2.0
-            and y2_min <= y1_min + 2.0
-            and x2_max >= x1_max - 2.0
-            and y2_max >= y1_max - 2.0
-            and (w2 * h2) >= (w1 * h1) * 1.3
-        ):
-            return True
+    area1, area2 = w1 * h1, w2 * h2
+    if area1 > 0 and area2 > 0 and max(area1, area2) / min(area1, area2) >= 1.25:
+        if area1 >= area2:
+            if (
+                x1_min <= x2_min + 2.0
+                and y1_min <= y2_min + 2.0
+                and x1_max >= x2_max - 2.0
+                and y1_max >= y2_max - 2.0
+            ):
+                return True
+        else:
+            if (
+                x2_min <= x1_min + 2.0
+                and y2_min <= y1_min + 2.0
+                and x2_max >= x1_max - 2.0
+                and y2_max >= y1_max - 2.0
+            ):
+                return True
 
     return False
 
@@ -628,14 +629,17 @@ def diagnose_layout_issues(
     return issues
 
 
-def plan_layout_repairs(
+def summarize_planned_repairs(
     document_or_elements: Any,
     issues: list[dict[str, Any]],
     repair_scope: str = "all",
     aggressiveness: str = "balanced",
     min_gap: float = 30.0,
 ) -> list[dict[str, Any]]:
-    """Build an explicit, deterministic repair plan describing proposed transformations before mutation."""
+    """Summarize intended repairs for detected layout defects before mutation.
+
+    This provides a high-level summary of intended transformations and is not an executable plan.
+    """
     scope, aggr, m_gap = _validate_params(repair_scope, aggressiveness, min_gap)
     gap_mult = AGGRESSIVENESS_MULT[aggr]
     effective_min_gap = m_gap * gap_mult
@@ -793,7 +797,18 @@ def plan_layout_repairs(
                         }
                     )
 
-    return planned_changes
+    deduped_plans: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for pc in planned_changes:
+        key = (pc.get("phase", ""), str(pc.get("element_id", "")))
+        if key not in seen:
+            seen.add(key)
+            deduped_plans.append(pc)
+
+    return deduped_plans
+
+
+plan_layout_repairs = summarize_planned_repairs
 
 
 def _expand_frames_to_contain_children(
@@ -1543,7 +1558,7 @@ def auto_fix_scene_layout(
         }
 
     # Step 5: Build deterministic repair plan
-    planned_changes = plan_layout_repairs(
+    planned_changes = summarize_planned_repairs(
         snapshot_original,
         initial_issues,
         repair_scope=scope,

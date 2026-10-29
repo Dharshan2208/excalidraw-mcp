@@ -24,6 +24,7 @@ from excalidraw_mcp.auto_fix import (
     is_intentional_overlap,
     measure_shape_text_containment,
     plan_layout_repairs,
+    summarize_planned_repairs,
 )
 from excalidraw_mcp.text_padding import required_container_size
 from excalidraw_mcp.elements import arrow, frame, rect, text
@@ -1299,6 +1300,55 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         doc_elements = res["document"]["elements"]
         s1_after = next(e for e in doc_elements if e["id"] == "s1")
         self.assertEqual(s1_after["frameId"], "f1")
+
+    def test_nested_shape_at_1_28_area_ratio_classified_as_intentional_overlap_and_not_displaced(self):
+        """A 1.28x area nested shape is classified as intentional overlap and is not displaced by Phase 2."""
+        s1 = rect(86.0, 100.0, 128.0, 100.0)
+        s1["id"] = "outer"
+        s2 = rect(100.0, 100.0, 100.0, 100.0)
+        s2["id"] = "inner"
+
+        self.assertTrue(is_intentional_overlap(s1, s2))
+
+        doc = new_document([s1, s2])
+        repaired, applied_changes, skipped_repairs, warnings = apply_layout_repairs(doc, repair_scope="overlaps")
+        self.assertEqual(applied_changes, [])
+
+        outer_after = next(e for e in repaired if e["id"] == "outer")
+        inner_after = next(e for e in repaired if e["id"] == "inner")
+        self.assertEqual(outer_after["x"], 86.0)
+        self.assertEqual(inner_after["x"], 100.0)
+
+    def test_summarize_planned_repairs_dedupes_by_phase_and_element_id(self):
+        """summarize_planned_repairs dedupes plans by (phase, element_id) keeping first entry."""
+        s1 = rect(100.0, 100.0, 100.0, 100.0)
+        s1["id"] = "s1"
+        s2 = rect(110.0, 100.0, 100.0, 100.0)
+        s2["id"] = "s2"
+        s3 = rect(120.0, 100.0, 100.0, 100.0)
+        s3["id"] = "s3"
+
+        doc = new_document([s1, s2, s3])
+        issues = [
+            {
+                "id": "c1",
+                "type": "node_overlap",
+                "severity": "critical",
+                "element_ids": ["s1", "s2"],
+                "details": {"shape1_id": "s1", "shape2_id": "s2", "overlap_width": 90.0, "overlap_height": 100.0},
+            },
+            {
+                "id": "c2",
+                "type": "node_overlap",
+                "severity": "critical",
+                "element_ids": ["s2", "s3"],
+                "details": {"shape1_id": "s2", "shape2_id": "s3", "overlap_width": 90.0, "overlap_height": 100.0},
+            },
+        ]
+
+        plans = summarize_planned_repairs(doc, issues, repair_scope="overlaps")
+        keys = [(p["phase"], p["element_id"]) for p in plans]
+        self.assertEqual(len(keys), len(set(keys)))
 
 
 if __name__ == "__main__":
