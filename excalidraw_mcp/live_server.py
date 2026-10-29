@@ -421,10 +421,13 @@ def uninstall_signal_handlers() -> None:
 class LiveCanvasServer:
     """Manages the background Uvicorn live canvas server."""
 
-    def __init__(self, service: Any, host: str = "127.0.0.1", port: int = 8080):
+    def __init__(self, service: Any, host: str = "127.0.0.1", port: int = 8080, auth_token: str | None = None):
+        if host in ("0.0.0.0", "::") and not os.environ.get("EXCALIDRAW_ALLOW_REMOTE"):
+            raise SceneError("Binding to 0.0.0.0 is disabled by default for security. Use 127.0.0.1 or set EXCALIDRAW_ALLOW_REMOTE=1")
         self.service = service
         self.host = host
         self.port = port
+        self.auth_token = auth_token or os.environ.get("EXCALIDRAW_LIVE_TOKEN")
         self.app = self._create_app()
         self.server: _LiveCanvasUvicornServer | None = None
         self.thread: threading.Thread | None = None
@@ -447,13 +450,24 @@ class LiveCanvasServer:
         return Starlette(routes=routes)
 
     async def _handle_index(self, request):
-        return HTMLResponse(HTML_PAGE)
+        page = HTML_PAGE
+        if self.auth_token:
+            page = page.replace('new WebSocket(`${protocol}//${window.location.host}/ws`)', f'new WebSocket(`${{protocol}}//${{window.location.host}}/ws?token={self.auth_token}`)')
+        return HTMLResponse(page)
 
     async def _handle_get_scene(self, request):
         doc, rev = self.service.state.snapshot()
         return JSONResponse({**doc, "revision": rev})
 
     async def _handle_post_scene(self, request):
+        if self.auth_token:
+            token = request.headers.get("x-auth-token") or request.query_params.get("token")
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:].strip()
+            if token != self.auth_token:
+                return JSONResponse({"error": "Unauthorized: invalid or missing token"}, status_code=401)
+
         try:
             payload = await request.json()
         except Exception as err:
@@ -491,6 +505,23 @@ class LiveCanvasServer:
         )
 
     async def _handle_ws(self, websocket: WebSocket):
+        origin = websocket.headers.get("origin")
+        if origin:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(origin)
+            allowed = {"localhost", "127.0.0.1", "::1", self.host.lower()}
+            if parsed.hostname and parsed.hostname.lower() not in allowed:
+                logger.warning("Rejected WebSocket connection from unauthorized origin: %s", origin)
+                await websocket.close(code=1008)
+                return
+
+        if self.auth_token:
+            token = websocket.query_params.get("token") or websocket.headers.get("x-auth-token")
+            if token != self.auth_token:
+                logger.warning("Rejected WebSocket connection: invalid or missing auth token")
+                await websocket.close(code=1008)
+                return
+
         await websocket.accept()
         with self._ws_lock:
             self.active_websockets.add(websocket)
