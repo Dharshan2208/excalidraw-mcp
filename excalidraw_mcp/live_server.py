@@ -562,12 +562,14 @@ class LiveCanvasServer:
         )
 
         async def broadcast():
-            for ws in ws_targets:
+            async def _send(ws):
                 try:
                     await ws.send_text(payload)
                 except Exception:
                     with self._ws_lock:
                         self.active_websockets.discard(ws)
+
+            await asyncio.gather(*(_send(ws) for ws in ws_targets), return_exceptions=True)
 
         try:
             asyncio.run_coroutine_threadsafe(broadcast(), self._loop)
@@ -656,9 +658,19 @@ class LiveCanvasServer:
                 finally:
                     ready_event.set()
                     try:
-                        loop.close()
+                        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                        for task in pending:
+                            task.cancel()
+                        if pending:
+                            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                        loop.run_until_complete(loop.shutdown_asyncgens())
                     except Exception:
                         pass
+                    finally:
+                        try:
+                            loop.close()
+                        except Exception:
+                            pass
 
             self.thread = threading.Thread(
                 target=run_server,

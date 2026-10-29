@@ -416,34 +416,37 @@ def diagnose_layout_issues(
                 }
             )
 
-    # 2. Node-to-Node Overlap Detection (Distinguishing Intentional Relationships)
-    for i in range(len(shapes)):
-        s1 = shapes[i]
-        id1 = s1.get("id")
-        if not id1:
-            continue
+    # 2. Node-to-Node Overlap Detection (Broadphase sweep-and-prune for O(N log N) scaling)
+    sorted_diag_shapes = sorted(
+        [s for s in shapes if s.get("id")],
+        key=lambda s: _coord(s, "x")
+    )
+    for i in range(len(sorted_diag_shapes)):
+        s1 = sorted_diag_shapes[i]
+        id1 = s1["id"]
 
-        for j in range(i + 1, len(shapes)):
-            s2 = shapes[j]
-            id2 = s2.get("id")
-            if not id2:
-                continue
+        x1_min = _coord(s1, "x")
+        w1 = abs(_coord(s1, "width"))
+        x1_max = x1_min + w1
+
+        for j in range(i + 1, len(sorted_diag_shapes)):
+            s2 = sorted_diag_shapes[j]
+            x2_min = _coord(s2, "x")
+            if x2_min >= x1_max - 1.0:
+                break
+            id2 = s2["id"]
 
             if is_intentional_overlap(s1, s2, warnings=warnings):
                 continue
 
-            x1_min = _coord(s1, "x")
             y1_min = _coord(s1, "y")
-            w1 = abs(_coord(s1, "width"))
             h1 = abs(_coord(s1, "height"))
-            x1_max = x1_min + w1
             y1_max = y1_min + h1
 
-            x2_min = _coord(s2, "x")
-            y2_min = _coord(s2, "y")
             w2 = abs(_coord(s2, "width"))
             h2 = abs(_coord(s2, "height"))
             x2_max = x2_min + w2
+            y2_min = _coord(s2, "y")
             y2_max = y2_min + h2
 
             inter_x = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
@@ -614,22 +617,26 @@ def diagnose_layout_issues(
                     break
 
     # 5. Inconsistent Spacing Violations (Crowded Elements)
-    for i in range(len(shapes)):
-        s1 = shapes[i]
-        id1 = s1.get("id")
-        for j in range(i + 1, len(shapes)):
-            s2 = shapes[j]
-            id2 = s2.get("id")
+    max_spacing_gap = effective_min_gap * SPACING_RATIO_THRESHOLD
+    for i in range(len(sorted_diag_shapes)):
+        s1 = sorted_diag_shapes[i]
+        id1 = s1["id"]
+        x1_min = _coord(s1, "x")
+        w1 = abs(_coord(s1, "width"))
+        x1_max = x1_min + w1
+        y1_min = _coord(s1, "y")
+        y1_max = y1_min + abs(_coord(s1, "height"))
+
+        for j in range(i + 1, len(sorted_diag_shapes)):
+            s2 = sorted_diag_shapes[j]
+            x2_min = _coord(s2, "x")
+            if x2_min >= x1_max + max_spacing_gap:
+                break
+            id2 = s2["id"]
 
             if is_intentional_overlap(s1, s2, warnings=warnings):
                 continue
 
-            x1_min = _coord(s1, "x")
-            y1_min = _coord(s1, "y")
-            x1_max = x1_min + abs(_coord(s1, "width"))
-            y1_max = y1_min + abs(_coord(s1, "height"))
-
-            x2_min = _coord(s2, "x")
             y2_min = _coord(s2, "y")
             x2_max = x2_min + abs(_coord(s2, "width"))
             y2_max = y2_min + abs(_coord(s2, "height"))
@@ -638,7 +645,7 @@ def diagnose_layout_issues(
             v_overlap = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
             if v_overlap > 10.0:
                 h_gap = max(x1_min, x2_min) - min(x1_max, x2_max)
-                if 0.5 < h_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
+                if 0.5 < h_gap < max_spacing_gap:
                     lbl1 = (bound_map.get(id1) or {}).get("text") or id1
                     lbl2 = (bound_map.get(id2) or {}).get("text") or id2
                     issues.append(
@@ -656,7 +663,7 @@ def diagnose_layout_issues(
             h_overlap = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
             if h_overlap > 10.0:
                 v_gap = max(y1_min, y2_min) - min(y1_max, y2_max)
-                if 0.5 < v_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
+                if 0.5 < v_gap < max_spacing_gap:
                     lbl1 = (bound_map.get(id1) or {}).get("text") or id1
                     lbl2 = (bound_map.get(id2) or {}).get("text") or id2
                     issues.append(
@@ -1019,16 +1026,19 @@ def _resolve_node_overlaps(
         for i in range(len(sorted_shapes)):
             s1 = sorted_shapes[i]
             id1 = s1.get("id")
+            x1_min, y1_min = _coord(s1, "x"), _coord(s1, "y")
+            x1_max, y1_max = x1_min + abs(_coord(s1, "width")), y1_min + abs(_coord(s1, "height"))
+            s1_frame = str(s1.get("frameId") or "")
 
             for j in range(i + 1, len(sorted_shapes)):
                 s2 = sorted_shapes[j]
+                if str(s2.get("frameId") or "") == s1_frame and _coord(s2, "y") >= y1_max:
+                    break
                 id2 = s2.get("id")
 
                 if is_intentional_overlap(s1, s2, warnings=warnings):
                     continue
 
-                x1_min, y1_min = _coord(s1, "x"), _coord(s1, "y")
-                x1_max, y1_max = x1_min + abs(_coord(s1, "width")), y1_min + abs(_coord(s1, "height"))
                 x2_min, y2_min = _coord(s2, "x"), _coord(s2, "y")
                 x2_max, y2_max = x2_min + abs(_coord(s2, "width")), y2_min + abs(_coord(s2, "height"))
 
@@ -1318,26 +1328,30 @@ def apply_layout_repairs(
             group_index = _build_group_index(shapes)
 
             # 5a. Horizontal Spacing Adjustments (Left to Right Cascade)
+            max_spacing_gap = effective_min_gap * SPACING_RATIO_THRESHOLD
             h_shapes = sorted(shapes, key=lambda s: _coord(s, "x"))
             for i in range(len(h_shapes) - 1):
                 s1 = h_shapes[i]
                 id1 = s1.get("id")
+                x1_max = _coord(s1, "x") + abs(_coord(s1, "width"))
+                y1_min = _coord(s1, "y")
+                y1_max = y1_min + abs(_coord(s1, "height"))
+
                 for j in range(i + 1, len(h_shapes)):
                     s2 = h_shapes[j]
+                    x2_min = _coord(s2, "x")
+                    if x2_min >= x1_max + max_spacing_gap:
+                        break
                     id2 = s2.get("id")
 
                     if is_intentional_overlap(s1, s2, warnings=warnings):
                         continue
 
-                    y1_min = _coord(s1, "y")
-                    y1_max = y1_min + abs(_coord(s1, "height"))
                     y2_min = _coord(s2, "y")
                     y2_max = y2_min + abs(_coord(s2, "height"))
 
                     v_overlap = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
                     if v_overlap > 10.0:
-                        x1_max = _coord(s1, "x") + abs(_coord(s1, "width"))
-                        x2_min = _coord(s2, "x")
                         h_gap = x2_min - x1_max
 
                         if h_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
@@ -1410,22 +1424,25 @@ def apply_layout_repairs(
             for i in range(len(v_shapes) - 1):
                 s1 = v_shapes[i]
                 id1 = s1.get("id")
+                y1_max = _coord(s1, "y") + abs(_coord(s1, "height"))
+                x1_min = _coord(s1, "x")
+                x1_max = x1_min + abs(_coord(s1, "width"))
+
                 for j in range(i + 1, len(v_shapes)):
                     s2 = v_shapes[j]
+                    y2_min = _coord(s2, "y")
+                    if y2_min >= y1_max + max_spacing_gap:
+                        break
                     id2 = s2.get("id")
 
                     if is_intentional_overlap(s1, s2, warnings=warnings):
                         continue
 
-                    x1_min = _coord(s1, "x")
-                    x1_max = x1_min + abs(_coord(s1, "width"))
                     x2_min = _coord(s2, "x")
                     x2_max = x2_min + abs(_coord(s2, "width"))
 
                     h_overlap = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
                     if h_overlap > 10.0:
-                        y1_max = _coord(s1, "y") + abs(_coord(s1, "height"))
-                        y2_min = _coord(s2, "y")
                         v_gap = y2_min - y1_max
 
                         if v_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
