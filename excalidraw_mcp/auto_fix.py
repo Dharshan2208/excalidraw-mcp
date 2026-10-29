@@ -208,9 +208,45 @@ def is_intentional_overlap(s1: dict[str, Any], s2: dict[str, Any]) -> bool:
     return False
 
 
+def _cap_warnings(warnings: list[str]) -> list[str]:
+    """Cap warnings at 20 items, appending a truncation summary if exceeded."""
+    if len(warnings) > 20:
+        return warnings[:20] + [f"...and {len(warnings) - 20} more warnings."]
+    return warnings
+
+
+def _safe_wrap_and_measure(
+    shape: dict[str, Any],
+    text_el: dict[str, Any],
+    target_w: float,
+    warnings: list[str] | None = None,
+) -> tuple[float, float, str]:
+    """Safely wrap and measure text for a shape container, falling back and warning on failure."""
+    raw_text = text_el.get("text") or ""
+    raw_fs = text_el.get("fontSize")
+    fs = raw_fs if isinstance(raw_fs, (int, float)) and raw_fs > 0 else 20
+    ff = text_el.get("fontFamily")
+    stype = shape.get("type", "rectangle")
+    sid = shape.get("id", "unknown")
+
+    try:
+        wrapped = wrap_text_to_shape(raw_text, shape=stype, target_w=target_w, font_size=fs, font_family=ff)
+        tw, th, _ = measure_text_dimensions(wrapped, font_family=ff, font_size=fs)
+        return tw, th, wrapped
+    except (KeyError, ValueError, TypeError, OSError):
+        tw = abs(_coord(text_el, "width"))
+        th = abs(_coord(text_el, "height"))
+        if warnings is not None:
+            msg = f"Text containment skipped for shape '{sid}': could not measure text in font '{ff}'."
+            if msg not in warnings:
+                warnings.append(msg)
+        return tw, th, raw_text
+
+
 def measure_shape_text_containment(
     shape: dict[str, Any],
     text_el: dict[str, Any],
+    warnings: list[str] | None = None,
 ) -> tuple[bool, float, float, float, float]:
     """Check if text overflows container geometry and compute required bounds.
 
@@ -224,18 +260,9 @@ def measure_shape_text_containment(
     if not raw_text.strip():
         return False, round(cur_w, 1), round(cur_h, 1), 0.0, 0.0
 
-    raw_fs = text_el.get("fontSize")
-    fs = raw_fs if isinstance(raw_fs, (int, float)) and raw_fs > 0 else 20
-    ff = text_el.get("fontFamily")
+    tw, th, _ = _safe_wrap_and_measure(shape, text_el, target_w=cur_w, warnings=warnings)
+
     stype = shape.get("type", "rectangle")
-
-    try:
-        wrapped = wrap_text_to_shape(raw_text, shape=stype, target_w=cur_w, font_size=fs, font_family=ff)
-        tw, th, _ = measure_text_dimensions(wrapped, font_family=ff, font_size=fs)
-    except Exception:
-        tw = abs(_coord(text_el, "width"))
-        th = abs(_coord(text_el, "height"))
-
     min_w, min_h = required_container_size(stype, tw, th)
     req_w = max(cur_w, min_w)
     req_h = max(cur_h, min_h)
@@ -1103,7 +1130,7 @@ def apply_layout_repairs(
             if not raw_text.strip():
                 continue
 
-            is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, t)
+            is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, t, warnings=warnings)
             if is_clipped and (deficit_w > TEXT_DEFICIT_THRESHOLD_PX or deficit_h > TEXT_DEFICIT_THRESHOLD_PX):
                 cur_w = abs(_coord(s, "width"))
                 cur_h = abs(_coord(s, "height"))
@@ -1123,16 +1150,7 @@ def apply_layout_repairs(
                 s["height"] = round(new_h, 1)
 
                 # Re-center bound text inside expanded container
-                raw_fs = t.get("fontSize")
-                fs = raw_fs if isinstance(raw_fs, (int, float)) and raw_fs > 0 else 20
-                ff = t.get("fontFamily")
-                stype = s.get("type", "rectangle")
-                try:
-                    wrapped = wrap_text_to_shape(raw_text, shape=stype, target_w=new_w, font_size=fs, font_family=ff)
-                    tw, th, _ = measure_text_dimensions(wrapped, font_family=ff, font_size=fs)
-                except Exception:
-                    tw = abs(_coord(t, "width"))
-                    th = abs(_coord(t, "height"))
+                tw, th, wrapped = _safe_wrap_and_measure(s, t, target_w=new_w, warnings=warnings)
 
                 t["x"] = round(cx - tw / 2.0, 1)
                 t["y"] = round(cy - th / 2.0, 1)
@@ -1468,6 +1486,7 @@ def auto_fix_scene_layout(
     """Analyze and systematically repair layout defects in an Excalidraw scene with transactional validation."""
     scope, aggr, m_gap = _validate_params(repair_scope, aggressiveness, min_gap)
     active, is_doc = _extract_active_elements(document_or_elements)
+    warnings: list[str] = []
 
     # Step 1: Snapshot original scene for clean diffs and guaranteed rollback
     snapshot_original = deepcopy(document_or_elements)
@@ -1485,7 +1504,7 @@ def auto_fix_scene_layout(
             "applied_changes": [],
             "changed_element_ids": [],
             "skipped_repairs": [],
-            "warnings": ["Scene contains no active elements to repair."],
+            "warnings": _cap_warnings(["Scene contains no active elements to repair."]),
             "rolled_back": False,
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": []},
         }
@@ -1506,7 +1525,7 @@ def auto_fix_scene_layout(
             "applied_changes": [],
             "changed_element_ids": [],
             "skipped_repairs": [],
-            "warnings": [],
+            "warnings": _cap_warnings(warnings),
             "rolled_back": False,
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": snapshot_original},
         }
@@ -1553,7 +1572,7 @@ def auto_fix_scene_layout(
             "applied_changes": [],
             "changed_element_ids": [],
             "skipped_repairs": skipped_repairs,
-            "warnings": warnings,
+            "warnings": _cap_warnings(warnings),
             "rolled_back": True,
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": snapshot_original},
         }
@@ -1574,7 +1593,7 @@ def auto_fix_scene_layout(
             "applied_changes": applied_changes,
             "changed_element_ids": changed_ids,
             "skipped_repairs": skipped_repairs,
-            "warnings": warnings,
+            "warnings": _cap_warnings(warnings),
             "rolled_back": False,
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": snapshot_original},
         }
@@ -1604,7 +1623,7 @@ def auto_fix_scene_layout(
         "applied_changes": applied_changes,
         "changed_element_ids": changed_ids,
         "skipped_repairs": skipped_repairs,
-        "warnings": warnings,
+        "warnings": _cap_warnings(warnings),
         "rolled_back": False,
         "document": draft if is_doc else {"type": "excalidraw", "version": 2, "elements": draft},
     }

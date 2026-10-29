@@ -1246,6 +1246,39 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         self.assertLess(elapsed, 5.0)
         self.assertIn(res["status"], ("repaired", "partially_repaired", "no_changes_needed"))
 
+    def test_unresolvable_font_family_yields_warning_and_does_not_raise(self):
+        """Scene with an unresolvable fontFamily yields a warning and does not raise."""
+        s1 = rect(100.0, 100.0, 100.0, 100.0)
+        s1["id"] = "s1"
+        t1 = text(110.0, 110.0, "A very long label requiring wrap and resize")
+        t1["id"] = "t1"
+        t1["containerId"] = "s1"
+        t1["fontFamily"] = "UnknownCustomFont"
+
+        doc = new_document([s1, t1])
+        with patch("excalidraw_mcp.auto_fix.wrap_text_to_shape", side_effect=ValueError("unrecognized fontFamily")):
+            res = auto_fix_scene_layout(doc, repair_scope="text")
+
+        self.assertIn("warnings", res)
+        self.assertTrue(any("could not measure text in font 'UnknownCustomFont'" in w for w in res["warnings"]))
+
+    def test_warning_truncation_caps_at_twenty_with_suffix(self):
+        """Scene producing >20 warnings returns exactly 21 entries with the truncation suffix."""
+        elements = []
+        for i in range(25):
+            s1 = rect(1000.0 * i, 100.0, 80.0, 80.0)
+            s1["id"] = f"locked_a_{i}"
+            s1["locked"] = True
+            s2 = rect(1000.0 * i + 10.0, 100.0, 80.0, 80.0)
+            s2["id"] = f"locked_b_{i}"
+            s2["locked"] = True
+            elements.extend([s1, s2])
+
+        doc = new_document(elements)
+        res = auto_fix_scene_layout(doc, repair_scope="overlaps")
+        self.assertEqual(len(res["warnings"]), 21)
+        self.assertEqual(res["warnings"][-1], "...and 5 more warnings.")
+
 
 if __name__ == "__main__":
     unittest.main()
