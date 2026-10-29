@@ -1240,6 +1240,7 @@ class SceneService:
     ) -> dict[str, Any]:
         """Diagnose, plan, and automatically repair layout defects with transactional rollback safety.
 
+        dry_run executes all repair phases and A* routing on an isolated snapshot before discarding changes, costing the same compute as a real run.
         min_gap must be between 0 and 1000 (effective spacing defect threshold is min_gap * 0.65).
         aggressiveness="gentle" provides a smaller expansion (0.8x), not compaction.
         """
@@ -2976,16 +2977,6 @@ class SceneService:
         focus_element_ids=None,
         padding=50.0,
     ):
-        if focus_element_ids is not None:
-            res = self.focus_elements(focus_element_ids, padding=padding)
-            if (
-                scroll_x is None
-                and scroll_y is None
-                and zoom is None
-                and background_color is None
-            ):
-                return res
-
         if scroll_x is not None and not _finite_number(scroll_x):
             raise SceneError("scroll_x must be a finite number")
         if scroll_y is not None and not _finite_number(scroll_y):
@@ -2996,13 +2987,22 @@ class SceneService:
                     "zoom must be a positive number between 0.01 and 50.0"
                 )
         if background_color is not None:
-            import re
             from .validation import COLOR_PATTERN
 
             if not re.match(f"^{COLOR_PATTERN}$", background_color):
                 raise SceneError(
                     f"Invalid hex color format: {background_color}"
                 )
+
+        if focus_element_ids is not None:
+            res = self.focus_elements(focus_element_ids, padding=padding)
+            if (
+                scroll_x is None
+                and scroll_y is None
+                and zoom is None
+                and background_color is None
+            ):
+                return res
 
         def apply_viewport(document):
             app_state = document.setdefault("appState", {})

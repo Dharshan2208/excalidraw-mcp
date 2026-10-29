@@ -370,7 +370,7 @@ The `auto_fix_layout` tool provides deterministic layout repair with transaction
 
 ### Parameters
 - `name` (*str*, optional): Target a saved scene file on disk. If omitted, operates on the active in-memory scene.
-- `dry_run` (*bool*, default `False`): Preview planned changes, predicted final issues, and applied transformations without mutating scene state.
+- `dry_run` (*bool*, default `False`): Preview planned changes, predicted final issues, and applied transformations without mutating scene state. Note: Executes all five phases including A* rerouting on an isolated snapshot, incurring the same compute cost as a real run.
 - `repair_scope` (*str*, default `"all"`): Constrain repairs to specific defect categories:
   - `"all"`: Executes all 5 repair phases.
   - `"overlaps"`: Node-to-node collisions.

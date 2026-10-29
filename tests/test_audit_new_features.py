@@ -256,6 +256,21 @@ class ViewportControlTests(unittest.TestCase):
         with self.assertRaisesRegex(SceneError, "hex color"):
             self.service.set_viewport(background_color="not-a-color")
 
+    def test_set_viewport_validates_before_focusing_leaving_viewport_unchanged(self):
+        """set_viewport(scroll_x='nope', focus_element_ids=[valid_id]) raises and leaves the viewport unchanged."""
+        r = self.service.add_shape("rectangle", 500, 500, 200, 100)
+        valid_id = r["rectangle_id"]
+
+        initial_vp = self.service.get_viewport()
+
+        with self.assertRaises(SceneError):
+            self.service.set_viewport(scroll_x="nope", focus_element_ids=[valid_id])
+
+        final_vp = self.service.get_viewport()
+        self.assertEqual(initial_vp["scroll_x"], final_vp["scroll_x"])
+        self.assertEqual(initial_vp["scroll_y"], final_vp["scroll_y"])
+        self.assertEqual(initial_vp["zoom"], final_vp["zoom"])
+
     def test_focus_elements(self):
         self.service.add_shape("rectangle", 100, 100, 200, 100)
         self.service.add_shape("rectangle", 500, 500, 100, 100)

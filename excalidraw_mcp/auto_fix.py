@@ -1556,6 +1556,7 @@ def auto_fix_scene_layout(
 ) -> dict[str, Any]:
     """Analyze and systematically repair layout defects in an Excalidraw scene with transactional validation.
 
+    dry_run executes all repair phases and A* routing on an isolated snapshot before discarding changes, costing the same compute as a real run.
     min_gap must be between 0 and 1000 (effective spacing defect threshold is min_gap * 0.65).
     aggressiveness='gentle' provides a smaller expansion (0.8x), not compaction.
     """
