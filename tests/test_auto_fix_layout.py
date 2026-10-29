@@ -17,6 +17,7 @@ from unittest.mock import patch
 from fastmcp import Client
 
 from excalidraw_mcp.auto_fix import (
+    _severe_ids,
     apply_layout_repairs,
     auto_fix_scene_layout,
     diagnose_layout_issues,
@@ -297,7 +298,7 @@ class AutoFixScopesAndAggressivenessTests(unittest.TestCase):
         """repair_scope='text' fixes text clipping but ignores overlaps."""
         r1 = self.service.add_shape("rectangle", 100, 100, 180, 80, label="Extremely Long Text That Needs Resizing")
         self.service.resize(r1["rectangle_id"], width=60, height=30)
-        r2 = self.service.add_shape("rectangle", 90, 100, 80, 60, label="Peer")
+        r2 = self.service.add_shape("rectangle", 120, 100, 80, 60, label="Peer")
 
         res = self.service.auto_fix_layout(repair_scope="text")
         applied_types = [c["change_type"] for c in res["applied_changes"]]
@@ -391,6 +392,92 @@ class AutoFixTransactionSafetyAndIdempotencyTests(unittest.TestCase):
         doc_after = self.service.state.document()
         self.assertEqual(len(doc_after["elements"]), len(doc_before["elements"]))
         self.assertEqual(self.service.state.revision, rev_before)
+
+    def test_regression_oracle_does_not_rollback_on_warnings(self):
+        """Repair that fixes 1 critical defect and produces 2 warnings does not roll back."""
+        r1 = self.service.add_shape("rectangle", 100, 100, 100, 100, label="A")
+        r2 = self.service.add_shape("rectangle", 120, 100, 100, 100, label="B")
+
+        initial_issue = {
+            "id": "c1",
+            "type": "node_overlap",
+            "severity": "critical",
+            "element_ids": [r1["rectangle_id"], r2["rectangle_id"]],
+            "details": {
+                "shape1_id": r1["rectangle_id"],
+                "shape2_id": r2["rectangle_id"],
+                "overlap_width": 20.0,
+                "overlap_height": 100.0,
+                "overlap_ratio": 0.2,
+            },
+        }
+
+        # Mock repair to eliminate critical issue while introducing 2 warnings (either string warnings or info issues)
+        def repair_with_warnings(doc, *args, **kwargs):
+            return (
+                doc.get("elements", []),
+                [{"element_id": r1["rectangle_id"], "change_type": "move", "description": "resolved"}],
+                [],
+                ["Warning 1: Spacing tightened", "Warning 2: Minor alignment adjusted"],
+            )
+
+        with patch("excalidraw_mcp.auto_fix.diagnose_layout_issues", side_effect=[[initial_issue], []]):
+            with patch("excalidraw_mcp.auto_fix.apply_layout_repairs", side_effect=repair_with_warnings):
+                res = self.service.auto_fix_layout()
+
+        self.assertFalse(res["rolled_back"])
+        self.assertEqual(res["status"], "repaired")
+        self.assertIn("Warning 1: Spacing tightened", res["warnings"])
+        self.assertIn("Warning 2: Minor alignment adjusted", res["warnings"])
+
+    def test_regression_oracle_rolls_back_when_critical_replaced_with_different_critical(self):
+        """Repair that replaces 1 critical issue with a different critical issue triggers rollback."""
+        r1 = self.service.add_shape("rectangle", 100, 100, 100, 100, label="A")
+        r2 = self.service.add_shape("rectangle", 120, 100, 100, 100, label="B")
+
+        initial_issue = {
+            "id": "c1",
+            "type": "node_overlap",
+            "severity": "critical",
+            "element_ids": [r1["rectangle_id"], r2["rectangle_id"]],
+            "details": {
+                "shape1_id": r1["rectangle_id"],
+                "shape2_id": r2["rectangle_id"],
+                "overlap_width": 20.0,
+                "overlap_height": 100.0,
+                "overlap_ratio": 0.2,
+            },
+        }
+        new_critical_issue = {
+            "id": "c2",
+            "type": "node_overlap",
+            "severity": "critical",
+            "element_ids": [r1["rectangle_id"], "other"],
+            "details": {
+                "shape1_id": r1["rectangle_id"],
+                "shape2_id": "other",
+                "overlap_width": 20.0,
+                "overlap_height": 100.0,
+                "overlap_ratio": 0.2,
+            },
+        }
+
+        with patch("excalidraw_mcp.auto_fix.diagnose_layout_issues", side_effect=[[initial_issue], [new_critical_issue]]):
+            res = self.service.auto_fix_layout()
+
+        self.assertTrue(res["rolled_back"])
+        self.assertEqual(res["status"], "rolled_back")
+        self.assertTrue(any("c2" in w for w in res["warnings"]))
+
+    def test_fixed_count_non_zero_when_status_repaired(self):
+        """fixed_issues_count must never be 0 while status is repaired."""
+        # Overlapping shapes that get repaired
+        self.service.add_shape("rectangle", 100, 100, 100, 100, label="A")
+        self.service.add_shape("rectangle", 120, 100, 100, 100, label="B")
+
+        res = self.service.auto_fix_layout()
+        self.assertEqual(res["status"], "repaired")
+        self.assertGreater(res["fixed_issues_count"], 0)
 
     def test_idempotency_consecutive_runs_produce_zero_changes(self):
         """Consecutive calls to auto_fix_layout produce identical results with 0 changes on the second run."""

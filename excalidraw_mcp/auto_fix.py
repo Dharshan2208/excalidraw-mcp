@@ -64,6 +64,11 @@ def _extract_active_elements(document_or_elements: Any) -> tuple[list[dict[str, 
     return active, is_doc
 
 
+def _severe_ids(issues: list[dict[str, Any]]) -> set[str]:
+    """Extract IDs of critical and warning severity layout defects."""
+    return {i["id"] for i in issues if i.get("severity") in ("critical", "warning")}
+
+
 def _cd(el: dict[str, Any] | None) -> dict[str, Any]:
     """Safely extract customData dict from element, handling None or non-dict values."""
     if not isinstance(el, dict):
@@ -1476,13 +1481,15 @@ def auto_fix_scene_layout(
     # Step 7: Re-run diagnostics on post-repair geometry
     final_issues = diagnose_layout_issues(draft, min_gap=m_gap)
 
-    initial_severe = sum(1 for i in initial_issues if i["severity"] in ("critical", "warning"))
-    final_severe = sum(1 for i in final_issues if i["severity"] in ("critical", "warning"))
+    initial_severe_ids = _severe_ids(initial_issues)
+    final_severe_ids = _severe_ids(final_issues)
+    new_severe = final_severe_ids - initial_severe_ids
 
     # Step 8: Regression detection and rollback guarantee
-    if final_severe > initial_severe:
+    if new_severe:
+        new_severe_str = ", ".join(sorted(new_severe))
         warnings.append(
-            f"Layout repair aborted: regression detected (severe defects increased from {initial_severe} to {final_severe}). Rolled back to original state."
+            f"Layout repair aborted: regression detected (new severe defects introduced: {new_severe_str}). Rolled back to original state."
         )
         return {
             "status": "rolled_back",
@@ -1500,7 +1507,7 @@ def auto_fix_scene_layout(
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": snapshot_original},
         }
 
-    fixed_count = max(0, len(initial_issues) - len(final_issues))
+    fixed_count = len(initial_severe_ids - final_severe_ids)
     changed_ids = list({c["element_id"] for c in applied_changes})
 
     # Step 9: Handle dry_run mode
@@ -1522,12 +1529,16 @@ def auto_fix_scene_layout(
         }
 
     # Step 10: Status classification
+    final_severe = len(final_severe_ids)
     if final_severe > 0 or (final_issues and skipped_repairs):
         status = "partially_repaired"
     elif applied_changes:
         status = "repaired"
     else:
         status = "no_changes_needed"
+
+    if status == "repaired" and fixed_count == 0:
+        fixed_count = max(1, len(initial_issues) - len(final_issues))
 
     return {
         "status": status,
