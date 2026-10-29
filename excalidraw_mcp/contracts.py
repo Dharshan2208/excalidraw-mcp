@@ -43,6 +43,8 @@ PreviewPadding = Annotated[int, Field(strict=True, ge=0, le=200)]
 NonEmptyText = Annotated[
     str, Field(strict=True, min_length=1, max_length=2_000, pattern=r".*\S.*")
 ]
+RepairScope = Literal["all", "overlaps", "connectors", "containment", "text", "spacing"]
+Aggressiveness = Literal["gentle", "balanced", "aggressive"]
 
 
 class GraphNode(BaseModel):
@@ -153,6 +155,7 @@ class BatchOperation(BaseModel):
         "duplicate",
         "duplicate_elements",
         "resolve_layout",
+        "auto_fix_layout",
     ]
     client_id: str | None = None
     x: float | None = None
@@ -193,6 +196,10 @@ class BatchOperation(BaseModel):
     roughness: int | None = None
     min_gap_x: float | None = None
     min_gap_y: float | None = None
+    min_gap: float | None = None
+    repair_scope: str | None = None
+    aggressiveness: str | None = None
+    dry_run: bool | None = None
     layer_gap: float | None = None
     frame_padding: float | None = None
 
@@ -451,5 +458,38 @@ class LiveServerResult(TypedDict):
     port: NotRequired[int]
     is_running: NotRequired[bool]
     active_clients: NotRequired[int]
+
+
+class LayoutIssue(TypedDict):
+    id: str
+    type: str
+    severity: str
+    element_ids: list[str]
+    description: str
+    details: NotRequired[dict[str, Any]]
+
+
+class LayoutChange(TypedDict):
+    element_id: str
+    change_type: str
+    description: str
+    before: NotRequired[dict[str, Any]]
+    after: NotRequired[dict[str, Any]]
+
+
+class AutoFixLayoutResult(TypedDict):
+    status: str
+    dry_run: bool
+    initial_issues: list[LayoutIssue]
+    final_issues: list[LayoutIssue]
+    fixed_issues_count: int
+    unresolved_issues: list[LayoutIssue]
+    planned_changes: list[dict[str, Any]]
+    applied_changes: list[LayoutChange]
+    changed_element_ids: list[str]
+    skipped_repairs: list[dict[str, Any]]
+    warnings: list[str]
+    rolled_back: bool
+    revision: int
 
 

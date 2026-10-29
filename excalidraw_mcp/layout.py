@@ -550,7 +550,7 @@ def check_diagram_geometry(document_or_elements, min_gap=30.0):
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not (e.get("customData", {}).get("type") in ("code_block_header",))
+        and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
     ]
     frames = [e for e in active if e.get("type") == "frame"]
     text_els = [e for e in active if e.get("type") == "text"]
@@ -861,7 +861,7 @@ def resolve_scene_layout(
     # Step 8: Re-Center Bound Labels on Shapes
     for s in shapes:
         lbl = bound_labels.get(s["id"])
-        if lbl and s.get("customData", {}).get("type") not in ("code_block", "code-block"):
+        if lbl and (s.get("customData") or {}).get("type") not in ("code_block", "code-block"):
             cx = float(s["x"]) + float(s["width"]) / 2.0
             cy = float(s["y"]) + float(s["height"]) / 2.0
             lbl["x"] = cx - float(lbl.get("width", 0.0)) / 2.0

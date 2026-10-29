@@ -10,7 +10,9 @@ from mcp.types import EmbeddedResource, TextResourceContents
 from mcp.types import ToolAnnotations
 
 from excalidraw_mcp.contracts import (
+    Aggressiveness,
     ArchitectureResult,
+    AutoFixLayoutResult,
     BatchOperation,
     BatchResult,
     Boolean,
@@ -55,6 +57,7 @@ from excalidraw_mcp.contracts import (
     PngExportResult,
     PreviewPadding,
     PreviewScale,
+    RepairScope,
     ResizeResult,
     ResourceResult,
     Roughness,
@@ -478,6 +481,24 @@ def create_server(service: SceneService | None = None) -> FastMCP:
         return invoke(
             service.batch_mutate,
             [op.model_dump(exclude_unset=False) for op in operations],
+        )
+
+    @mcp.tool(annotations=MUTATING, run_in_thread=False)
+    def auto_fix_layout(
+        name: SceneName | None = None,
+        dry_run: Boolean = False,
+        repair_scope: RepairScope = "all",
+        aggressiveness: Aggressiveness = "balanced",
+        min_gap: float = 30.0,
+    ) -> AutoFixLayoutResult:
+        """Diagnose, plan, and automatically repair layout defects (overlaps, text clipping, containment, routing, spacing) with rollback safety."""
+        return invoke(
+            service.auto_fix_layout,
+            name=name,
+            dry_run=dry_run,
+            repair_scope=repair_scope,
+            aggressiveness=aggressiveness,
+            min_gap=min_gap,
         )
 
     @mcp.tool(

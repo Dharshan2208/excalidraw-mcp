@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from typing import Any
 
 from excalidraw_mcp.config import max_export_bytes
 from excalidraw_mcp.elements import (
@@ -117,7 +118,7 @@ def _label_for(index, container_id):
 
 
 def _center_label(label, container):
-    if container.get("customData", {}).get("type") in ("code_block", "code-block"):
+    if (container.get("customData") or {}).get("type") in ("code_block", "code-block"):
         return
     if container["type"] == "arrow" and container.get("points"):
         pts = container["points"]
@@ -850,7 +851,7 @@ class SceneService:
                     for e in index.values()
                     if e["type"] in SHAPES
                     and not e.get("isDeleted")
-                    and not (e.get("customData", {}).get("type") in ("code_block_header",))
+                    and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
                 ]
                 pair_arrows = [
                     e
@@ -1267,6 +1268,95 @@ class SceneService:
             return {"status": "connectors rerouted", "revision": self.state.revision}
 
         return self.state.apply(apply_reroute)
+
+    def auto_fix_layout(
+        self,
+        name: str | None = None,
+        dry_run: bool = False,
+        repair_scope: str = "all",
+        aggressiveness: str = "balanced",
+        min_gap: float = 30.0,
+    ) -> dict[str, Any]:
+        """Diagnose, plan, and automatically repair layout defects with transactional rollback safety."""
+        from .auto_fix import auto_fix_scene_layout
+
+        if not isinstance(dry_run, bool):
+            raise SceneError("dry_run must be a boolean")
+
+        if not isinstance(repair_scope, str) or repair_scope.lower() not in (
+            "all",
+            "overlaps",
+            "connectors",
+            "containment",
+            "text",
+            "spacing",
+        ):
+            raise SceneError(
+                f"Invalid repair_scope '{repair_scope}'. Must be one of: all, overlaps, connectors, containment, text, spacing"
+            )
+
+        if not isinstance(aggressiveness, str) or aggressiveness.lower() not in (
+            "gentle",
+            "balanced",
+            "aggressive",
+        ):
+            raise SceneError(
+                f"Invalid aggressiveness '{aggressiveness}'. Must be one of: gentle, balanced, aggressive"
+            )
+
+        if not _finite_number(min_gap) or min_gap < 0:
+            raise SceneError("min_gap must be a non-negative finite number")
+
+        if name is not None:
+            doc = load_scene(name)
+            fix_res = auto_fix_scene_layout(
+                doc,
+                dry_run=bool(dry_run),
+                repair_scope=repair_scope,
+                aggressiveness=aggressiveness,
+                min_gap=float(min_gap),
+            )
+            if (
+                not dry_run
+                and not fix_res.get("rolled_back")
+                and fix_res.get("status") in ("repaired", "partially_repaired")
+            ):
+                save_scene(name, fix_res["document"], overwrite=True)
+            fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+            return {**fix_res_clean, "revision": self.state.revision}
+
+        if dry_run:
+            doc, rev = self.state.snapshot()
+            fix_res = auto_fix_scene_layout(
+                doc,
+                dry_run=True,
+                repair_scope=repair_scope,
+                aggressiveness=aggressiveness,
+                min_gap=float(min_gap),
+            )
+            fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+            return {**fix_res_clean, "revision": rev}
+
+        def apply_fix(doc):
+            fix_res = auto_fix_scene_layout(
+                doc,
+                dry_run=False,
+                repair_scope=repair_scope,
+                aggressiveness=aggressiveness,
+                min_gap=float(min_gap),
+            )
+            if (
+                not fix_res.get("rolled_back")
+                and fix_res.get("status") in ("repaired", "partially_repaired")
+            ):
+                doc["elements"] = fix_res["document"]["elements"]
+                if "appState" in fix_res.get("document", {}):
+                    doc["appState"] = fix_res["document"]["appState"]
+            return fix_res
+
+        fix_res = self.state.apply(apply_fix)
+        fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+        return {**fix_res_clean, "revision": self.state.revision}
 
     def find_elements(
         self,
@@ -2368,6 +2458,44 @@ class SceneService:
                         frame_padding=op.get("frame_padding", 30.0),
                     )
                     results.append({"action": "resolve_layout", "status": "resolved"})
+
+                elif action == "auto_fix_layout":
+                    from .auto_fix import auto_fix_scene_layout
+
+                    min_g = op.get("min_gap")
+                    if min_g is None:
+                        min_g = op.get("min_gap_x")
+                    if min_g is None:
+                        min_g = 30.0
+
+                    if not _finite_number(min_g) or min_g < 0:
+                        raise SceneError(
+                            f"Operation {i} (auto_fix_layout): min_gap must be a non-negative finite number"
+                        )
+
+                    d_run = op.get("dry_run", False)
+                    if not isinstance(d_run, bool):
+                        raise SceneError(
+                            f"Operation {i} (auto_fix_layout): dry_run must be a boolean"
+                        )
+
+                    fix_res = auto_fix_scene_layout(
+                        document,
+                        dry_run=d_run,
+                        repair_scope=op.get("repair_scope", "all") or "all",
+                        aggressiveness=op.get("aggressiveness", "balanced") or "balanced",
+                        min_gap=float(min_g),
+                    )
+                    if not fix_res.get("dry_run") and not fix_res.get("rolled_back"):
+                        document["elements"] = fix_res["document"]["elements"]
+                        if "appState" in fix_res.get("document", {}):
+                            document["appState"] = fix_res["document"]["appState"]
+                        index.clear()
+                        index.update(
+                            {el["id"]: el for el in document["elements"] if el.get("id")}
+                        )
+                    fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+                    results.append({"action": "auto_fix_layout", **fix_res_clean})
 
                 else:
                     raise SceneError(f"Unknown action '{action}' at operation {i}")

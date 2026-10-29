@@ -427,7 +427,7 @@ def reroute_scene_arrows(
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not (e.get("customData", {}).get("type") in ("code_block_header",))
+        and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
     ]
     arrows = [e for e in active if e.get("type") in ("arrow", "line")]
     texts = [e for e in active if e.get("type") == "text"]
@@ -438,6 +438,8 @@ def reroute_scene_arrows(
     # Group connected arrows by canonical shape pair to allocate separate lanes
     pair_arrows: Dict[Tuple[str, str], List[dict]] = {}
     for a in arrows:
+        if a.get("locked"):
+            continue
         sb = (a.get("startBinding") or {}).get("elementId")
         eb = (a.get("endBinding") or {}).get("elementId")
         if sb in element_index and eb in element_index:
@@ -465,7 +467,7 @@ def reroute_scene_arrows(
 
             has_direct_collision = False
             for s in shapes:
-                if s["id"] in (sb, eb):
+                if s.get("id") in (sb, eb):
                     continue
                 sx = float(s.get("x", 0.0))
                 sy = float(s.get("y", 0.0))
@@ -502,7 +504,7 @@ def reroute_scene_arrows(
             a["height"] = max(all_y) - min(all_y)
 
             # Position bound label along clear route segment
-            arrow_lbl = bound_labels.get(a["id"])
+            arrow_lbl = bound_labels.get(a.get("id"))
             if arrow_lbl:
                 lw = float(arrow_lbl.get("width", 80.0))
                 lh = float(arrow_lbl.get("height", 25.0))

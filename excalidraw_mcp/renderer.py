@@ -311,7 +311,7 @@ def render_scene_image(
     # Identify bound text elements of code blocks so they are not rendered twice
     code_block_text_ids = set()
     for el in elements:
-        if el.get("customData", {}).get("type") in ("code_block", "code-block"):
+        if (el.get("customData") or {}).get("type") in ("code_block", "code-block"):
             for b in el.get("boundElements", []):
                 if b.get("type") == "text":
                     code_block_text_ids.add(b["id"])
@@ -526,7 +526,7 @@ def render_scene_image(
         if not text_content:
             continue
         font_size = int(t.get("fontSize", 20) * effective_scale)
-        font_fam = t.get("customData", {}).get("fontFamily") or t.get("fontFamily")
+        font_fam = (t.get("customData") or {}).get("fontFamily") or t.get("fontFamily")
         font = get_font(font_fam, font_size)
         opacity = t.get("opacity", 100)
         stroke_color = _parse_color(t.get("strokeColor", "#1e1e1e"), opacity)
@@ -625,7 +625,7 @@ def _render_code_block(
     scale: float,
 ):
     """Render a syntax-highlighted code block with window controls and line numbers."""
-    custom_data = element.get("customData", {})
+    custom_data = element.get("customData") or {}
     code = custom_data.get("code", "")
     language = custom_data.get("language", "python")
     title = custom_data.get("title") or f"{language} code"
