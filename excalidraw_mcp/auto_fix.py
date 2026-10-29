@@ -799,7 +799,6 @@ def plan_layout_repairs(
 def _expand_frames_to_contain_children(
     frames: list[dict[str, Any]],
     active: list[dict[str, Any]],
-    bound_map: dict[str, dict[str, Any]],
     gap_mult: float,
     applied_changes: list[dict[str, Any]],
     skipped_repairs: list[dict[str, Any]] | None = None,
@@ -916,6 +915,21 @@ def _expand_frames_to_contain_children(
                         "after": {"x": f["x"], "y": f["y"], "width": f["width"], "height": f["height"]},
                     }
                 )
+
+                for c in children:
+                    cid = c.get("id")
+                    if cid and c.get("frameId") is None:
+                        c["frameId"] = fid
+                        applied_changes.append(
+                            {
+                                "element_id": cid,
+                                "change_type": "reparent",
+                                "description": f"Assigned unparented element '{cid}' to frame '{fid}'.",
+                                "before": {"frameId": None},
+                                "after": {"frameId": fid},
+                            }
+                        )
+
                 pass_changed = True
                 any_frame_expanded = True
 
@@ -1187,7 +1201,6 @@ def apply_layout_repairs(
         _expand_frames_to_contain_children(
             frames,
             active,
-            bound_map,
             gap_mult,
             applied_changes,
             skipped_repairs=skipped_repairs,
@@ -1440,7 +1453,6 @@ def apply_layout_repairs(
                 _expand_frames_to_contain_children(
                     frames,
                     active,
-                    bound_map,
                     gap_mult,
                     applied_changes,
                     skipped_repairs=skipped_repairs,

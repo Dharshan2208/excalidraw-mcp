@@ -1279,6 +1279,27 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         self.assertEqual(len(res["warnings"]), 21)
         self.assertEqual(res["warnings"][-1], "...and 5 more warnings.")
 
+    def test_unparented_element_outside_frame_is_reparented_and_recorded(self):
+        """Repair of a scene with an element 10px outside a frame results in that element having the frame's frameId afterward, and a reparent entry in applied_changes."""
+        f1 = frame(100.0, 100.0, 200.0, 200.0, name="Frame 1")
+        f1["id"] = "f1"
+        s1 = rect(290.0, 120.0, 20.0, 20.0)
+        s1["id"] = "s1"
+        s1["frameId"] = None
+
+        doc = new_document([f1, s1])
+        res = auto_fix_scene_layout(doc, repair_scope="containment")
+
+        self.assertIn(res["status"], ("repaired", "partially_repaired"))
+        reparent_changes = [c for c in res["applied_changes"] if c.get("change_type") == "reparent"]
+        self.assertEqual(len(reparent_changes), 1)
+        self.assertEqual(reparent_changes[0]["element_id"], "s1")
+        self.assertEqual(reparent_changes[0]["after"]["frameId"], "f1")
+
+        doc_elements = res["document"]["elements"]
+        s1_after = next(e for e in doc_elements if e["id"] == "s1")
+        self.assertEqual(s1_after["frameId"], "f1")
+
 
 if __name__ == "__main__":
     unittest.main()
