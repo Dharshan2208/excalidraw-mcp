@@ -276,6 +276,12 @@ When an MCP compliant agent tool (e.g. `fastmcp list mcp.json`, Cursor, or Zed) 
 
 ## MCP Tools Reference
 
+> [!IMPORTANT]
+> **BREAKING CHANGE (v0.2.0)**: The default server configuration now exposes the streamlined **`CORE` toolset (27 tools)** instead of the full 48-tool set, reducing prompt schema overhead by 45.2% (~6,560 tokens per turn). If your agent workflows or MCP clients require advanced tools (`draw_graph`, `batch_mutate`, camera viewports, element locking, grouping, or the background live canvas server), restore the previous 48-tool behavior by setting the environment variable:
+> ```bash
+> export EXCALIDRAW_TOOLSET=full
+> ```
+
 The server supports two configurable toolsets controlled by `EXCALIDRAW_TOOLSET`:
 - **`CORE` Set (27 tools, Default)**: The essential generation-edit-inspect-validate-export workflow for autonomous coding agents. Saves **45.2% in schema tokens** (~6,560 tokens per turn).
 - **`FULL` Set (48 tools)**: Includes all `CORE` tools plus advanced layered graph generators (`draw_graph`), atomic batch transactions (`batch_mutate`), element locking, grouping, camera viewports, and the background live canvas server.

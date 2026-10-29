@@ -27,3 +27,13 @@ writes are atomic, newly created storage directories are private, and
 configurable scene/export/history/element limits bound common resource exhaustion
 paths. The server does not provide authentication or multi-user isolation and
 must not be exposed directly as a public network service.
+
+### In-place file mutations
+
+Calling `auto_fix_layout(name=...)` targets a persisted scene file on disk and
+overwrites it in place upon successful layout repair. While writes use atomic
+temporary file replacement to prevent partial writes and corrupt state, modifications
+directly overwrite the underlying scene file on disk. Callers requiring file-level
+history should ensure the storage directory is version-controlled or backed up, or
+use `dry_run=True` to inspect planned changes prior to executing in-place repairs.
+

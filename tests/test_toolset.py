@@ -101,6 +101,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(len(res.contents) > 0)
             data = json.loads(res.contents[0].content)
             self.assertEqual(data["active_toolset"], mode)
+            self.assertEqual(data["server_version"], "0.2.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
             self.assertEqual(data["tool_count"], 48 if mode == "full" else 27)

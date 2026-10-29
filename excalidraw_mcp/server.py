@@ -907,7 +907,7 @@ def create_server(
         info = {
             "active_toolset": active_toolset,
             "available_toolsets": ["core", "full"],
-            "server_version": "0.1.0",
+            "server_version": "0.2.0",
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (48 tools / ~14,376 tokens) -> ~45.2% token savings
             "tool_count": 48 if is_full else 27,
             "capabilities": {
