@@ -460,29 +460,43 @@ def create_server(
             ),
         )
 
-    if is_full:
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-        def find_elements(
-            query: str | None = None,
-            type: ElementType | None = None,
-            frame_id: ElementId | None = None,
-            element_id: ElementId | None = None,
-            connected_to: ElementId | None = None,
-            include_bound_labels: bool = False,
-            limit: PageLimit = 50,
-        ) -> FindResult:
-            """Find active elements matching query string, type, frame, or connection criteria."""
-            return invoke(
-                service.find_elements,
-                query=query,
-                type=type,
-                frame_id=frame_id,
-                element_id=element_id,
-                connected_to=connected_to,
-                include_bound_labels=include_bound_labels,
-                limit=limit,
-            )
+    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    def find_elements(
+        query: str | None = None,
+        type: ElementType | None = None,
+        frame_id: ElementId | None = None,
+        element_id: ElementId | None = None,
+        connected_to: ElementId | None = None,
+        include_bound_labels: bool = False,
+        limit: PageLimit = 50,
+    ) -> FindResult:
+        """Find active elements matching query string, type, frame, or connection criteria."""
+        return invoke(
+            service.find_elements,
+            query=query,
+            type=type,
+            frame_id=frame_id,
+            element_id=element_id,
+            connected_to=connected_to,
+            include_bound_labels=include_bound_labels,
+            limit=limit,
+        )
 
+    @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
+    def get_resource(
+        uri: str | None = None,
+        resource_type: str | None = None,
+        identifier: str | None = None,
+    ) -> ResourceResult:
+        """Retrieve scene, library, theme, or element resources through a unified interface."""
+        return invoke(
+            service.get_resource,
+            uri=uri,
+            resource_type=resource_type,
+            identifier=identifier,
+        )
+
+    if is_full:
         @mcp.tool(annotations=MUTATING, run_in_thread=False)
         def batch_mutate(
             operations: list[BatchOperation],
@@ -842,20 +856,6 @@ def create_server(
             return preview(scale=scale, padding=padding, background=background)
 
         @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
-        def get_resource(
-            uri: str | None = None,
-            resource_type: str | None = None,
-            identifier: str | None = None,
-        ) -> ResourceResult:
-            """Retrieve scene, library, theme, or element resources through a unified interface."""
-            return invoke(
-                service.get_resource,
-                uri=uri,
-                resource_type=resource_type,
-                identifier=identifier,
-            )
-
-        @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
         def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
             """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
             return invoke(service.read_diagram_guide, topic=topic)
@@ -924,7 +924,7 @@ def create_server(
             "active_toolset": active_toolset,
             "available_toolsets": ["core", "full"],
             "server_version": "0.1.0",
-            "tool_count": 46 if is_full else 25,
+            "tool_count": 46 if is_full else 27,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
@@ -942,14 +942,12 @@ def create_server(
                     "unlock_elements",
                     "group_elements",
                     "ungroup_elements",
-                    "find_elements",
                     "duplicate_elements",
                     "import_scene",
                     "export_to_excalidraw_url",
                     "list_saved_scenes",
                     "list_fonts",
                     "read_diagram_guide",
-                    "get_resource",
                 ],
             },
             "config": {

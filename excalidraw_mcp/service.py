@@ -1239,34 +1239,14 @@ class SceneService:
         min_gap: float = 30.0,
     ) -> dict[str, Any]:
         """Diagnose, plan, and automatically repair layout defects with transactional rollback safety."""
-        from .auto_fix import auto_fix_scene_layout
+        from .auto_fix import auto_fix_scene_layout, _validate_params
 
         if not isinstance(dry_run, bool):
             raise SceneError("dry_run must be a boolean")
 
-        if not isinstance(repair_scope, str) or repair_scope.lower() not in (
-            "all",
-            "overlaps",
-            "connectors",
-            "containment",
-            "text",
-            "spacing",
-        ):
-            raise SceneError(
-                f"Invalid repair_scope '{repair_scope}'. Must be one of: all, overlaps, connectors, containment, text, spacing"
-            )
-
-        if not isinstance(aggressiveness, str) or aggressiveness.lower() not in (
-            "gentle",
-            "balanced",
-            "aggressive",
-        ):
-            raise SceneError(
-                f"Invalid aggressiveness '{aggressiveness}'. Must be one of: gentle, balanced, aggressive"
-            )
-
-        if not _finite_number(min_gap) or min_gap < 0:
-            raise SceneError("min_gap must be a non-negative finite number")
+        repair_scope, aggressiveness, min_gap = _validate_params(
+            repair_scope, aggressiveness, min_gap
+        )
 
         if name is not None:
             if dry_run:

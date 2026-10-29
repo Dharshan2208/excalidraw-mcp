@@ -33,12 +33,12 @@ class ToolsetConfigurationTests(unittest.TestCase):
 
 
 class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_core_toolset_registers_exactly_25_tools(self):
+    async def test_core_toolset_registers_exactly_27_tools(self):
         server = create_server(toolset="core")
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 25)
+        self.assertEqual(len(tools), 27)
         # Verify essential core tools are present
         self.assertIn("add_rectangle", tool_names)
         self.assertIn("add_circle", tool_names)
@@ -58,6 +58,8 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("get_scene_summary", tool_names)
         self.assertIn("describe_scene", tool_names)
         self.assertIn("auto_fix_layout", tool_names)
+        self.assertIn("find_elements", tool_names)
+        self.assertIn("get_resource", tool_names)
         self.assertIn("draw_mermaid", tool_names)
         self.assertIn("draw_architecture", tool_names)
         self.assertIn("save", tool_names)
@@ -69,7 +71,6 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         # Verify full-only tools are NOT in core
         self.assertNotIn("draw_graph", tool_names)
         self.assertNotIn("batch_mutate", tool_names)
-        self.assertNotIn("find_elements", tool_names)
         self.assertNotIn("lock_elements", tool_names)
         self.assertNotIn("unlock_elements", tool_names)
         self.assertNotIn("group_elements", tool_names)
@@ -120,7 +121,9 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["active_toolset"], mode)
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 46 if mode == "full" else 25)
+            self.assertEqual(data["tool_count"], 46 if mode == "full" else 27)
+            self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
+            self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 
 
 class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):

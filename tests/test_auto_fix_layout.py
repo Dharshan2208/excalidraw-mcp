@@ -1377,6 +1377,11 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         issues = diagnose_layout_issues([s1, s2], warnings=warnings)
         self.assertIn("Skipped shape 'bad_s2': missing or non-finite width/height.", warnings)
 
+    def test_service_auto_fix_layout_rejects_bool_min_gap(self):
+        """auto_fix_layout(min_gap=True) raises SceneError from the service layer."""
+        with self.assertRaises(SceneError):
+            self.service.auto_fix_layout(min_gap=True)
+
 
 if __name__ == "__main__":
     unittest.main()
