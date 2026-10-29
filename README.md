@@ -387,6 +387,16 @@ The `auto_fix_layout` tool provides deterministic layout repair with transaction
 ### Transactional Rollback Guarantee
 Before mutating any elements, an immutable snapshot of the scene is created. After repair execution, diagnostics are automatically re-run. If severe defects increase (regression detected), all modifications are discarded, restoring the pre-repair snapshot with `rolled_back = True`. If the diagram is already clean or repairs produce no changes, idempotency guarantees zero mutations (`status = "no_changes_needed"`).
 
+### Opting out of overlap detection
+
+To exempt specific shapes from overlap resolution (for example, intentionally overlaid badges, watermarks, or complex composite elements), set `"allow_overlap": true` in the element's `customData`:
+
+```json
+{"customData": {"allow_overlap": true}}
+```
+
+Elements with `customData.allow_overlap = true` will not be treated as collision defects or displaced during layout repair. If `allow_overlap` is present but is not a boolean, a warning is emitted and it is treated as `false`.
+
 ### Usage Example
 
 ```python

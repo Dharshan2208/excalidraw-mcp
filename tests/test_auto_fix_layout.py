@@ -1350,6 +1350,33 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         keys = [(p["phase"], p["element_id"]) for p in plans]
         self.assertEqual(len(keys), len(set(keys)))
 
+    def test_shape_with_invalid_allow_overlap_produces_warning_and_is_repaired(self):
+        """Shape with allow_overlap: 'yes' produces a warning and is still repaired."""
+        s1 = rect(100.0, 100.0, 100.0, 100.0)
+        s1["id"] = "s1"
+        s1["customData"] = {"allow_overlap": "yes"}
+        s2 = rect(120.0, 100.0, 100.0, 100.0)
+        s2["id"] = "s2"
+
+        doc = new_document([s1, s2])
+        res = auto_fix_scene_layout(doc, repair_scope="overlaps")
+        self.assertEqual(res["status"], "repaired")
+        self.assertTrue(any("invalid customData.allow_overlap" in w for w in res["warnings"]))
+        s2_after = next(e for e in res["document"]["elements"] if e["id"] == "s2")
+        self.assertNotEqual(s2_after["x"], 120.0)
+
+    def test_diagnose_skips_shape_with_missing_or_non_finite_dimensions(self):
+        """diagnose_layout_issues skips shapes with missing or non-finite width/height and emits warning."""
+        s1 = rect(100.0, 100.0, 100.0, 100.0)
+        s1["id"] = "valid_s1"
+        s2 = rect(100.0, 100.0, 100.0, 100.0)
+        s2["id"] = "bad_s2"
+        s2["width"] = float("nan")
+
+        warnings = []
+        issues = diagnose_layout_issues([s1, s2], warnings=warnings)
+        self.assertIn("Skipped shape 'bad_s2': missing or non-finite width/height.", warnings)
+
 
 if __name__ == "__main__":
     unittest.main()

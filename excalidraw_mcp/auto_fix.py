@@ -143,9 +143,29 @@ def _is_cluster_locked(cluster: list[dict[str, Any]]) -> bool:
     return any(bool(s.get("locked")) for s in cluster)
 
 
-def is_intentional_overlap(s1: dict[str, Any], s2: dict[str, Any]) -> bool:
+def is_intentional_overlap(
+    s1: dict[str, Any],
+    s2: dict[str, Any],
+    warnings: list[str] | None = None,
+) -> bool:
     """Determine if overlap between two shapes is intentional."""
-    if _cd(s1).get("allow_overlap") is True or _cd(s2).get("allow_overlap") is True:
+    ao1 = _cd(s1).get("allow_overlap")
+    if ao1 is not None and not isinstance(ao1, bool):
+        sid1 = s1.get("id", "unknown")
+        msg = f"Shape '{sid1}' has invalid customData.allow_overlap (expected bool, got {type(ao1).__name__}); treating as false."
+        if warnings is not None and msg not in warnings:
+            warnings.append(msg)
+        ao1 = False
+
+    ao2 = _cd(s2).get("allow_overlap")
+    if ao2 is not None and not isinstance(ao2, bool):
+        sid2 = s2.get("id", "unknown")
+        msg = f"Shape '{sid2}' has invalid customData.allow_overlap (expected bool, got {type(ao2).__name__}); treating as false."
+        if warnings is not None and msg not in warnings:
+            warnings.append(msg)
+        ao2 = False
+
+    if ao1 is True or ao2 is True:
         return True
 
     # Explicit group containment
@@ -294,6 +314,7 @@ def diagnose_layout_issues(
     document_or_elements: Any,
     min_gap: float = 30.0,
     aggressiveness: str = "balanced",
+    warnings: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Detect and classify all layout defects in a scene with semantic distinction between defects and intentional geometry."""
     active, _ = _extract_active_elements(document_or_elements)
@@ -303,12 +324,28 @@ def diagnose_layout_issues(
     gap_mult = AGGRESSIVENESS_MULT.get(aggressiveness, 1.0)
     effective_min_gap = min_gap * gap_mult
 
-    shapes = [
-        e
-        for e in active
-        if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not (_cd(e).get("type") in ("code_block_header",))
-    ]
+    valid_shapes = []
+    for e in active:
+        if e.get("type") in ("rectangle", "diamond", "ellipse") and not (_cd(e).get("type") in ("code_block_header",)):
+            w = e.get("width")
+            h = e.get("height")
+            if (
+                w is None
+                or h is None
+                or not isinstance(w, (int, float))
+                or not isinstance(h, (int, float))
+                or math.isnan(w)
+                or math.isnan(h)
+                or math.isinf(w)
+                or math.isinf(h)
+            ):
+                sid = e.get("id", "unknown")
+                msg = f"Skipped shape '{sid}': missing or non-finite width/height."
+                if warnings is not None and msg not in warnings:
+                    warnings.append(msg)
+                continue
+            valid_shapes.append(e)
+    shapes = valid_shapes
     frames = [e for e in active if e.get("type") == "frame"]
     arrows = [e for e in active if e.get("type") in ("arrow", "line")]
     texts = [e for e in active if e.get("type") == "text"]
@@ -385,7 +422,7 @@ def diagnose_layout_issues(
             if not id2:
                 continue
 
-            if is_intentional_overlap(s1, s2):
+            if is_intentional_overlap(s1, s2, warnings=warnings):
                 continue
 
             x1_min = _coord(s1, "x")
@@ -577,7 +614,7 @@ def diagnose_layout_issues(
             s2 = shapes[j]
             id2 = s2.get("id")
 
-            if is_intentional_overlap(s1, s2):
+            if is_intentional_overlap(s1, s2, warnings=warnings):
                 continue
 
             x1_min = _coord(s1, "x")
@@ -980,7 +1017,7 @@ def _resolve_node_overlaps(
                 s2 = sorted_shapes[j]
                 id2 = s2.get("id")
 
-                if is_intentional_overlap(s1, s2):
+                if is_intentional_overlap(s1, s2, warnings=warnings):
                     continue
 
                 x1_min, y1_min = _coord(s1, "x"), _coord(s1, "y")
@@ -1282,7 +1319,7 @@ def apply_layout_repairs(
                     s2 = h_shapes[j]
                     id2 = s2.get("id")
 
-                    if is_intentional_overlap(s1, s2):
+                    if is_intentional_overlap(s1, s2, warnings=warnings):
                         continue
 
                     y1_min = _coord(s1, "y")
@@ -1370,7 +1407,7 @@ def apply_layout_repairs(
                     s2 = v_shapes[j]
                     id2 = s2.get("id")
 
-                    if is_intentional_overlap(s1, s2):
+                    if is_intentional_overlap(s1, s2, warnings=warnings):
                         continue
 
                     x1_min = _coord(s1, "x")
@@ -1537,7 +1574,7 @@ def auto_fix_scene_layout(
         }
 
     # Step 3: Run comprehensive initial diagnostics
-    initial_issues = diagnose_layout_issues(snapshot_original, min_gap=m_gap, aggressiveness=aggr)
+    initial_issues = diagnose_layout_issues(snapshot_original, min_gap=m_gap, aggressiveness=aggr, warnings=warnings)
 
     # Step 4: If scene is already valid and has no defects
     if not initial_issues:
@@ -1576,7 +1613,7 @@ def auto_fix_scene_layout(
     )
 
     # Step 7: Re-run diagnostics on post-repair geometry
-    final_issues = diagnose_layout_issues(draft, min_gap=m_gap, aggressiveness=aggr)
+    final_issues = diagnose_layout_issues(draft, min_gap=m_gap, aggressiveness=aggr, warnings=warnings)
 
     initial_severe_ids = _severe_ids(initial_issues)
     final_severe_ids = _severe_ids(final_issues)
