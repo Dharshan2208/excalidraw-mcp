@@ -1231,6 +1231,21 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         self.assertEqual(len(res["skipped_repairs"]), 1)
         self.assertEqual(len(res["warnings"]), 1)
 
+    def test_performance_200_node_graph_completes_under_five_seconds(self):
+        """A 200-node draw_graph followed by auto_fix_layout completes in under 5 seconds wall clock."""
+        import time
+
+        nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(200)]
+        edges = [{"source": f"n{i}", "target": f"n{i+1}"} for i in range(199)]
+        self.service.draw_graph(nodes, edges, layout="layered")
+
+        start = time.perf_counter()
+        res = self.service.auto_fix_layout()
+        elapsed = time.perf_counter() - start
+
+        self.assertLess(elapsed, 5.0)
+        self.assertIn(res["status"], ("repaired", "partially_repaired", "no_changes_needed"))
+
 
 if __name__ == "__main__":
     unittest.main()

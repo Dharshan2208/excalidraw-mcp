@@ -92,29 +92,50 @@ def _get_group_ids(el: dict[str, Any] | None) -> set[str]:
     return set()
 
 
-def _get_shape_cluster(target: dict[str, Any], shapes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Get all shapes transitively connected to target via shared groupIds."""
+def _build_group_index(shapes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Build a mapping from group ID to list of shapes possessing that group ID."""
+    index: dict[str, list[dict[str, Any]]] = {}
+    for s in shapes:
+        for gid in _get_group_ids(s):
+            index.setdefault(gid, []).append(s)
+    return index
+
+
+def _get_shape_cluster(
+    target: dict[str, Any],
+    group_index_or_shapes: dict[str, list[dict[str, Any]]] | list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Get all shapes transitively connected to target via shared groupIds using group_index."""
     target_groups = _get_group_ids(target)
     if not target_groups:
         return [target]
 
-    cluster_groups = set(target_groups)
-    changed = True
-    while changed:
-        changed = False
-        for s in shapes:
-            sg = _get_group_ids(s)
-            if sg & cluster_groups and not sg.issubset(cluster_groups):
-                cluster_groups.update(sg)
-                changed = True
+    if isinstance(group_index_or_shapes, list):
+        group_index = _build_group_index(group_index_or_shapes)
+    else:
+        group_index = group_index_or_shapes
 
-    cluster = []
+    cluster_shapes: dict[str, dict[str, Any]] = {}
     tid = target.get("id")
-    for s in shapes:
-        sid = s.get("id")
-        if (sid and sid == tid) or (_get_group_ids(s) & cluster_groups):
-            cluster.append(s)
-    return cluster if cluster else [target]
+    if tid:
+        cluster_shapes[tid] = target
+
+    visited_groups = set()
+    queue = list(target_groups)
+    while queue:
+        gid = queue.pop()
+        if gid in visited_groups:
+            continue
+        visited_groups.add(gid)
+        for s in group_index.get(gid, []):
+            sid = s.get("id")
+            if sid and sid not in cluster_shapes:
+                cluster_shapes[sid] = s
+                for next_gid in _get_group_ids(s):
+                    if next_gid not in visited_groups:
+                        queue.append(next_gid)
+
+    return list(cluster_shapes.values()) if cluster_shapes else [target]
 
 
 def _is_cluster_locked(cluster: list[dict[str, Any]]) -> bool:
@@ -877,6 +898,126 @@ def _expand_frames_to_contain_children(
     return any_frame_expanded
 
 
+def _resolve_node_overlaps(
+    shapes: list[dict[str, Any]],
+    effective_min_gap: float,
+    bound_map: dict[str, dict[str, Any]],
+    applied_changes: list[dict[str, Any]],
+    skipped_repairs: list[dict[str, Any]],
+    warnings: list[str],
+) -> bool:
+    """Resolve node overlaps using up to 12 passes. Returns True if any elements were moved."""
+    any_moved = False
+    for _pass in range(12):
+        had_overlap = False
+        group_index = _build_group_index(shapes)
+        sorted_shapes = sorted(
+            shapes,
+            key=lambda s: (str(s.get("frameId") or ""), _coord(s, "y"), _coord(s, "x")),
+        )
+
+        for i in range(len(sorted_shapes)):
+            s1 = sorted_shapes[i]
+            id1 = s1.get("id")
+
+            for j in range(i + 1, len(sorted_shapes)):
+                s2 = sorted_shapes[j]
+                id2 = s2.get("id")
+
+                if is_intentional_overlap(s1, s2):
+                    continue
+
+                x1_min, y1_min = _coord(s1, "x"), _coord(s1, "y")
+                x1_max, y1_max = x1_min + abs(_coord(s1, "width")), y1_min + abs(_coord(s1, "height"))
+                x2_min, y2_min = _coord(s2, "x"), _coord(s2, "y")
+                x2_max, y2_max = x2_min + abs(_coord(s2, "width")), y2_min + abs(_coord(s2, "height"))
+
+                ix = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
+                iy = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
+
+                if ix > 0.5 and iy > 0.5:
+                    had_overlap = True
+
+                    cluster1 = _get_shape_cluster(s1, group_index)
+                    cluster2 = _get_shape_cluster(s2, group_index)
+
+                    c1_locked = _is_cluster_locked(cluster1)
+                    c2_locked = _is_cluster_locked(cluster2)
+
+                    if c1_locked and c2_locked:
+                        if not any(sr.get("element_id") == id2 for sr in skipped_repairs):
+                            skipped_repairs.append(
+                                {"element_id": id2 or "unknown", "reason": "Both colliding clusters contain locked elements and cannot be displaced."}
+                            )
+                        msg = f"Cannot resolve collision between locked clusters '{id1}' and '{id2}'."
+                        if msg not in warnings:
+                            warnings.append(msg)
+                        continue
+
+                    if c2_locked and not c1_locked:
+                        target_cluster = cluster1
+                        ref_cluster = cluster2
+                    else:
+                        target_cluster = cluster2
+                        ref_cluster = cluster1
+
+                    t_x_min = min(_coord(s, "x") for s in target_cluster)
+                    t_x_max = max(_coord(s, "x") + abs(_coord(s, "width")) for s in target_cluster)
+                    t_y_min = min(_coord(s, "y") for s in target_cluster)
+                    t_y_max = max(_coord(s, "y") + abs(_coord(s, "height")) for s in target_cluster)
+
+                    r_x_min = min(_coord(s, "x") for s in ref_cluster)
+                    r_x_max = max(_coord(s, "x") + abs(_coord(s, "width")) for s in ref_cluster)
+                    r_y_min = min(_coord(s, "y") for s in ref_cluster)
+                    r_y_max = max(_coord(s, "y") + abs(_coord(s, "height")) for s in ref_cluster)
+
+                    if t_x_min >= r_x_min:
+                        dx = r_x_max - t_x_min + effective_min_gap
+                    else:
+                        dx = -(t_x_max - r_x_min + effective_min_gap)
+
+                    if t_y_min >= r_y_min:
+                        dy = r_y_max - t_y_min + effective_min_gap
+                    else:
+                        dy = -(t_y_max - r_y_min + effective_min_gap)
+
+                    if abs(dx) <= abs(dy):
+                        shift_dx, shift_dy = dx, 0.0
+                    else:
+                        shift_dx, shift_dy = 0.0, dy
+
+                    for target_shape in target_cluster:
+                        tid = target_shape.get("id")
+                        if not tid:
+                            continue
+                        old_state_target = {"x": target_shape.get("x"), "y": target_shape.get("y")}
+                        new_x = round(_coord(target_shape, "x") + shift_dx, 1)
+                        new_y = round(_coord(target_shape, "y") + shift_dy, 1)
+                        target_shape["x"] = new_x
+                        target_shape["y"] = new_y
+
+                        t_lbl = bound_map.get(tid)
+                        if t_lbl:
+                            t_lbl["x"] = round(_coord(t_lbl, "x") + shift_dx, 1)
+                            t_lbl["y"] = round(_coord(t_lbl, "y") + shift_dy, 1)
+
+                        applied_changes.append(
+                            {
+                                "element_id": tid,
+                                "change_type": "move",
+                                "description": f"Shifted node '{tid}' by (dx={shift_dx:.1f}, dy={shift_dy:.1f}) to clear overlap.",
+                                "before": old_state_target,
+                                "after": {"x": target_shape["x"], "y": target_shape["y"]},
+                            }
+                        )
+                        any_moved = True
+
+        if not had_overlap:
+            break
+
+    return any_moved
+
+
 def apply_layout_repairs(
     document_or_elements: Any,
     repair_scope: str = "all",
@@ -1012,115 +1153,14 @@ def apply_layout_repairs(
     # Phase 2: Node Overlap Resolution (Minimal Displacement with Grouping)
     # =========================================================================
     if "overlaps" in allowed_types:
-        for _pass in range(12):
-            had_overlap = False
-            sorted_shapes = sorted(
-                shapes,
-                key=lambda s: (str(s.get("frameId") or ""), _coord(s, "y"), _coord(s, "x")),
-            )
-
-            for i in range(len(sorted_shapes)):
-                s1 = sorted_shapes[i]
-                id1 = s1.get("id")
-
-                for j in range(i + 1, len(sorted_shapes)):
-                    s2 = sorted_shapes[j]
-                    id2 = s2.get("id")
-
-                    if is_intentional_overlap(s1, s2):
-                        continue
-
-                    x1_min, y1_min = _coord(s1, "x"), _coord(s1, "y")
-                    x1_max, y1_max = x1_min + abs(_coord(s1, "width")), y1_min + abs(_coord(s1, "height"))
-                    x2_min, y2_min = _coord(s2, "x"), _coord(s2, "y")
-                    x2_max, y2_max = x2_min + abs(_coord(s2, "width")), y2_min + abs(_coord(s2, "height"))
-
-                    ix = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
-                    iy = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
-
-                    if ix > 0.5 and iy > 0.5:
-                        had_overlap = True
-
-                        # Gather group clusters for s1 and s2
-                        cluster1 = _get_shape_cluster(s1, shapes)
-                        cluster2 = _get_shape_cluster(s2, shapes)
-
-                        c1_locked = _is_cluster_locked(cluster1)
-                        c2_locked = _is_cluster_locked(cluster2)
-
-                        if c1_locked and c2_locked:
-                            if not any(sr.get("element_id") == id2 for sr in skipped_repairs):
-                                skipped_repairs.append(
-                                    {"element_id": id2 or "unknown", "reason": "Both colliding clusters contain locked elements and cannot be displaced."}
-                                )
-                            msg = f"Cannot resolve collision between locked clusters '{id1}' and '{id2}'."
-                            if msg not in warnings:
-                                warnings.append(msg)
-                            continue
-
-                        # Determine which cluster moves: unlocked cluster moves away from locked/reference cluster
-                        if c2_locked and not c1_locked:
-                            target_cluster = cluster1
-                            ref_cluster = cluster2
-                        else:
-                            target_cluster = cluster2
-                            ref_cluster = cluster1
-
-                        # Compute cluster bounding boxes
-                        t_x_min = min(_coord(s, "x") for s in target_cluster)
-                        t_x_max = max(_coord(s, "x") + abs(_coord(s, "width")) for s in target_cluster)
-                        t_y_min = min(_coord(s, "y") for s in target_cluster)
-                        t_y_max = max(_coord(s, "y") + abs(_coord(s, "height")) for s in target_cluster)
-
-                        r_x_min = min(_coord(s, "x") for s in ref_cluster)
-                        r_x_max = max(_coord(s, "x") + abs(_coord(s, "width")) for s in ref_cluster)
-                        r_y_min = min(_coord(s, "y") for s in ref_cluster)
-                        r_y_max = max(_coord(s, "y") + abs(_coord(s, "height")) for s in ref_cluster)
-
-                        # Shift vector along axis of least resistance
-                        if t_x_min >= r_x_min:
-                            dx = r_x_max - t_x_min + effective_min_gap
-                        else:
-                            dx = -(t_x_max - r_x_min + effective_min_gap)
-
-                        if t_y_min >= r_y_min:
-                            dy = r_y_max - t_y_min + effective_min_gap
-                        else:
-                            dy = -(t_y_max - r_y_min + effective_min_gap)
-
-                        if abs(dx) <= abs(dy):
-                            shift_dx, shift_dy = dx, 0.0
-                        else:
-                            shift_dx, shift_dy = 0.0, dy
-
-                        # Displace all elements in the target cluster preserving relative alignment
-                        for target_shape in target_cluster:
-                            tid = target_shape.get("id")
-                            if not tid:
-                                continue
-                            old_state_target = {"x": target_shape.get("x"), "y": target_shape.get("y")}
-                            new_x = round(_coord(target_shape, "x") + shift_dx, 1)
-                            new_y = round(_coord(target_shape, "y") + shift_dy, 1)
-                            target_shape["x"] = new_x
-                            target_shape["y"] = new_y
-
-                            t_lbl = bound_map.get(tid)
-                            if t_lbl:
-                                t_lbl["x"] = round(_coord(t_lbl, "x") + shift_dx, 1)
-                                t_lbl["y"] = round(_coord(t_lbl, "y") + shift_dy, 1)
-
-                            applied_changes.append(
-                                {
-                                    "element_id": tid,
-                                    "change_type": "move",
-                                    "description": f"Shifted node '{tid}' by (dx={shift_dx:.1f}, dy={shift_dy:.1f}) to clear overlap.",
-                                    "before": old_state_target,
-                                    "after": {"x": target_shape["x"], "y": target_shape["y"]},
-                                }
-                            )
-
-            if not had_overlap:
-                break
+        _resolve_node_overlaps(
+            shapes,
+            effective_min_gap,
+            bound_map,
+            applied_changes,
+            skipped_repairs,
+            warnings,
+        )
 
     # =========================================================================
     # Phase 3: Frame Containment Expansion
@@ -1183,181 +1223,199 @@ def apply_layout_repairs(
     if "spacing" in allowed_types:
         moved_shapes = False
 
-        # 5a. Horizontal Spacing Adjustments (Left to Right Cascade)
-        h_shapes = sorted(shapes, key=lambda s: _coord(s, "x"))
-        for i in range(len(h_shapes) - 1):
-            s1 = h_shapes[i]
-            id1 = s1.get("id")
-            for j in range(i + 1, len(h_shapes)):
-                s2 = h_shapes[j]
-                id2 = s2.get("id")
+        for _pass in range(12):
+            pass_moved = False
+            group_index = _build_group_index(shapes)
 
-                if is_intentional_overlap(s1, s2):
-                    continue
+            # 5a. Horizontal Spacing Adjustments (Left to Right Cascade)
+            h_shapes = sorted(shapes, key=lambda s: _coord(s, "x"))
+            for i in range(len(h_shapes) - 1):
+                s1 = h_shapes[i]
+                id1 = s1.get("id")
+                for j in range(i + 1, len(h_shapes)):
+                    s2 = h_shapes[j]
+                    id2 = s2.get("id")
 
-                y1_min = _coord(s1, "y")
-                y1_max = y1_min + abs(_coord(s1, "height"))
-                y2_min = _coord(s2, "y")
-                y2_max = y2_min + abs(_coord(s2, "height"))
+                    if is_intentional_overlap(s1, s2):
+                        continue
 
-                v_overlap = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
-                if v_overlap > 10.0:
-                    x1_max = _coord(s1, "x") + abs(_coord(s1, "width"))
-                    x2_min = _coord(s2, "x")
-                    h_gap = x2_min - x1_max
-
-                    if h_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
-                        cluster1 = _get_shape_cluster(s1, shapes)
-                        cluster2 = _get_shape_cluster(s2, shapes)
-                        c1_locked = _is_cluster_locked(cluster1)
-                        c2_locked = _is_cluster_locked(cluster2)
-
-                        if c1_locked and c2_locked:
-                            if not any(sr.get("element_id") == id2 for sr in skipped_repairs):
-                                skipped_repairs.append(
-                                    {"element_id": id2 or "unknown", "reason": "Both crowded clusters contain locked elements and cannot be adjusted."}
-                                )
-                            msg = f"Cannot adjust horizontal spacing between locked clusters '{id1}' and '{id2}'."
-                            if msg not in warnings:
-                                warnings.append(msg)
-                            continue
-
-                        if c2_locked and not c1_locked:
-                            # Shift cluster1 leftward to open required gap
-                            new_x1 = round(x2_min - effective_min_gap - abs(_coord(s1, "width")), 1)
-                            delta = round(new_x1 - _coord(s1, "x"), 1)
-                            if abs(delta) > 0.5:
-                                for shape_to_move in cluster1:
-                                    sid = shape_to_move.get("id")
-                                    if not sid:
-                                        continue
-                                    old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
-                                    shape_to_move["x"] = round(_coord(shape_to_move, "x") + delta, 1)
-                                    pt = bound_map.get(sid)
-                                    if pt:
-                                        pt["x"] = round(_coord(pt, "x") + delta, 1)
-                                    applied_changes.append(
-                                        {
-                                            "element_id": sid,
-                                            "change_type": "adjust_spacing",
-                                            "description": f"Adjusted horizontal spacing for node '{sid}' by {delta}px.",
-                                            "before": old_pos,
-                                            "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
-                                        }
-                                    )
-                                moved_shapes = True
-                        else:
-                            # Shift cluster2 rightward
-                            new_x2 = round(x1_max + effective_min_gap, 1)
-                            delta = round(new_x2 - x2_min, 1)
-                            if delta > 0.5:
-                                for shape_to_move in cluster2:
-                                    sid = shape_to_move.get("id")
-                                    if not sid:
-                                        continue
-                                    old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
-                                    shape_to_move["x"] = round(_coord(shape_to_move, "x") + delta, 1)
-                                    pt = bound_map.get(sid)
-                                    if pt:
-                                        pt["x"] = round(_coord(pt, "x") + delta, 1)
-                                    applied_changes.append(
-                                        {
-                                            "element_id": sid,
-                                            "change_type": "adjust_spacing",
-                                            "description": f"Adjusted horizontal spacing for node '{sid}' by {delta}px.",
-                                            "before": old_pos,
-                                            "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
-                                        }
-                                    )
-                                moved_shapes = True
-
-        # 5b. Vertical Spacing Adjustments (Top to Bottom Cascade)
-        v_shapes = sorted(shapes, key=lambda s: _coord(s, "y"))
-        for i in range(len(v_shapes) - 1):
-            s1 = v_shapes[i]
-            id1 = s1.get("id")
-            for j in range(i + 1, len(v_shapes)):
-                s2 = v_shapes[j]
-                id2 = s2.get("id")
-
-                if is_intentional_overlap(s1, s2):
-                    continue
-
-                x1_min = _coord(s1, "x")
-                x1_max = x1_min + abs(_coord(s1, "width"))
-                x2_min = _coord(s2, "x")
-                x2_max = x2_min + abs(_coord(s2, "width"))
-
-                h_overlap = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
-                if h_overlap > 10.0:
-                    y1_max = _coord(s1, "y") + abs(_coord(s1, "height"))
+                    y1_min = _coord(s1, "y")
+                    y1_max = y1_min + abs(_coord(s1, "height"))
                     y2_min = _coord(s2, "y")
-                    v_gap = y2_min - y1_max
+                    y2_max = y2_min + abs(_coord(s2, "height"))
 
-                    if v_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
-                        cluster1 = _get_shape_cluster(s1, shapes)
-                        cluster2 = _get_shape_cluster(s2, shapes)
-                        c1_locked = _is_cluster_locked(cluster1)
-                        c2_locked = _is_cluster_locked(cluster2)
+                    v_overlap = max(0.0, min(y1_max, y2_max) - max(y1_min, y2_min))
+                    if v_overlap > 10.0:
+                        x1_max = _coord(s1, "x") + abs(_coord(s1, "width"))
+                        x2_min = _coord(s2, "x")
+                        h_gap = x2_min - x1_max
 
-                        if c1_locked and c2_locked:
-                            if not any(sr.get("element_id") == id2 for sr in skipped_repairs):
-                                skipped_repairs.append(
-                                    {"element_id": id2 or "unknown", "reason": "Both crowded clusters contain locked elements and cannot be adjusted."}
-                                )
-                            msg = f"Cannot adjust vertical spacing between locked clusters '{id1}' and '{id2}'."
-                            if msg not in warnings:
-                                warnings.append(msg)
-                            continue
+                        if h_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
+                            cluster1 = _get_shape_cluster(s1, group_index)
+                            cluster2 = _get_shape_cluster(s2, group_index)
+                            c1_locked = _is_cluster_locked(cluster1)
+                            c2_locked = _is_cluster_locked(cluster2)
 
-                        if c2_locked and not c1_locked:
-                            # Shift cluster1 upward
-                            new_y1 = round(y2_min - effective_min_gap - abs(_coord(s1, "height")), 1)
-                            delta = round(new_y1 - _coord(s1, "y"), 1)
-                            if abs(delta) > 0.5:
-                                for shape_to_move in cluster1:
-                                    sid = shape_to_move.get("id")
-                                    if not sid:
-                                        continue
-                                    old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
-                                    shape_to_move["y"] = round(_coord(shape_to_move, "y") + delta, 1)
-                                    pt = bound_map.get(sid)
-                                    if pt:
-                                        pt["y"] = round(_coord(pt, "y") + delta, 1)
-                                    applied_changes.append(
-                                        {
-                                            "element_id": sid,
-                                            "change_type": "adjust_spacing",
-                                            "description": f"Adjusted vertical spacing for node '{sid}' by {delta}px.",
-                                            "before": old_pos,
-                                            "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
-                                        }
+                            if c1_locked and c2_locked:
+                                if not any(sr.get("element_id") == id2 for sr in skipped_repairs):
+                                    skipped_repairs.append(
+                                        {"element_id": id2 or "unknown", "reason": "Both crowded clusters contain locked elements and cannot be adjusted."}
                                     )
-                                moved_shapes = True
-                        else:
-                            # Shift cluster2 downward
-                            new_y2 = round(y1_max + effective_min_gap, 1)
-                            delta = round(new_y2 - y2_min, 1)
-                            if delta > 0.5:
-                                for shape_to_move in cluster2:
-                                    sid = shape_to_move.get("id")
-                                    if not sid:
-                                        continue
-                                    old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
-                                    shape_to_move["y"] = round(_coord(shape_to_move, "y") + delta, 1)
-                                    pt = bound_map.get(sid)
-                                    if pt:
-                                        pt["y"] = round(_coord(pt, "y") + delta, 1)
-                                    applied_changes.append(
-                                        {
-                                            "element_id": sid,
-                                            "change_type": "adjust_spacing",
-                                            "description": f"Adjusted vertical spacing for node '{sid}' by {delta}px.",
-                                            "before": old_pos,
-                                            "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
-                                        }
+                                msg = f"Cannot adjust horizontal spacing between locked clusters '{id1}' and '{id2}'."
+                                if msg not in warnings:
+                                    warnings.append(msg)
+                                continue
+
+                            if c2_locked and not c1_locked:
+                                # Shift cluster1 leftward to open required gap
+                                new_x1 = round(x2_min - effective_min_gap - abs(_coord(s1, "width")), 1)
+                                delta = round(new_x1 - _coord(s1, "x"), 1)
+                                if abs(delta) > 0.5:
+                                    for shape_to_move in cluster1:
+                                        sid = shape_to_move.get("id")
+                                        if not sid:
+                                            continue
+                                        old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
+                                        shape_to_move["x"] = round(_coord(shape_to_move, "x") + delta, 1)
+                                        pt = bound_map.get(sid)
+                                        if pt:
+                                            pt["x"] = round(_coord(pt, "x") + delta, 1)
+                                        applied_changes.append(
+                                            {
+                                                "element_id": sid,
+                                                "change_type": "adjust_spacing",
+                                                "description": f"Adjusted horizontal spacing for node '{sid}' by {delta}px.",
+                                                "before": old_pos,
+                                                "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
+                                            }
+                                        )
+                                    pass_moved = True
+                            else:
+                                # Shift cluster2 rightward
+                                new_x2 = round(x1_max + effective_min_gap, 1)
+                                delta = round(new_x2 - x2_min, 1)
+                                if delta > 0.5:
+                                    for shape_to_move in cluster2:
+                                        sid = shape_to_move.get("id")
+                                        if not sid:
+                                            continue
+                                        old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
+                                        shape_to_move["x"] = round(_coord(shape_to_move, "x") + delta, 1)
+                                        pt = bound_map.get(sid)
+                                        if pt:
+                                            pt["x"] = round(_coord(pt, "x") + delta, 1)
+                                        applied_changes.append(
+                                            {
+                                                "element_id": sid,
+                                                "change_type": "adjust_spacing",
+                                                "description": f"Adjusted horizontal spacing for node '{sid}' by {delta}px.",
+                                                "before": old_pos,
+                                                "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
+                                            }
+                                        )
+                                    pass_moved = True
+
+            # 5b. Vertical Spacing Adjustments (Top to Bottom Cascade)
+            v_shapes = sorted(shapes, key=lambda s: _coord(s, "y"))
+            for i in range(len(v_shapes) - 1):
+                s1 = v_shapes[i]
+                id1 = s1.get("id")
+                for j in range(i + 1, len(v_shapes)):
+                    s2 = v_shapes[j]
+                    id2 = s2.get("id")
+
+                    if is_intentional_overlap(s1, s2):
+                        continue
+
+                    x1_min = _coord(s1, "x")
+                    x1_max = x1_min + abs(_coord(s1, "width"))
+                    x2_min = _coord(s2, "x")
+                    x2_max = x2_min + abs(_coord(s2, "width"))
+
+                    h_overlap = max(0.0, min(x1_max, x2_max) - max(x1_min, x2_min))
+                    if h_overlap > 10.0:
+                        y1_max = _coord(s1, "y") + abs(_coord(s1, "height"))
+                        y2_min = _coord(s2, "y")
+                        v_gap = y2_min - y1_max
+
+                        if v_gap < effective_min_gap * SPACING_RATIO_THRESHOLD:
+                            cluster1 = _get_shape_cluster(s1, group_index)
+                            cluster2 = _get_shape_cluster(s2, group_index)
+                            c1_locked = _is_cluster_locked(cluster1)
+                            c2_locked = _is_cluster_locked(cluster2)
+
+                            if c1_locked and c2_locked:
+                                if not any(sr.get("element_id") == id2 for sr in skipped_repairs):
+                                    skipped_repairs.append(
+                                        {"element_id": id2 or "unknown", "reason": "Both crowded clusters contain locked elements and cannot be adjusted."}
                                     )
-                                moved_shapes = True
+                                msg = f"Cannot adjust vertical spacing between locked clusters '{id1}' and '{id2}'."
+                                if msg not in warnings:
+                                    warnings.append(msg)
+                                continue
+
+                            if c2_locked and not c1_locked:
+                                # Shift cluster1 upward
+                                new_y1 = round(y2_min - effective_min_gap - abs(_coord(s1, "height")), 1)
+                                delta = round(new_y1 - _coord(s1, "y"), 1)
+                                if abs(delta) > 0.5:
+                                    for shape_to_move in cluster1:
+                                        sid = shape_to_move.get("id")
+                                        if not sid:
+                                            continue
+                                        old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
+                                        shape_to_move["y"] = round(_coord(shape_to_move, "y") + delta, 1)
+                                        pt = bound_map.get(sid)
+                                        if pt:
+                                            pt["y"] = round(_coord(pt, "y") + delta, 1)
+                                        applied_changes.append(
+                                            {
+                                                "element_id": sid,
+                                                "change_type": "adjust_spacing",
+                                                "description": f"Adjusted vertical spacing for node '{sid}' by {delta}px.",
+                                                "before": old_pos,
+                                                "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
+                                            }
+                                        )
+                                    pass_moved = True
+                            else:
+                                # Shift cluster2 downward
+                                new_y2 = round(y1_max + effective_min_gap, 1)
+                                delta = round(new_y2 - y2_min, 1)
+                                if delta > 0.5:
+                                    for shape_to_move in cluster2:
+                                        sid = shape_to_move.get("id")
+                                        if not sid:
+                                            continue
+                                        old_pos = {"x": shape_to_move.get("x"), "y": shape_to_move.get("y")}
+                                        shape_to_move["y"] = round(_coord(shape_to_move, "y") + delta, 1)
+                                        pt = bound_map.get(sid)
+                                        if pt:
+                                            pt["y"] = round(_coord(pt, "y") + delta, 1)
+                                        applied_changes.append(
+                                            {
+                                                "element_id": sid,
+                                                "change_type": "adjust_spacing",
+                                                "description": f"Adjusted vertical spacing for node '{sid}' by {delta}px.",
+                                                "before": old_pos,
+                                                "after": {"x": shape_to_move["x"], "y": shape_to_move["y"]},
+                                            }
+                                        )
+                                    pass_moved = True
+
+            if pass_moved:
+                moved_shapes = True
+                if "overlaps" in allowed_types:
+                    _resolve_node_overlaps(
+                        shapes,
+                        effective_min_gap,
+                        bound_map,
+                        applied_changes,
+                        skipped_repairs,
+                        warnings,
+                    )
+            else:
+                break
 
         if moved_shapes:
             if frames:
