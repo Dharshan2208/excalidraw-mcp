@@ -1382,6 +1382,14 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         with self.assertRaises(SceneError):
             self.service.auto_fix_layout(min_gap=True)
 
+    def test_min_gap_upper_bound_validation(self):
+        """min_gap=2000 raises SceneError; min_gap=1000 does not."""
+        with self.assertRaises(SceneError):
+            self.service.auto_fix_layout(min_gap=2000)
+
+        res = self.service.auto_fix_layout(min_gap=1000)
+        self.assertIn(res["status"], ("repaired", "partially_repaired", "no_changes_needed"))
+
 
 if __name__ == "__main__":
     unittest.main()

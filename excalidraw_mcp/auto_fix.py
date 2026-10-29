@@ -32,8 +32,15 @@ def _validate_params(repair_scope: str, aggressiveness: str, min_gap: float) -> 
         raise SceneError(
             f"Invalid aggressiveness '{aggressiveness}'. Must be one of: {', '.join(VALID_AGGRESSIVENESS)}"
         )
-    if isinstance(min_gap, bool) or not isinstance(min_gap, (int, float)) or math.isnan(min_gap) or math.isinf(min_gap) or min_gap < 0:
-        raise SceneError("min_gap must be a non-negative finite number")
+    if (
+        isinstance(min_gap, bool)
+        or not isinstance(min_gap, (int, float))
+        or math.isnan(min_gap)
+        or math.isinf(min_gap)
+        or min_gap < 0
+        or min_gap > 1000.0
+    ):
+        raise SceneError("min_gap must be between 0 and 1000")
     return repair_scope.lower(), aggressiveness.lower(), float(min_gap)
 
 
@@ -1547,7 +1554,11 @@ def auto_fix_scene_layout(
     aggressiveness: str = "balanced",
     min_gap: float = 30.0,
 ) -> dict[str, Any]:
-    """Analyze and systematically repair layout defects in an Excalidraw scene with transactional validation."""
+    """Analyze and systematically repair layout defects in an Excalidraw scene with transactional validation.
+
+    min_gap must be between 0 and 1000 (effective spacing defect threshold is min_gap * 0.65).
+    aggressiveness='gentle' provides a smaller expansion (0.8x), not compaction.
+    """
     scope, aggr, m_gap = _validate_params(repair_scope, aggressiveness, min_gap)
     active, is_doc = _extract_active_elements(document_or_elements)
     warnings: list[str] = []

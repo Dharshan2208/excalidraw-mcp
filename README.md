@@ -379,10 +379,10 @@ The `auto_fix_layout` tool provides deterministic layout repair with transaction
   - `"text"`: Text clipping container expansion only.
   - `"spacing"`: Component gap widening only.
 - `aggressiveness` (*str*, default `"balanced"`): Margin and clearance multiplier:
-  - `"gentle"`: `0.8x` multiplier for compact diagrams.
+  - `"gentle"`: `0.8x` multiplier for a smaller expansion (does not compact existing gaps).
   - `"balanced"`: `1.0x` standard layout spacing.
   - `"aggressive"`: `1.35x` generous clearance corridors.
-- `min_gap` (*float*, default `30.0`): Minimum clearance distance in pixels between shapes.
+- `min_gap` (*float*, default `30.0`): Minimum clearance distance in pixels between shapes (between 0 and 1000). Spacing defect detection triggers at an effective threshold of `min_gap * 0.65` (~19.5px for default 30.0).
 
 ### Transactional Rollback Guarantee
 Before mutating any elements, an immutable snapshot of the scene is created. After repair execution, diagnostics are automatically re-run. If severe defects increase (regression detected), all modifications are discarded, restoring the pre-repair snapshot with `rolled_back = True`. If the diagram is already clean or repairs produce no changes, idempotency guarantees zero mutations (`status = "no_changes_needed"`).

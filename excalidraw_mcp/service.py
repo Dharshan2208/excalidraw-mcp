@@ -1238,7 +1238,11 @@ class SceneService:
         aggressiveness: str = "balanced",
         min_gap: float = 30.0,
     ) -> dict[str, Any]:
-        """Diagnose, plan, and automatically repair layout defects with transactional rollback safety."""
+        """Diagnose, plan, and automatically repair layout defects with transactional rollback safety.
+
+        min_gap must be between 0 and 1000 (effective spacing defect threshold is min_gap * 0.65).
+        aggressiveness="gentle" provides a smaller expansion (0.8x), not compaction.
+        """
         from .auto_fix import auto_fix_scene_layout, _validate_params
 
         if not isinstance(dry_run, bool):
