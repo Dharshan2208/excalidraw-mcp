@@ -2808,6 +2808,12 @@ class SceneService:
             result["cluster_map"] = cluster_map
         return result
 
+    def set_element_locked(self, element_ids, locked: bool = True):
+        """Unified method to lock or unlock elements and their bound labels."""
+        if locked:
+            return self.lock_elements(element_ids)
+        return self.unlock_elements(element_ids)
+
     def lock_elements(self, element_ids):
         if not isinstance(element_ids, list) or not element_ids:
             raise SceneError("element_ids must be a non-empty list of element IDs")
@@ -2857,6 +2863,15 @@ class SceneService:
 
         res = self.state.apply(apply_unlock)
         return {**res, "revision": self.state.revision}
+
+    def manage_groups(self, element_ids=None, group_id=None, action: str = "group"):
+        """Unified method to group or ungroup diagram elements."""
+        action_norm = (action or "group").strip().lower()
+        if action_norm == "group":
+            return self.group_elements(element_ids)
+        elif action_norm == "ungroup":
+            return self.ungroup_elements(element_ids=element_ids, group_id=group_id)
+        raise SceneError(f"Invalid group action '{action}'; expected 'group' or 'ungroup'")
 
     def group_elements(self, element_ids):
         if not isinstance(element_ids, list) or len(element_ids) < 2:
@@ -2995,7 +3010,19 @@ class SceneService:
         scroll_y=None,
         zoom=None,
         background_color=None,
+        focus_element_ids=None,
+        padding=50.0,
     ):
+        if focus_element_ids is not None:
+            res = self.focus_elements(focus_element_ids, padding=padding)
+            if (
+                scroll_x is None
+                and scroll_y is None
+                and zoom is None
+                and background_color is None
+            ):
+                return res
+
         if scroll_x is not None and not _finite_number(scroll_x):
             raise SceneError("scroll_x must be a finite number")
         if scroll_y is not None and not _finite_number(scroll_y):

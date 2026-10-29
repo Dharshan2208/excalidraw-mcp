@@ -3,8 +3,15 @@
 All domain failures are MCP tool errors. Numeric inputs and style values have
 JSON Schema bounds/enums, structured dictionary results have output schemas, and
 tools advertise read-only, destructive, idempotent, and open-world hints where
-applicable. Those annotations describe intent; clients still decide how to show
-or approve calls.
+applicable.
+
+## Toolset Configuration (`EXCALIDRAW_TOOLSET`)
+
+The server supports two toolset modes controlled by the `EXCALIDRAW_TOOLSET` environment variable:
+- `core` (default): Streamlined 25-tool set covering standard generation, mutation, inspection, auto-repair, and export workflows with a 45.2% reduction in schema tokens.
+- `full`: Complete 49-tool set including advanced graph generation (`draw_graph`), batch mutations (`batch_mutate`), live canvas background server (`start_live_server`), viewport camera controls, element locking, and grouping.
+
+Zero-token capability discovery is available via the MCP resource `excalidraw://capabilities`.
 
 ## Create and edit
 
@@ -55,8 +62,11 @@ or approve calls.
 - `load(name)`: validates and replaces the active scene. A concurrent edit makes
   the operation fail instead of being overwritten. Persisted byte and document
   element limits are enforced before the active scene changes.
+- `set_element_locked(element_ids, locked=True)`: unified tool to lock or unlock elements and their bound labels (also supports legacy `lock_elements` and `unlock_elements` wrappers).
+- `manage_groups(element_ids=None, group_id=None, action="group")`: unified tool to group or ungroup diagram components (also supports legacy `group_elements` and `ungroup_elements` wrappers).
+- `set_viewport(scroll_x=None, scroll_y=None, zoom=None, background_color=None, focus_element_ids=None, padding=50)`: configure camera scroll, zoom, and background color, or auto-frame camera on specific elements.
 - `preview(scale=1.0, padding=40, background=true)`: renders an inline PNG image preview of the active Excalidraw scene
-  directly into the MCP client conversation without writing a local file.
+  directly into the MCP client conversation without writing a local file. (`get_canvas_screenshot` is deprecated in favor of `preview`).
 - `export_png(name, directory=None, scale=1.0, padding=40, background=true, overwrite=false)`: exports the active diagram
   directly to a PNG image file in a project folder or configured export directory.
 - `export_scene`: embeds a complete `.excalidraw` snapshot in the result without

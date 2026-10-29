@@ -82,16 +82,18 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("get_live_server_status", tool_names)
         self.assertNotIn("get_canvas_screenshot", tool_names)
 
-    async def test_full_toolset_registers_all_47_tools(self):
+    async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 47)
+        self.assertEqual(len(tools), 49)
         tool_names = {t.name for t in tools}
         self.assertIn("draw_graph", tool_names)
         self.assertIn("batch_mutate", tool_names)
         self.assertIn("find_elements", tool_names)
         self.assertIn("start_live_server", tool_names)
         self.assertIn("get_canvas_screenshot", tool_names)
+        self.assertIn("set_element_locked", tool_names)
+        self.assertIn("manage_groups", tool_names)
 
     async def test_get_canvas_screenshot_emits_deprecation_warning(self):
         server = create_server(toolset="full")
@@ -119,6 +121,69 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
             self.assertEqual(data["tool_count"], 46 if mode == "full" else 25)
+
+
+class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_set_element_locked_and_wrappers(self):
+        server = create_server(toolset="full")
+        tools = {t.name: t.fn for t in await server.list_tools()}
+        rect = tools["add_rectangle"](x=0, y=0, w=100, h=50, label="Box")
+        rid = rect["rectangle_id"]
+
+        # Lock via unified tool
+        res1 = tools["set_element_locked"](element_ids=[rid], locked=True)
+        self.assertEqual(res1["status"], "locked")
+
+        # Unlock via unified tool
+        res2 = tools["set_element_locked"](element_ids=[rid], locked=False)
+        self.assertEqual(res2["status"], "unlocked")
+
+        # Lock via legacy wrapper
+        res3 = tools["lock_elements"](element_ids=[rid])
+        self.assertEqual(res3["status"], "locked")
+
+        # Unlock via legacy wrapper
+        res4 = tools["unlock_elements"](element_ids=[rid])
+        self.assertEqual(res4["status"], "unlocked")
+
+    async def test_manage_groups_and_wrappers(self):
+        server = create_server(toolset="full")
+        tools = {t.name: t.fn for t in await server.list_tools()}
+        r1 = tools["add_rectangle"](x=0, y=0, w=100, h=50, label="A")
+        r2 = tools["add_rectangle"](x=120, y=0, w=100, h=50, label="B")
+        ids = [r1["rectangle_id"], r2["rectangle_id"]]
+
+        # Group via unified tool
+        res1 = tools["manage_groups"](element_ids=ids, action="group")
+        self.assertEqual(res1["status"], "grouped")
+        gid = res1["group_id"]
+
+        # Ungroup via unified tool
+        res2 = tools["manage_groups"](group_id=gid, action="ungroup")
+        self.assertEqual(res2["status"], "ungrouped")
+
+        # Group and ungroup via legacy wrappers
+        res3 = tools["group_elements"](element_ids=ids)
+        self.assertEqual(res3["status"], "grouped")
+        res4 = tools["ungroup_elements"](group_id=res3["group_id"])
+        self.assertEqual(res4["status"], "ungrouped")
+
+    async def test_set_viewport_with_focus_elements(self):
+        server = create_server(toolset="full")
+        tools = {t.name: t.fn for t in await server.list_tools()}
+        r1 = tools["add_rectangle"](x=50, y=50, w=100, h=50, label="A")
+        r2 = tools["add_rectangle"](x=200, y=100, w=100, h=50, label="B")
+        ids = [r1["rectangle_id"], r2["rectangle_id"]]
+
+        # Set viewport with focus_element_ids
+        res = tools["set_viewport"](focus_element_ids=ids, padding=40)
+        self.assertEqual(res["status"], "focused")
+        self.assertIn("bounding_box", res)
+
+        # Legacy focus_elements wrapper
+        res2 = tools["focus_elements"](element_ids=ids, padding=40)
+        self.assertEqual(res2["status"], "focused")
+        self.assertIn("bounding_box", res2)
 
 
 if __name__ == "__main__":

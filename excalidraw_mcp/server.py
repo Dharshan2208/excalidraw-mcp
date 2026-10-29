@@ -699,9 +699,20 @@ def create_server(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
             run_in_thread=False,
         )
+        def set_element_locked(
+            element_ids: list[ElementId],
+            locked: Boolean = True,
+        ) -> LockResult | UnlockResult:
+            """Lock or unlock elements and their bound labels to prevent or permit mutations."""
+            return invoke(service.set_element_locked, element_ids, locked=locked)
+
+        @mcp.tool(
+            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            run_in_thread=False,
+        )
         def lock_elements(element_ids: list[ElementId]) -> LockResult:
             """Lock elements and their bound labels to protect them from unintended mutations."""
-            return invoke(service.lock_elements, element_ids)
+            return invoke(service.set_element_locked, element_ids, locked=True)
 
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
@@ -709,12 +720,21 @@ def create_server(
         )
         def unlock_elements(element_ids: list[ElementId]) -> UnlockResult:
             """Unlock previously locked elements and their bound labels."""
-            return invoke(service.unlock_elements, element_ids)
+            return invoke(service.set_element_locked, element_ids, locked=False)
+
+        @mcp.tool(annotations=MUTATING, run_in_thread=False)
+        def manage_groups(
+            element_ids: list[ElementId] | None = None,
+            group_id: str | None = None,
+            action: Literal["group", "ungroup"] = "group",
+        ) -> GroupResult | UngroupResult:
+            """Group or ungroup multiple elements together."""
+            return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action=action)
 
         @mcp.tool(annotations=MUTATING, run_in_thread=False)
         def group_elements(element_ids: list[ElementId]) -> GroupResult:
             """Group multiple elements together so they move and behave as a cohesive group."""
-            return invoke(service.group_elements, element_ids)
+            return invoke(service.manage_groups, element_ids=element_ids, action="group")
 
         @mcp.tool(annotations=MUTATING, run_in_thread=False)
         def ungroup_elements(
@@ -722,7 +742,7 @@ def create_server(
             group_id: str | None = None,
         ) -> UngroupResult:
             """Disband an element group by group_id or remove elements from their groups."""
-            return invoke(service.ungroup_elements, element_ids=element_ids, group_id=group_id)
+            return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action="ungroup")
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
@@ -760,14 +780,18 @@ def create_server(
             scroll_y: Coordinate | None = None,
             zoom: float | None = None,
             background_color: Color | None = None,
-        ) -> ViewportResult:
-            """Set canvas camera viewport scroll offsets, zoom level, or background color."""
+            focus_element_ids: list[ElementId] | None = None,
+            padding: PreviewPadding = 50,
+        ) -> ViewportResult | FocusResult:
+            """Set canvas camera viewport scroll offsets, zoom level, background color, or focus on elements."""
             return invoke(
                 service.set_viewport,
                 scroll_x=scroll_x,
                 scroll_y=scroll_y,
                 zoom=zoom,
                 background_color=background_color,
+                focus_element_ids=focus_element_ids,
+                padding=padding,
             )
 
         @mcp.tool(
@@ -779,7 +803,7 @@ def create_server(
             padding: PreviewPadding = 50,
         ) -> FocusResult:
             """Center and zoom the viewport camera to frame specified elements or the entire diagram."""
-            return invoke(service.focus_elements, element_ids=element_ids, padding=padding)
+            return invoke(service.set_viewport, focus_element_ids=element_ids, padding=padding)
 
     @mcp.tool(annotations=READ_ONLY, run_in_thread=False)
     def get_scene_summary() -> SceneSummaryResult:
