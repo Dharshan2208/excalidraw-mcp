@@ -408,26 +408,7 @@ def register_skills_mcp(mcp: Any) -> None:
 
             _bind_ref(skill_name, ref_name)
 
-    # 3. Templated Fallback Resources for dynamic lookup
-    @mcp.resource(
-        "exca-mcp://skills/{name}",
-        mime_type="text/markdown",
-        description="Retrieve the primary SKILL.md instruction for an agent skill by name.",
-    )
-    def dynamic_skill_resource(name: str) -> str:
-        """Retrieve the primary SKILL.md instruction for an agent skill."""
-        return read_skill_content(name)
-
-    @mcp.resource(
-        "exca-mcp://skills/{name}/references/{ref}",
-        mime_type="text/markdown",
-        description="Retrieve a supporting reference document for an agent skill.",
-    )
-    def dynamic_reference_resource(name: str, ref: str) -> str:
-        """Retrieve a supporting reference document for an agent skill."""
-        return read_reference_content(name, ref)
-
-    # 4. MCP Prompts
+    # 3. MCP Prompts
 
     @mcp.prompt(
         description="Comprehensive 10-step workflow to plan, construct, validate, and export a production architecture diagram."

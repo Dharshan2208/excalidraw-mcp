@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import pytest
-from fastmcp.exceptions import ResourceError
+from fastmcp.exceptions import NotFoundError, ResourceError
 
 from excalidraw_mcp.server import create_server
 from excalidraw_mcp.skills import (
@@ -90,11 +90,11 @@ async def test_mcp_read_all_reference_resources(server):
 
 @pytest.mark.asyncio
 async def test_mcp_invalid_resource_handling(server):
-    """Verify unknown skill or reference resource URIs raise ResourceError."""
-    with pytest.raises(ResourceError):
+    """Verify unknown skill or reference resource URIs raise NotFoundError or ResourceError."""
+    with pytest.raises((ResourceError, NotFoundError)):
         await server.read_resource("exca-mcp://skills/nonexistent-skill-abc")
 
-    with pytest.raises(ResourceError):
+    with pytest.raises((ResourceError, NotFoundError)):
         await server.read_resource(
             "exca-mcp://skills/architecture-diagrams/references/nonexistent-ref"
         )
