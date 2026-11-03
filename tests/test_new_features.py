@@ -443,7 +443,7 @@ class BatchMutateTests(unittest.TestCase):
 
 class MCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_invokes_new_tools_end_to_end(self):
-        server = create_server()
+        server = create_server(toolset="full")
         async with Client(server, timeout=5) as client:
             # 1. Test add_frame
             f_res = await client.call_tool(

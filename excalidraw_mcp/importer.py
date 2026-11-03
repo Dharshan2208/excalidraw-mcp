@@ -35,12 +35,14 @@ def _extract_from_png_bytes(png_bytes: bytes) -> dict[str, Any]:
         "excalidraw_data",
     )
     raw_payload = None
+    img_text = getattr(img, "text", {})
+    img_info = getattr(img, "info", {})
     for k in candidate_keys:
-        if k in getattr(img, "text", {}):
-            raw_payload = img.text[k]
+        if isinstance(img_text, dict) and k in img_text:
+            raw_payload = img_text[k]
             break
-        if k in getattr(img, "info", {}):
-            raw_payload = img.info[k]
+        if isinstance(img_info, dict) and k in img_info:
+            raw_payload = img_info[k]
             break
 
     if not raw_payload:
@@ -108,7 +110,7 @@ def parse_scene_payload(data: str) -> dict[str, Any]:
             parsed = json.loads(cleaned)
             if isinstance(parsed, list):
                 # Array of elements passed
-                return new_document(parsed)
+                return dict(new_document(parsed))
             if isinstance(parsed, dict):
                 return parsed
         except json.JSONDecodeError as err:
@@ -127,7 +129,8 @@ def parse_scene_payload(data: str) -> dict[str, Any]:
             pass
 
     # Check 3: Is it inline Obsidian markdown text?
-    if "# Excalidraw Data" in cleaned or "## Drawing" in cleaned:
+    obsidian_markers = ("# Excalidraw Data", "## Drawing", "excalidraw-plugin", "```json:excalidraw", "```excalidraw")
+    if any(marker in cleaned for marker in obsidian_markers):
         return _extract_from_obsidian_markdown(cleaned)
 
     # Check 4: Is it an existing file path within allowed directories?
@@ -139,8 +142,20 @@ def parse_scene_payload(data: str) -> dict[str, Any]:
                 allowed_roots = [
                     Path(scene_directory()).resolve(),
                     Path.cwd().resolve(),
-                    Path(tempfile.gettempdir()).resolve(),
                 ]
+                tmp_root = Path(tempfile.gettempdir()).resolve()
+                if resolved == tmp_root or resolved.is_relative_to(tmp_root):
+                    # In multi-user Unix systems, ensure temporary file is owned by current user
+                    if hasattr(os, "getuid"):
+                        try:
+                            if candidate_path.stat().st_uid != os.getuid():
+                                raise SceneError(
+                                    f"Access to file '{candidate_path}' is denied; file in temporary directory is not owned by current user"
+                                )
+                        except OSError as err:
+                            raise SceneError(f"Cannot verify ownership of '{candidate_path}': {err}") from err
+                    allowed_roots.append(tmp_root)
+
                 if not any(
                     resolved == r or resolved.is_relative_to(r) for r in allowed_roots
                 ):
@@ -202,12 +217,11 @@ def import_scene(
 
     raw_doc = parse_scene_payload(data)
 
-    # Validate structure and wrap elements if needed
-    if not isinstance(raw_doc.get("elements"), list):
-        if "type" not in raw_doc:
-            raw_doc = new_document([])
-        else:
-            raise SceneError("Imported document must contain an 'elements' list")
+    # Validate structure and ensure it's a valid Excalidraw document
+    if not isinstance(raw_doc, dict) or not isinstance(raw_doc.get("elements"), list):
+        raise SceneError("Imported document must be an Excalidraw scene object containing an 'elements' list")
+    if raw_doc.get("type") not in (None, "excalidraw"):
+        raise SceneError(f"Imported document has invalid type '{raw_doc.get('type')}'; expected 'excalidraw'")
 
     imported_doc = normalize_document(raw_doc)
     incoming_elements = [

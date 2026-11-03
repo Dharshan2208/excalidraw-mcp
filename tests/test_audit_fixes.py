@@ -133,7 +133,7 @@ class AuditFixesServiceTests(unittest.TestCase):
 
 class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_output_schemas_are_concrete_typed_dicts(self):
-        server = create_server()
+        server = create_server(toolset="full")
         tools = {tool.name: tool for tool in await server.list_tools()}
 
         self.assertIn("deleted_ids", tools["delete"].output_schema["properties"])

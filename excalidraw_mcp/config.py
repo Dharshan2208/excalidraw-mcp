@@ -90,6 +90,12 @@ def max_elements():
     return _bounded_integer("EXCALIDRAW_MAX_ELEMENTS", DEFAULT_MAX_ELEMENTS, 1, 100_000)
 
 
+def configured_toolset() -> str:
+    """Return the active toolset mode ('core' or 'full'), defaulting to 'core'."""
+    raw = os.environ.get("EXCALIDRAW_TOOLSET", "core").strip().lower()
+    return raw if raw in ("core", "full") else "core"
+
+
 def _bounded_integer(name, default, minimum, maximum):
     raw = os.environ.get(name, str(default))
     try:

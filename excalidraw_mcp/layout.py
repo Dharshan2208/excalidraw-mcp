@@ -7,6 +7,19 @@ from typing import Any
 
 from excalidraw_mcp.errors import SceneError
 
+__all__ = [
+    "architectural_layout",
+    "check_diagram_geometry",
+    "grid_layout",
+    "horizontal_layout",
+    "layered_layout",
+    "linear_layout",
+    "resolve_scene_layout",
+    "shape_dimensions",
+    "wrap_label",
+    "wrap_text_to_shape",
+]
+
 
 def wrap_label(label: str, max_chars: int = 24) -> str:
     cleaned = label.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
@@ -550,7 +563,7 @@ def check_diagram_geometry(document_or_elements, min_gap=30.0):
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not (e.get("customData", {}).get("type") in ("code_block_header",))
+        and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
     ]
     frames = [e for e in active if e.get("type") == "frame"]
     text_els = [e for e in active if e.get("type") == "text"]
@@ -585,6 +598,31 @@ def check_diagram_geometry(document_or_elements, min_gap=30.0):
                         "shape2_label": bound_map.get(s2["id"], {}).get("text", "")[:30],
                     }
                 )
+            elif min_gap > 0:
+                if inter_y > 0.5:
+                    gap_x = max(x1_min, x2_min) - min(x1_max, x2_max)
+                    if 0 < gap_x < min_gap:
+                        gap_violations.append(
+                            {
+                                "shape1_id": s1["id"],
+                                "shape2_id": s2["id"],
+                                "axis": "x",
+                                "gap": round(gap_x, 1),
+                                "min_gap": min_gap,
+                            }
+                        )
+                elif inter_x > 0.5:
+                    gap_y = max(y1_min, y2_min) - min(y1_max, y2_max)
+                    if 0 < gap_y < min_gap:
+                        gap_violations.append(
+                            {
+                                "shape1_id": s1["id"],
+                                "shape2_id": s2["id"],
+                                "axis": "y",
+                                "gap": round(gap_y, 1),
+                                "min_gap": min_gap,
+                            }
+                        )
 
     # 2. Frame containment check
     for f in frames:
@@ -680,20 +718,16 @@ def resolve_scene_layout(
     """
     if isinstance(document_or_elements, dict) and "elements" in document_or_elements:
         elements = document_or_elements["elements"]
-        is_doc = True
     elif isinstance(document_or_elements, list):
         elements = document_or_elements
-        is_doc = False
     else:
         raise SceneError("Expected document dictionary or list of elements")
 
     active = [e for e in elements if not e.get("isDeleted")]
     frames = [e for e in active if e.get("type") == "frame"]
     shapes = [e for e in active if e.get("type") in ("rectangle", "diamond", "ellipse")]
-    arrows = [e for e in active if e.get("type") in ("arrow", "line")]
     texts = [e for e in active if e.get("type") == "text"]
 
-    element_index = {e["id"]: e for e in active if e.get("id")}
     bound_labels = {t["containerId"]: t for t in texts if t.get("containerId")}
 
     if not shapes:
@@ -861,7 +895,7 @@ def resolve_scene_layout(
     # Step 8: Re-Center Bound Labels on Shapes
     for s in shapes:
         lbl = bound_labels.get(s["id"])
-        if lbl and s.get("customData", {}).get("type") not in ("code_block", "code-block"):
+        if lbl and (s.get("customData") or {}).get("type") not in ("code_block", "code-block"):
             cx = float(s["x"]) + float(s["width"]) / 2.0
             cy = float(s["y"]) + float(s["height"]) / 2.0
             lbl["x"] = cx - float(lbl.get("width", 0.0)) / 2.0
@@ -914,7 +948,7 @@ def architectural_layout(
         t_name = tier.get("name", f"Tier {tier_idx + 1}")
         tier_id = tier.get("id", f"tier-{tier_idx + 1}")
 
-        rows = [[]]
+        rows: list[list[dict[str, Any]]] = [[]]
         cur_row_w = 0.0
         for n in t_nodes:
             w, h = node_sizes[n["id"]]
@@ -935,7 +969,7 @@ def architectural_layout(
 
     max_layout_w = max(tier_widths) if tier_widths else 800.0
 
-    for tier_id, t_name, rows, t_w in tier_data:
+    for tier_id, t_name, rows, _ in tier_data:
         frame_top = cur_y
         row_y = frame_top + frame_padding + 25.0  # 25px header
 

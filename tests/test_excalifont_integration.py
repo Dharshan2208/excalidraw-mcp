@@ -310,7 +310,7 @@ class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):
         self.assertIn("font_size", schema.get("properties", {}))
 
     def test_mcp_server_draw_graph_tool_font_properties(self):
-        server = create_server()
+        server = create_server(toolset="full")
         tools = {t.name: t for t in asyncio.run(server.list_tools())}
         self.assertIn("draw_graph", tools)
         schema = tools["draw_graph"].parameters

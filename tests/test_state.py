@@ -154,8 +154,8 @@ class StateTests(unittest.TestCase):
         async def tools(server):
             return {tool.name: tool.fn for tool in await server.list_tools()}
 
-        first = asyncio.run(tools(create_server()))
-        second = asyncio.run(tools(create_server()))
+        first = asyncio.run(tools(create_server(toolset="full")))
+        second = asyncio.run(tools(create_server(toolset="full")))
         self.assertEqual(
             set(first),
             {
@@ -197,7 +197,6 @@ class StateTests(unittest.TestCase):
                 "get_scene_summary",
                 "export_to_excalidraw_url",
                 "describe_scene",
-                "get_canvas_screenshot",
                 "get_resource",
                 "read_diagram_guide",
                 "duplicate_elements",
@@ -205,6 +204,9 @@ class StateTests(unittest.TestCase):
                 "start_live_server",
                 "stop_live_server",
                 "get_live_server_status",
+                "auto_fix_layout",
+                "set_element_locked",
+                "manage_groups",
             },
         )
         result = first["add_rectangle"](0, 0, 10, 10, label="A")

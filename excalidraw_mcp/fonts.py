@@ -149,7 +149,7 @@ def _sort_category_records(records: list[dict[str, str]], category: str) -> list
     return sorted(records, key=sort_key)
 
 
-def _font_renders_latin(font: ImageFont.ImageFont) -> bool:
+def _font_renders_latin(font: ImageFont.ImageFont | ImageFont.FreeTypeFont) -> bool:
     """Check if the font contains valid glyphs for standard Latin text instead of .notdef fallback."""
     try:
         mask_a = font.getmask("A")
@@ -247,8 +247,8 @@ class FontRegistry:
                 try:
                     test_font = ImageFont.truetype(file_path, 12)
                     names = test_font.getname()
-                    family = names[0] if names else Path(file_path).stem
-                    style = names[1] if len(names) > 1 else "Regular"
+                    family = (names[0] or Path(file_path).stem) if names else Path(file_path).stem
+                    style = (names[1] or "Regular") if len(names) > 1 else "Regular"
                     category = _classify_category(family)
                     record = {
                         "family": family,
@@ -285,7 +285,7 @@ class FontRegistry:
         size: int = 14,
         bold: bool = False,
         italic: bool = False,
-    ) -> ImageFont.ImageFont:
+    ) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
         self.discover()
         size = max(6, min(200, int(size)))
 
@@ -377,7 +377,7 @@ class FontRegistry:
             return ImageFont.load_default()
 
     def get_char_dimensions(
-        self, font: ImageFont.ImageFont
+        self, font: ImageFont.ImageFont | ImageFont.FreeTypeFont
     ) -> tuple[float, float]:
         """Estimate standard character width and line height for layout calculations."""
         try:
@@ -398,7 +398,7 @@ def get_font(
     size: int = 14,
     bold: bool = False,
     italic: bool = False,
-) -> ImageFont.ImageFont:
+) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     """Convenience getter for cached font instances with fallback."""
     return registry.load_font(family=family, size=size, bold=bold, italic=italic)
 

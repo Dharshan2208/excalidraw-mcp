@@ -5,7 +5,7 @@
       "args": [
         "--from",
         "git+https://github.com/Dharshan2208/excalidraw-mcp.git",
-        "excalidraw-mcp"
+        "exca-mcp"
       ]
     }
   }

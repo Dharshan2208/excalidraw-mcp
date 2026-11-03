@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from typing import Any
 
 from excalidraw_mcp.config import max_export_bytes
 from excalidraw_mcp.elements import (
@@ -22,6 +23,7 @@ from excalidraw_mcp.document import serialize_document
 from excalidraw_mcp.models import _finite_number, new_document
 from excalidraw_mcp.scene import list_scenes, load_scene, save_scene
 from excalidraw_mcp.state import SceneState
+from excalidraw_mcp.text_padding import required_container_size
 from excalidraw_mcp.layout import boundary_point, clustered_layout, layered_layout, linear_layout, wrap_label
 from excalidraw_mcp.parser import parse_architecture
 
@@ -52,15 +54,7 @@ def _shape_elements(shape, x, y, w, h, label, style, frame_id=None):
         )
 
         # Calculate minimum required shape dimensions for internal padding containment
-        if shape == "ellipse":
-            min_size = math.hypot(text_w, text_h) + 40.0
-            min_w, min_h = min_size, min_size
-        elif shape == "diamond":
-            min_w = text_w * 1.6 + 48.0
-            min_h = text_h * 1.6 + 40.0
-        else:
-            min_w = text_w + 36.0
-            min_h = text_h + 28.0
+        min_w, min_h = required_container_size(shape, text_w, text_h)
 
         # Auto-expand container if requested size is too small for text
         if min_w > w or min_h > h:
@@ -117,7 +111,7 @@ def _label_for(index, container_id):
 
 
 def _center_label(label, container):
-    if container.get("customData", {}).get("type") in ("code_block", "code-block"):
+    if (container.get("customData") or {}).get("type") in ("code_block", "code-block"):
         return
     if container["type"] == "arrow" and container.get("points"):
         pts = container["points"]
@@ -601,15 +595,7 @@ class SceneService:
                     el["width"] = tw
                     el["height"] = th
 
-                    if c_type == "ellipse":
-                        min_size = math.hypot(tw, th) + 40.0
-                        min_w, min_h = min_size, min_size
-                    elif c_type == "diamond":
-                        min_w = tw * 1.6 + 48.0
-                        min_h = th * 1.6 + 40.0
-                    else:
-                        min_w = tw + 36.0
-                        min_h = th + 28.0
+                    min_w, min_h = required_container_size(c_type, tw, th)
 
                     if min_w > c_w or min_h > c_h:
                         new_w = max(c_w, min_w)
@@ -665,15 +651,7 @@ class SceneService:
                                 tw, th, _ = measure_text_dimensions(
                                     wrapped, font_family=f_fam, font_size=f_size
                                 )
-                                if c_type == "ellipse":
-                                    min_size = math.hypot(tw, th) + 40.0
-                                    min_w, min_h = min_size, min_size
-                                elif c_type == "diamond":
-                                    min_w = tw * 1.6 + 48.0
-                                    min_h = th * 1.6 + 40.0
-                                else:
-                                    min_w = tw + 36.0
-                                    min_h = th + 28.0
+                                min_w, min_h = required_container_size(c_type, tw, th)
 
                                 if min_w > c_w or min_h > c_h:
                                     new_w = max(c_w, min_w)
@@ -732,15 +710,7 @@ class SceneService:
                             target["width"] = tw
                             target["height"] = th
 
-                            if c_type == "ellipse":
-                                min_size = math.hypot(tw, th) + 40.0
-                                min_w, min_h = min_size, min_size
-                            elif c_type == "diamond":
-                                min_w = tw * 1.6 + 48.0
-                                min_h = th * 1.6 + 40.0
-                            else:
-                                min_w = tw + 36.0
-                                min_h = th + 28.0
+                            min_w, min_h = required_container_size(c_type, tw, th)
 
                             if min_w > c_w or min_h > c_h:
                                 new_w = max(c_w, min_w)
@@ -781,15 +751,7 @@ class SceneService:
                         )
                         target["width"] = tw
                         target["height"] = th
-                        if c_type == "ellipse":
-                            min_size = math.hypot(tw, th) + 40.0
-                            min_w, min_h = min_size, min_size
-                        elif c_type == "diamond":
-                            min_w = tw * 1.6 + 48.0
-                            min_h = th * 1.6 + 40.0
-                        else:
-                            min_w = tw + 36.0
-                            min_h = th + 28.0
+                        min_w, min_h = required_container_size(c_type, tw, th)
 
                         if min_w > c_w or min_h > c_h:
                             new_w = max(c_w, min_w)
@@ -850,7 +812,7 @@ class SceneService:
                     for e in index.values()
                     if e["type"] in SHAPES
                     and not e.get("isDeleted")
-                    and not (e.get("customData", {}).get("type") in ("code_block_header",))
+                    and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
                 ]
                 pair_arrows = [
                     e
@@ -927,7 +889,8 @@ class SceneService:
     def save(self, name, overwrite=False):
         document = self.state.document()
         path = save_scene(name, document, overwrite=overwrite)
-        return {"path": path, "elements": len(document["elements"]), "status": "saved"}
+        active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
+        return {"path": path, "elements": active_count, "status": "saved"}
 
     def export_scene(self):
         """Export a detached snapshot without filesystem access."""
@@ -940,10 +903,11 @@ class SceneService:
         revision = self.state.revision
         document = load_scene(name)
         self.state.replace(document, expected_revision=revision)
+        active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
         return {
-            "loaded": len(document["elements"]),
+            "loaded": active_count,
             "name": name,
-            "status": "scene loaded",
+            "status": "loaded",
         }
 
     def preview(self, scale=1.0, padding=40, background=True):
@@ -1050,7 +1014,8 @@ class SceneService:
         temp_file = target_dir / temp_name
 
         try:
-            with open(temp_file, "wb") as stream:
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as stream:
                 stream.write(png_bytes)
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -1267,6 +1232,98 @@ class SceneService:
             return {"status": "connectors rerouted", "revision": self.state.revision}
 
         return self.state.apply(apply_reroute)
+
+    def auto_fix_layout(
+        self,
+        name: str | None = None,
+        dry_run: bool = False,
+        repair_scope: str = "all",
+        aggressiveness: str = "balanced",
+        min_gap: float = 30.0,
+    ) -> dict[str, Any]:
+        """Diagnose, plan, and automatically repair layout defects with transactional rollback safety.
+
+        dry_run executes all repair phases and A* routing on an isolated snapshot before discarding changes, costing the same compute as a real run.
+        min_gap must be between 0 and 1000 (effective spacing defect threshold is min_gap * 0.65).
+        aggressiveness="gentle" provides a smaller expansion (0.8x), not compaction.
+        """
+        from .auto_fix import auto_fix_scene_layout, _validate_params
+
+        if not isinstance(dry_run, bool):
+            raise SceneError("dry_run must be a boolean")
+
+        repair_scope, aggressiveness, min_gap = _validate_params(
+            repair_scope, aggressiveness, min_gap
+        )
+
+        if name is not None:
+            if dry_run:
+                doc = load_scene(name)
+                fix_res = auto_fix_scene_layout(
+                    doc,
+                    dry_run=True,
+                    repair_scope=repair_scope,
+                    aggressiveness=aggressiveness,
+                    min_gap=float(min_gap),
+                )
+                fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+                return {**fix_res_clean, "revision": self.state.revision}
+
+            def apply_named_fix(active_draft):
+                doc = load_scene(name)
+                fix_res = auto_fix_scene_layout(
+                    doc,
+                    dry_run=False,
+                    repair_scope=repair_scope,
+                    aggressiveness=aggressiveness,
+                    min_gap=float(min_gap),
+                )
+                if (
+                    not fix_res.get("rolled_back")
+                    and fix_res.get("status") in ("repaired", "partially_repaired")
+                ):
+                    save_scene(name, fix_res["document"], overwrite=True)
+                    active_draft["elements"] = fix_res["document"]["elements"]
+                    if "appState" in fix_res.get("document", {}):
+                        active_draft["appState"] = fix_res["document"]["appState"]
+                return fix_res
+
+            fix_res = self.state.apply(apply_named_fix)
+            fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+            return {**fix_res_clean, "revision": self.state.revision}
+
+        if dry_run:
+            doc, rev = self.state.snapshot()
+            fix_res = auto_fix_scene_layout(
+                doc,
+                dry_run=True,
+                repair_scope=repair_scope,
+                aggressiveness=aggressiveness,
+                min_gap=float(min_gap),
+            )
+            fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+            return {**fix_res_clean, "revision": rev}
+
+        def apply_fix(doc):
+            fix_res = auto_fix_scene_layout(
+                doc,
+                dry_run=False,
+                repair_scope=repair_scope,
+                aggressiveness=aggressiveness,
+                min_gap=float(min_gap),
+            )
+            if (
+                not fix_res.get("rolled_back")
+                and fix_res.get("status") in ("repaired", "partially_repaired")
+            ):
+                doc["elements"] = fix_res["document"]["elements"]
+                if "appState" in fix_res.get("document", {}):
+                    doc["appState"] = fix_res["document"]["appState"]
+            return fix_res
+
+        fix_res = self.state.apply(apply_fix)
+        fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+        return {**fix_res_clean, "revision": self.state.revision}
 
     def find_elements(
         self,
@@ -2369,6 +2426,44 @@ class SceneService:
                     )
                     results.append({"action": "resolve_layout", "status": "resolved"})
 
+                elif action == "auto_fix_layout":
+                    from .auto_fix import auto_fix_scene_layout
+
+                    min_g = op.get("min_gap")
+                    if min_g is None:
+                        min_g = op.get("min_gap_x")
+                    if min_g is None:
+                        min_g = 30.0
+
+                    if not _finite_number(min_g) or min_g < 0:
+                        raise SceneError(
+                            f"Operation {i} (auto_fix_layout): min_gap must be a non-negative finite number"
+                        )
+
+                    d_run = op.get("dry_run", False)
+                    if not isinstance(d_run, bool):
+                        raise SceneError(
+                            f"Operation {i} (auto_fix_layout): dry_run must be a boolean"
+                        )
+
+                    fix_res = auto_fix_scene_layout(
+                        document,
+                        dry_run=d_run,
+                        repair_scope=op.get("repair_scope", "all") or "all",
+                        aggressiveness=op.get("aggressiveness", "balanced") or "balanced",
+                        min_gap=float(min_g),
+                    )
+                    if not fix_res.get("dry_run") and not fix_res.get("rolled_back"):
+                        document["elements"] = fix_res["document"]["elements"]
+                        if "appState" in fix_res.get("document", {}):
+                            document["appState"] = fix_res["document"]["appState"]
+                        index.clear()
+                        index.update(
+                            {el["id"]: el for el in document["elements"] if el.get("id")}
+                        )
+                    fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
+                    results.append({"action": "auto_fix_layout", **fix_res_clean})
+
                 else:
                     raise SceneError(f"Unknown action '{action}' at operation {i}")
 
@@ -2680,6 +2775,12 @@ class SceneService:
             result["cluster_map"] = cluster_map
         return result
 
+    def set_element_locked(self, element_ids, locked: bool = True):
+        """Unified method to lock or unlock elements and their bound labels."""
+        if locked:
+            return self.lock_elements(element_ids)
+        return self.unlock_elements(element_ids)
+
     def lock_elements(self, element_ids):
         if not isinstance(element_ids, list) or not element_ids:
             raise SceneError("element_ids must be a non-empty list of element IDs")
@@ -2729,6 +2830,15 @@ class SceneService:
 
         res = self.state.apply(apply_unlock)
         return {**res, "revision": self.state.revision}
+
+    def manage_groups(self, element_ids=None, group_id=None, action: str = "group"):
+        """Unified method to group or ungroup diagram elements."""
+        action_norm = (action or "group").strip().lower()
+        if action_norm == "group":
+            return self.group_elements(element_ids)
+        elif action_norm == "ungroup":
+            return self.ungroup_elements(element_ids=element_ids, group_id=group_id)
+        raise SceneError(f"Invalid group action '{action}'; expected 'group' or 'ungroup'")
 
     def group_elements(self, element_ids):
         if not isinstance(element_ids, list) or len(element_ids) < 2:
@@ -2825,8 +2935,8 @@ class SceneService:
 
         nodes, edges, clusters, parsed_direction, parsed_layout = parse_mermaid(
             mermaid_code=mermaid_code,
-            direction=direction,
-            layout=layout,
+            direction=direction,  # type: ignore[arg-type]
+            layout=layout,  # type: ignore[arg-type]
         )
         return self.draw_graph(
             nodes=[node.model_dump() for node in nodes],
@@ -2867,6 +2977,8 @@ class SceneService:
         scroll_y=None,
         zoom=None,
         background_color=None,
+        focus_element_ids=None,
+        padding=50.0,
     ):
         if scroll_x is not None and not _finite_number(scroll_x):
             raise SceneError("scroll_x must be a finite number")
@@ -2878,13 +2990,22 @@ class SceneService:
                     "zoom must be a positive number between 0.01 and 50.0"
                 )
         if background_color is not None:
-            import re
             from .validation import COLOR_PATTERN
 
             if not re.match(f"^{COLOR_PATTERN}$", background_color):
                 raise SceneError(
                     f"Invalid hex color format: {background_color}"
                 )
+
+        if focus_element_ids is not None:
+            res = self.focus_elements(focus_element_ids, padding=padding)
+            if (
+                scroll_x is None
+                and scroll_y is None
+                and zoom is None
+                and background_color is None
+            ):
+                return res
 
         def apply_viewport(document):
             app_state = document.setdefault("appState", {})
@@ -3425,6 +3546,7 @@ class SceneService:
         if self._live_server is not None:
             return self._live_server.get_status()
         return {
+            "status": "stopped",
             "is_running": False,
             "url": None,
             "host": "127.0.0.1",

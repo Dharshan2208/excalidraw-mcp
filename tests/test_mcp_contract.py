@@ -17,8 +17,8 @@ class MCPContractTests(unittest.TestCase):
         return {tool.name: tool for tool in asyncio.run(server.list_tools())}
 
     def test_tools_have_constraints_outputs_and_behavior_annotations(self):
-        tools = self.metadata(create_server())
-        structured = set(tools) - {"export_scene", "preview", "get_canvas_screenshot"}
+        tools = self.metadata(create_server(toolset="full"))
+        structured = set(tools) - {"export_scene", "preview"}
         self.assertTrue(all(tools[name].output_schema for name in structured))
         width = tools["add_rectangle"].parameters["properties"]["w"]
         self.assertEqual((width["exclusiveMinimum"], width["maximum"]), (0, 100000))
@@ -33,10 +33,10 @@ class MCPContractTests(unittest.TestCase):
         self.assertTrue(tools["clear"].annotations.destructiveHint)
         self.assertTrue(tools["save"].annotations.openWorldHint)
         self.assertTrue(tools["draw_graph"].annotations.destructiveHint)
-        self.assertTrue(all(not tool.run_in_thread for tool in tools.values()))
+        self.assertTrue(all(tool.run_in_thread for tool in tools.values()))
 
     def test_graph_schema_rejects_unknown_fields_and_has_enums(self):
-        schema = self.metadata(create_server())["draw_graph"].parameters
+        schema = self.metadata(create_server(toolset="full"))["draw_graph"].parameters
         node_definition = schema["properties"]["nodes"]["items"]
         self.assertFalse(node_definition["additionalProperties"])
         self.assertEqual(
@@ -87,7 +87,7 @@ class MCPContractTests(unittest.TestCase):
 
 class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_calls_return_structured_success_and_errors(self):
-        async with Client(create_server(), timeout=5) as client:
+        async with Client(create_server(toolset="full"), timeout=5) as client:
             created = await client.call_tool(
                 "add_rectangle",
                 {
