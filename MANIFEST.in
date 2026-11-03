@@ -1,3 +1,3 @@
 include README.md SECURITY.md LICENSE main.py
-recursive-include docs *.md
+recursive-include docs *.md *.png
 recursive-include tests *.py *.excalidraw *.md

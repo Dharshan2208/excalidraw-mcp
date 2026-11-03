@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/exca-mcp.svg)](https://pypi.org/project/exca-mcp/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-3.3%2B-green.svg)](https://github.com/jlowin/fastmcp)
 [![MCP Spec](https://img.shields.io/badge/MCP-1.27%2B-orange.svg)](https://modelcontextprotocol.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Dharshan2208/excalidraw-mcp/blob/main/LICENSE)
 [![Built with Hatchling](https://img.shields.io/badge/build-hatchling-purple.svg)](https://hatch.pypa.io/)
 
 ---
@@ -26,7 +26,7 @@ Built on [FastMCP](https://github.com/jlowin/fastmcp) using **Hatchling** as the
 - **Font Aware Text Containment**: Accurate FreeType/Pillow font measurement (supporting Excalifont, Helvetica, Cascadia, and Comic Shanns) automatically wraps text and expands shapes outward from center. Rhombus and ellipse bounding geometry ensures labels never escape container borders.
 - **Two Pass Architecture Layout Engine**: Content first sizing calculates text dimensions before positioning containers, automatically aligning multi tier architectures (Main Stack, Side Columns, Banners) with zero overlaps.
 - **Dynamic 8K Canvas Scaling**: Content aware export bounds calculate margins from all visible elements, generating crystal clear high resolution PNGs up to 8192px without downscaling or text truncation.
-- **Automated Geometry Diagnostics**: `check_diagram_geometry` automatically detects shape to shape overlaps, gap violations, frame containment escapes, and connector collisions.
+- **Automated Geometry Diagnostics**: Diagnoses shape to shape overlaps, gap violations, frame containment escapes, and connector collisions via `auto_fix_layout` (supports `dry_run=True` for non-mutating inspections).
 - **Automated Layout Repair & Rollback Safety**: `auto_fix_layout` diagnoses, plans, and repairs layout defects (overlaps, text clipping, containment violations, connector collisions, and crowded spacing) across 5 strict topological phases with transactional rollback safety.
 - **Mermaid & Architecture Shorthand**: Directly parse Mermaid flowcharts (`draw_mermaid`) or shorthand prompts (`draw_architecture`) into structured, fully editable Excalidraw scenes.
 - **Unified Element & Viewport Management**: Simplified endpoints `set_element_locked` (lock/unlock), `manage_groups` (group/ungroup), and `set_viewport` (pan, zoom, and auto-focus framing) alongside backward-compatible legacy wrappers.
@@ -40,60 +40,19 @@ Built on [FastMCP](https://github.com/jlowin/fastmcp) using **Hatchling** as the
 
 ## Architecture & Workflow
 
-```mermaid
-flowchart TD
-    subgraph Agent["AI Agent / Host Client"]
-        Client["Claude / Cursor / OpenCode / Codex"]
-    end
-
-    subgraph Server["Excalidraw MCP Server (stdio)"]
-        FastMCP["FastMCP Framework"]
-        Service["Scene Service & Transaction Guard"]
-        State[("In-Memory SceneState")]
-        History[("Undo History Stack")]
-        
-        subgraph LayoutEngines["Layout & Routing Engines"]
-            Router["Orthogonal Router (A* Manhattan)"]
-            Containment["Text Containment & Font Metrics"]
-            AutoLayout["Two-Pass Architecture Layout"]
-            Diagnostics["Geometry Diagnostics"]
-        end
-        
-        Renderer["PNG Renderer (8K Dynamic Scaling)"]
-        Storage["Atomic Storage Manager"]
-    end
-
-    subgraph Output["Artifacts & UI"]
-        Disk[("Local Storage (.excalidraw)")]
-        PNG["Rendered High-Res PNG"]
-        WebShare["excalidraw.com (AES-GCM)"]
-        LiveCanvas["Browser Live Canvas (WebSocket)"]
-    end
-
-    Client <-->|"MCP Protocol (JSON-RPC over stdio)"| FastMCP
-    FastMCP --> Service
-    Service <--> State
-    Service <--> History
-    Service --> LayoutEngines
-    Service --> Renderer
-    Service --> Storage
-    Storage --> Disk
-    Renderer --> PNG
-    Service --> WebShare
-    Service --> LiveCanvas
-```
+![Excalidraw MCP Architecture & Workflow](https://raw.githubusercontent.com/Dharshan2208/excalidraw-mcp/main/docs/architecture.png)
 
 ### Agent Workflow
 1. **Creation**: Agent invokes `draw_graph`, `draw_architecture`, `draw_mermaid`, or primitive shape tools (`add_rectangle`, `add_circle`, `connect`).
 2. **Layout & Routing**: Layout engine positions components into balanced tiers and routes connectors through obstacle free corridors with parallel lane separation.
-3. **Inspection & Revision**: Agent verifies element placement using `get_scene`, `get_element`, or `check_geometry`. If adjustments are needed, it calls `move`, `resize`, `update_element`, `reroute_connectors`, or `undo`.
+3. **Inspection & Revision**: Agent verifies element placement using `get_scene`, `get_element`, `describe_scene`, or `auto_fix_layout` (with `dry_run=True`). If adjustments are needed, it calls `move`, `resize`, `update_element`, `auto_fix_layout`, or `undo`.
 4. **Persistence or Export**: The scene is saved locally with `save(name="arch-v1")`, exported as a high resolution image via `export_png` / `preview`, or published to excalidraw.com via `export_to_excalidraw_url`.
 
 ---
 
 ## Quick Start
 
-You can run the Excalidraw MCP server using either `uvx` (recommended) or `pip`.
+You can run the Excalidraw MCP server using `uvx` (recommended), `pip`, or `Docker`.
 
 ### Option 1: `uvx` (Recommended)
 
@@ -122,6 +81,31 @@ exca-mcp
 
 > [NOTE]
 > When using `pip`, the package is installed into your current Python environment. When configuring your MCP client (such as Claude Desktop or Cursor), ensure that your environment's executable directory (e.g., `~/.local/bin`, virtual environment `bin/`, or Windows `Scripts/`) is in your system `PATH`, or provide the absolute path to the `exca-mcp` binary.
+
+### Option 3: Docker
+
+Run the server inside an isolated container with all dependencies and fonts pre-installed:
+
+```bash
+# Build the Docker image locally
+docker build -t exca-mcp .
+
+# Run the server via standard I/O (interactive mode -i is required for MCP stdio)
+docker run -i --rm \
+  -v ~/.excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes \
+  exca-mcp
+```
+
+To run with the interactive browser live canvas server exposed:
+```bash
+docker run -i --rm \
+  -p 8080:8080 \
+  -e EXCALIDRAW_TOOLSET=full \
+  -e EXCALIDRAW_ALLOW_REMOTE=1 \
+  -e EXCALIDRAW_LIVE_TOKEN=your-secret-token \
+  -v ~/.excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes \
+  exca-mcp
+```
 
 ---
 
@@ -161,6 +145,25 @@ Add this to `claude_desktop_config.json`:
 ```
 *(Note: If `exca-mcp` is not in your system `PATH`, provide the full absolute path, e.g. `/home/username/.venv/bin/exca-mcp` on macOS/Linux or `C:\\Users\\username\\.venv\\Scripts\\exca-mcp.exe` on Windows).*
 
+**Using Docker:**
+```json
+{
+  "mcpServers": {
+    "excalidraw": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes",
+        "exca-mcp"
+      ]
+    }
+  }
+}
+```
+
 ### Cursor
 Add to `.cursor/mcp.json` in your project root or user configuration:
 
@@ -184,6 +187,25 @@ Add to `.cursor/mcp.json` in your project root or user configuration:
   "mcpServers": {
     "excalidraw": {
       "command": "exca-mcp"
+    }
+  }
+}
+```
+
+**Using Docker:**
+```json
+{
+  "mcpServers": {
+    "excalidraw": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes",
+        "exca-mcp"
+      ]
     }
   }
 }
@@ -222,6 +244,27 @@ Add to your Zed `settings.json` (`~/.config/zed/settings.json` on macOS/Linux or
 }
 ```
 
+**Using Docker:**
+```json
+{
+  "context_servers": {
+    "excalidraw": {
+      "command": {
+        "path": "docker",
+        "args": [
+          "run",
+          "-i",
+          "--rm",
+          "-v",
+          "excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes",
+          "exca-mcp"
+        ]
+      }
+    }
+  }
+}
+```
+
 ### OpenCode
 Add to `opencode.json` (or the MCP configuration section of your OpenCode settings):
 
@@ -245,6 +288,25 @@ Add to `opencode.json` (or the MCP configuration section of your OpenCode settin
   "mcpServers": {
     "excalidraw": {
       "command": "exca-mcp"
+    }
+  }
+}
+```
+
+**Using Docker:**
+```json
+{
+  "mcpServers": {
+    "excalidraw": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes",
+        "exca-mcp"
+      ]
     }
   }
 }
@@ -284,11 +346,33 @@ For CLI agents and runners accepting standard `mcpServers` JSON:
 }
 ```
 
+**Using Docker:**
+```json
+{
+  "mcpServers": {
+    "excalidraw": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "excalidraw-scenes:/home/appuser/.local/share/excalidraw-mcp/scenes",
+        "exca-mcp"
+      ],
+      "env": {
+        "EXCALIDRAW_HISTORY_LIMIT": "25"
+      }
+    }
+  }
+}
+```
+
 ---
 
 ## Automatic Agent Discovery
 
-This repository comes pre-packaged with a root [`mcp.json`](mcp.json) descriptor:
+This repository comes pre-packaged with a root [`mcp.json`](https://github.com/Dharshan2208/excalidraw-mcp/blob/main/mcp.json) descriptor:
 
 ```json
 {
@@ -394,6 +478,30 @@ All tools are strictly typed with JSON Schema bounds and explicit safety hints (
 | `stop_live_server` | FULL | None | `LiveServerResult`<br>`{ status }` | Gracefully shuts down the background live canvas server and closes active client connections. |
 | `get_live_server_status` | FULL | None | `LiveServerResult`<br>`{ is_running, url, host, port, active_clients }` | Reports operational status, connection URL, and connected client count of the live canvas server. |
 
+#### Live Server Authentication & Security
+
+- **Token Authentication (`EXCALIDRAW_LIVE_TOKEN`)**:
+  Protect live canvas synchronization by setting the `EXCALIDRAW_LIVE_TOKEN` environment variable to a shared secret. When configured:
+  - **Browser UI (`GET /`)**: The web UI automatically injects the secret into its WebSocket connection (`/ws?token=<token>`), allowing authenticated browser tabs to load and edit seamlessly.
+  - **REST API (`POST /api/scene`)**: Mutating requests require the token via:
+    - HTTP header `Authorization: Bearer <token>`
+    - HTTP header `x-auth-token: <token>`
+    - Query parameter `?token=<token>`
+    - Unauthenticated mutations are rejected with HTTP `401 Unauthorized`.
+  - **WebSocket Sync (`/ws`)**: WebSockets require the token via `?token=<token>` query parameter or `x-auth-token` header. Unauthorized connections are rejected immediately with close code `1008` (Policy Violation).
+  - **Read-Only Endpoints**: Diagnostic and preview endpoints (`GET /api/scene`, `GET /api/health`, `GET /api/screenshot`) remain accessible for health monitors and visual previews.
+
+- **Cross-Site WebSocket Hijacking (CSWSH) Protection**:
+  The live canvas WebSocket handler enforces strict origin validation. Connections with non-local `Origin` headers (outside `localhost`, `127.0.0.1`, `::1`, and the configured server host) are rejected with close code `1008`.
+
+- **Remote Network Binding (`EXCALIDRAW_ALLOW_REMOTE`)**:
+  By default, binding `start_live_server` to `0.0.0.0` or `::` (all network interfaces) is blocked with a `SceneError` to prevent inadvertent public exposure. To allow binding to all interfaces (required inside Docker containers or when hosting across a local area network), set:
+  ```bash
+  export EXCALIDRAW_ALLOW_REMOTE=1
+  ```
+  > [!WARNING]
+  > When setting `EXCALIDRAW_ALLOW_REMOTE=1`, always configure `EXCALIDRAW_LIVE_TOKEN` to prevent unauthorized network users from modifying your canvas.
+
 ---
 
 ## Automated Layout Repair Engine (`auto_fix_layout`)
@@ -483,6 +591,8 @@ The server operates with secure defaults and zero required environment variables
 | `EXCALIDRAW_MAX_SCENE_BYTES` | `26214400` (25 MiB) | 1 KiB–100 MiB | Maximum file size permitted when saving or loading scene files. |
 | `EXCALIDRAW_MAX_EXPORT_BYTES` | `26214400` (25 MiB) | 1 KiB–100 MiB | Maximum payload size permitted for `export_scene` and resource reads. |
 | `EXCALIDRAW_MAX_ELEMENTS` | `10000` | `1`–`100,000` | Hard cap on the total number of elements allowed per scene. |
+| `EXCALIDRAW_LIVE_TOKEN` | None | String | Shared secret token required for live canvas WebSocket connections and mutating POST `/api/scene` requests. |
+| `EXCALIDRAW_ALLOW_REMOTE` | None | `1`, `true` | Allows live canvas server to bind to all network interfaces (`0.0.0.0` or `::`). Binding to `0.0.0.0` is blocked by default for security. |
 
 ---
 
@@ -573,4 +683,4 @@ Contributions are warmly welcomed! Please follow these guidelines:
 
 - **Protocol Specification**: Complies with the official [Model Context Protocol Specification](https://modelcontextprotocol.io).
 - **Document Format**: Serializes to standard [Excalidraw schema v2](https://github.com/excalidraw/excalidraw).
-- **License**: Released under the [MIT License](LICENSE).
+- **License**: Released under the [MIT License](https://github.com/Dharshan2208/excalidraw-mcp/blob/main/LICENSE).
