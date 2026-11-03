@@ -1,156 +1,191 @@
 ---
 name: architecture-diagrams
-description: Design professional, human-crafted software architecture diagrams with the clarity, technical depth, visual hierarchy, and architectural reasoning of a senior software architect. Use when creating system architecture, distributed systems, microservices, backend infrastructure, database, deployment, networking, or component diagrams.
+description: Design and implement production-grade system, cloud, distributed services, and infrastructure architecture diagrams using the exca-mcp MCP server. Use when creating multi-tier backend architectures, microservices topologies, cloud infrastructure, trust and deployment boundaries, or database persistence diagrams with frames, side columns, and explicit protocol connectors.
 ---
 
-# Architecture Diagrams — Professional Design Skill
+# Architecture Diagrams — Multi-Tier System Design
 
-## Role
+## Overview
+Architectural diagrams model real-world production systems: client tiers, API gateways, microservices, databases, caches, queues, and external cloud integrations. This skill provides the exact procedural rules, spatial coordinates, component shapes, and MCP tool invocations to construct human-crafted architecture diagrams.
 
-Act as a Principal Software Architect with extensive experience designing enterprise systems, distributed architectures, cloud infrastructure, and production-grade software.
+---
 
-Your diagrams must look like they were thoughtfully designed by an experienced human architect, not automatically assembled by an AI.
+## 1. Architectural Tiering Standards
 
-Prioritize architectural correctness, clarity, editability, and visual quality.
+Arrange system components in strict logical tiers (Top-to-Bottom or Left-to-Right). Never intermingle presentation with persistence:
 
-## 1. Understand Before Designing
+1. **Tier 1 — Clients & Edge**: Web SPAs, mobile apps, CLI runners, IoT endpoints.
+2. **Tier 2 — Ingress & Security Gateway**: Reverse proxies (Envoy/Nginx), API gateways (Kong), load balancers (ALB), WAF.
+3. **Tier 3 — Application Services**: Microservices, domain workers, asynchronous event consumers.
+4. **Tier 4 — Persistence & State**: Relational databases (PostgreSQL), distributed caches (Redis), document stores, event logs (Kafka).
+5. **Tier 5 — External Systems**: Third-party APIs (Stripe, Twilio), external cloud backends, SaaS platforms.
 
-Before creating a diagram:
+---
 
-- Inspect the actual source code, project structure, documentation, and requirements.
-- Identify the system boundaries, major components, responsibilities, dependencies, and communication patterns.
-- Understand which components belong together and which should remain separate.
-- Identify databases, caches, queues, external services, APIs, clients, and infrastructure.
-- Distinguish existing implementations from proposed architectural components.
-- Never invent technologies, services, connections, or capabilities.
+## 2. Frames for Boundaries & Isolation
 
-Create an internal architectural plan before invoking diagram-generation tools.
+Use `add_frame` to represent physical and logical boundaries:
+- **Trust Boundaries**: DMZ, private subnets, secure enclave.
+- **Deployment Boundaries**: Kubernetes cluster, AWS VPC, Docker network.
+- **Subsystem Domains**: Billing subsystem, User Identity domain.
 
-## 2. Architectural Structure
+```python
+# Create a tier frame container (Width: 1560px, Height: 160px)
+frame_result = await client.call_tool("add_frame", {
+    "name": "Tier 3 — Application Services",
+    "x": 100.0,
+    "y": 520.0,
+    "w": 1560.0,
+    "h": 160.0,
+})
+frame_id = frame_result["frame_id"]
+```
 
-Organize diagrams into meaningful logical layers.
+---
 
-Depending on the system, consider:
+## 3. Shape & Styling Conventions
 
-- Client and presentation layer.
-- API and communication layer.
-- Application and business logic layer.
-- Domain services and workers.
-- Data persistence layer.
-- Messaging and event infrastructure.
-- External integrations.
-- Deployment and infrastructure boundaries.
+| Role | Tool | Stroke Color | Background Fill | Roughness | Roundness |
+|---|---|---|---|---|---|
+| Client / UI | `add_rectangle` | `#1971c2` | `#e7f5ff` | `1` | `"round"` |
+| Gateway / Ingress | `add_rectangle` | `#0c8599` | `#e3fafc` | `1` | `"round"` |
+| Core Service | `add_rectangle` | `#5f3dc4` | `#f3f0ff` | `1` | `"round"` |
+| Database / Store | `add_rectangle` | `#2f9e44` | `#ebfbee` | `1` | `"round"` |
+| Event / Queue | `add_rectangle` | `#d9480f` | `#fff4e6` | `1` | `"round"` |
+| Security / Firewall | `add_rectangle` | `#c92a2a` | `#ffe3e3` | `1` | `"round"` |
+| External 3rd Party | `add_rectangle` | `#495057` | `#f1f3f5` | `1` | `"sharp"` |
 
-Do not force every architecture into the same template.
+---
 
-Represent system boundaries, trust boundaries, external dependencies, and ownership explicitly.
+## 4. Why Primitives Outperform Shorthand
 
-Use grouping, frames, and containers to communicate architectural relationships.
+While `draw_architecture` is available for quick prototypes, **production diagrams must use Primitives (`add_frame`, `add_rectangle`, `connect`)**:
+1. `draw_architecture` styles all elements identically and only supports a single horizontal grid.
+2. Primitives allow per-tier framing, custom semantic colors per service, and exact coordinate snapping.
+3. `connect(source_id, target_id)` establishes dynamic arrow bindings that anchor perpendicularly to cardinal faces.
 
-## 3. Professional Visual Language
+---
 
-Use a deliberate and consistent visual design system.
+## 5. Worked Example: 3-Tier Microservice Architecture
 
-Suggested semantic palette:
+Copy-pasteable workflow using verified MCP tool calls:
 
-- Blue: frontend, clients, and user-facing components.
-- Violet: application services and business logic.
-- Teal: databases, storage, and persistence.
-- Orange: messaging, events, and asynchronous processing.
-- Grey: infrastructure, networking, and supporting components.
-- Red: security boundaries, critical warnings, or failure paths.
+```python
+# 1. Clear working canvas
+await client.call_tool("clear", {})
 
-Use restrained, harmonious shades rather than highly saturated colors.
+# 2. Add Diagram Title
+await client.call_tool("add_text", {
+    "content": "E-Commerce Core Platform — Production Architecture",
+    "x": 100.0,
+    "y": 40.0,
+    "font_size": 24,
+})
 
-Apply:
-- Light, subtle group backgrounds.
-- Consistent component border styles.
-- Consistent corner radii.
-- Readable typography.
-- Clear title and section hierarchy.
-- Consistent padding and spacing.
-- Appropriate contrast between text and backgrounds.
+# 3. Add Tier 1 Frame (Clients)
+t1_frame = await client.call_tool("add_frame", {
+    "name": "Tier 1 — Presentation Layer",
+    "x": 100.0, "y": 140.0, "w": 1200.0, "h": 130.0,
+})
 
-Avoid excessive decoration, gradients, shadows, random colors, and unnecessary icons.
+# 4. Add Tier 1 Component
+client_box = await client.call_tool("add_rectangle", {
+    "label": "Web Client\nNext.js SPA",
+    "x": 160.0, "y": 175.0, "w": 240.0, "h": 70.0,
+    "frame_id": t1_frame["frame_id"],
+    "strokeColor": "#1971c2", "backgroundColor": "#e7f5ff",
+    "fillStyle": "solid", "roundness": "round", "roughness": 1,
+})
 
-## 4. Human-Crafted Layout
+# 5. Add Tier 2 Frame (Gateway & Services)
+t2_frame = await client.call_tool("add_frame", {
+    "name": "Tier 2 — Ingress & Microservices",
+    "x": 100.0, "y": 320.0, "w": 1200.0, "h": 140.0,
+})
 
-The diagram should communicate information naturally.
+gateway_box = await client.call_tool("add_rectangle", {
+    "label": "Kong API Gateway\nRate Limiting • JWT Auth",
+    "x": 160.0, "y": 355.0, "w": 260.0, "h": 75.0,
+    "frame_id": t2_frame["frame_id"],
+    "strokeColor": "#0c8599", "backgroundColor": "#e3fafc",
+    "fillStyle": "solid", "roundness": "round", "roughness": 1,
+})
 
-- Establish a clear reading direction, normally left-to-right or top-to-bottom.
-- Align related components.
-- Maintain consistent spacing between peers.
-- Use consistent component dimensions where practical.
-- Keep related components visually close.
-- Separate unrelated architectural domains.
-- Avoid unnecessary whitespace and overcrowding.
-- Avoid crossing connectors wherever possible.
-- Prevent connectors from passing through component labels.
-- Ensure labels do not collide with borders or other elements.
+order_svc = await client.call_tool("add_rectangle", {
+    "label": "Order Service\nGo • gRPC Engine",
+    "x": 560.0, "y": 355.0, "w": 240.0, "h": 75.0,
+    "frame_id": t2_frame["frame_id"],
+    "strokeColor": "#5f3dc4", "backgroundColor": "#f3f0ff",
+    "fillStyle": "solid", "roundness": "round", "roughness": 1,
+})
 
-Do not prioritize symmetry over logical architectural relationships.
+# 6. Add Tier 3 Frame (Persistence)
+t3_frame = await client.call_tool("add_frame", {
+    "name": "Tier 3 — Storage & Caching",
+    "x": 100.0, "y": 510.0, "w": 1200.0, "h": 140.0,
+})
 
-## 5. Connector Semantics
+db_box = await client.call_tool("add_rectangle", {
+    "label": "Orders Database\nPostgreSQL 16 HA Cluster",
+    "x": 560.0, "y": 545.0, "w": 260.0, "h": 75.0,
+    "frame_id": t3_frame["frame_id"],
+    "strokeColor": "#2f9e44", "backgroundColor": "#ebfbee",
+    "fillStyle": "solid", "roundness": "round", "roughness": 1,
+})
 
-Make every connection meaningful.
+# 7. Connect Components with Protocol Labels
+await client.call_tool("connect", {
+    "source_id": client_box["rectangle_id"],
+    "target_id": gateway_box["rectangle_id"],
+    "label": "HTTPS / TLS",
+    "elbowed": True,
+    "strokeStyle": "solid",
+    "strokeColor": "#1e1e1e",
+})
 
-Distinguish:
-- Synchronous request/response.
-- Asynchronous messaging.
-- Database reads and writes.
-- Event publishing and consumption.
-- External API communication.
-- Control and data flow.
+await client.call_tool("connect", {
+    "source_id": gateway_box["rectangle_id"],
+    "target_id": order_svc["rectangle_id"],
+    "label": "gRPC RPC",
+    "elbowed": True,
+    "strokeStyle": "solid",
+    "strokeColor": "#5f3dc4",
+})
 
-Use appropriate arrow directions, line styles, and concise labels.
+await client.call_tool("connect", {
+    "source_id": order_svc["rectangle_id"],
+    "target_id": db_box["rectangle_id"],
+    "label": "SQL (Read/Write)",
+    "elbowed": True,
+    "strokeStyle": "solid",
+    "strokeColor": "#2f9e44",
+})
+```
 
-Never add decorative connectors without an architectural purpose.
+---
 
-Include a legend when multiple connector types are used.
+## 6. Connector Semantics
 
-## 6. Information Density
+- **Synchronous RPC / HTTP**: `strokeStyle="solid"`, dark stroke `#1e1e1e` or tier color.
+- **Asynchronous / Messaging / PubSub**: `strokeStyle="dashed"`, accent color `#d9480f`.
+- **Database Connection / Storage**: `strokeStyle="solid"`, green `#2f9e44`.
+- **Labels**: Always include concise protocol or active verbs (`"HTTPS"`, `"gRPC"`, `"Publishes event"`, `"SQL Query"`).
 
-A professional diagram is not necessarily a diagram containing every implementation detail.
+---
 
-- Include all architecturally significant components.
-- Use concise component descriptions.
-- Avoid paragraphs inside boxes.
-- Avoid unnecessary implementation-level details.
-- Use separate diagrams when different levels of abstraction cannot be communicated clearly in one view.
-- Prefer multiple meaningful sections over one enormous, crowded diagram.
+## Workflow Chaining
+1. **Pre-requisite**: Load `diagram-planning` to define component counts, tiers, and palette.
+2. **Active Step**: Construct architecture frames, components, and connections as documented above.
+3. **Next Step**: Apply visual craftsmanship and grid spacing using `human-style-and-polish`.
+4. **Final Step**: Validate geometry and generate output using `verify-and-editable-handoff`.
 
-## 7. Human Editability
+---
 
-Design for engineers who will maintain the diagram later.
+## Common Failures & Fixes
 
-- Keep individual components as separate editable Excalidraw elements.
-- Use logical groups and frames.
-- Keep labels associated with their respective components.
-- Avoid unnecessarily combining multiple components into one image.
-- Preserve meaningful element organization.
-- Use consistent naming and grouping conventions.
-- Keep connectors independently editable wherever possible.
-- Avoid flattened or rasterized representations of the actual architecture.
-
-The final `.excalidraw` scene must remain a genuinely editable diagram.
-
-## 8. Quality Standard
-
-Before considering the design complete, ask:
-
-1. Can an engineer understand the architecture within a few seconds?
-2. Are architectural boundaries obvious?
-3. Are component responsibilities clear?
-4. Is every connector meaningful?
-5. Is the visual hierarchy consistent?
-6. Are all labels readable?
-7. Does the layout look deliberately designed?
-8. Can another engineer comfortably modify it?
-
-If the answer to any important question is no, improve the diagram.
-
-## Final Principle
-
-Architectural accuracy comes first, visual clarity second, and decoration last.
-
-Produce diagrams suitable for technical documentation, engineering design reviews, university presentations, and professional software architecture discussions.
+| Failure Pattern | Root Cause | Immediate Fix |
+|---|---|---|
+| Floating text drifting when shape is moved | Calling `add_text` on top of a rectangle instead of `label` | Pass `label="Title\nSubtitle"` directly into `add_rectangle` so text is permanently centered and bound |
+| Frame child leaves frame on dragging | Creating shapes without `frame_id` | Always capture `frame_id` from `add_frame` and pass it to every child shape |
+| Arrows cutting through service boxes | Using straight arrows diagonally across intermediate tiers | Set `elbowed=True` in `connect` so Manhattan A* routes along clear $15\text{px}$ corridors |
+| Unbalanced box heights across a row | Guessing individual heights for each node | Set identical standard heights for peers in the same tier (e.g. `w=240.0, h=75.0`) |

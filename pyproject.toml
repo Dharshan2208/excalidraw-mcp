@@ -29,6 +29,9 @@ excalidraw-mcp = "excalidraw_mcp.server:main"
 [tool.hatch.build.targets.wheel]
 packages = ["excalidraw_mcp"]
 
+[tool.hatch.build.targets.wheel.force-include]
+".skills" = "excalidraw_mcp/skills"
+
 [tool.hatch.build.targets.sdist]
 exclude = [
     "/.venv*",
