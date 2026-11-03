@@ -922,6 +922,11 @@ def create_server(
         }
         return json.dumps(info, indent=2)
 
+    # Register agent skills discovery index, individual skills, and task prompts
+    from .skills import register_skills_mcp
+
+    register_skills_mcp(mcp)
+
     return mcp
 
 

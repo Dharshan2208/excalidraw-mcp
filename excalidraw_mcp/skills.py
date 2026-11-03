@@ -359,3 +359,274 @@ def get_skills_index() -> dict[str, Any]:
             "4. verify-and-editable-handoff (diagnose geometry, preview PNG, export files)",
         ],
     }
+
+
+def register_skills_mcp(mcp: Any) -> None:
+    """Register skills resources and task-oriented prompts with a FastMCP server."""
+    import json
+
+    # 1. Discovery Index Resource
+    @mcp.resource(
+        "exca-mcp://skills/index",
+        mime_type="application/json",
+        description="Discovery index of available agent skills, supporting reference documents, and recommended workflows.",
+    )
+    def skills_index() -> str:
+        """Structured catalog of all available agent skills, reference documents, and usage flows."""
+        return json.dumps(get_skills_index(), indent=2)
+
+    # 2. Static Resources for every skill and reference
+    for skill_name in list_skills():
+        meta = get_skill_metadata(skill_name)
+
+        def _bind_skill(s_name: str, s_desc: str):
+            @mcp.resource(
+                f"exca-mcp://skills/{s_name}",
+                mime_type="text/markdown",
+                name=f"skill_{s_name}",
+                description=f"Skill: {s_name} — {s_desc}",
+            )
+            def _skill_resource() -> str:
+                return read_skill_content(s_name)
+
+            return _skill_resource
+
+        _bind_skill(skill_name, meta.description)
+
+        for ref_name in meta.reference_names:
+            def _bind_ref(s_name: str, r_name: str):
+                @mcp.resource(
+                    f"exca-mcp://skills/{s_name}/references/{r_name}",
+                    mime_type="text/markdown",
+                    name=f"ref_{s_name}_{r_name}",
+                    description=f"Reference: {r_name} for skill {s_name}",
+                )
+                def _ref_resource() -> str:
+                    return read_reference_content(s_name, r_name)
+
+                return _ref_resource
+
+            _bind_ref(skill_name, ref_name)
+
+    # 3. Templated Fallback Resources for dynamic lookup
+    @mcp.resource(
+        "exca-mcp://skills/{name}",
+        mime_type="text/markdown",
+        description="Retrieve the primary SKILL.md instruction for an agent skill by name.",
+    )
+    def dynamic_skill_resource(name: str) -> str:
+        """Retrieve the primary SKILL.md instruction for an agent skill."""
+        return read_skill_content(name)
+
+    @mcp.resource(
+        "exca-mcp://skills/{name}/references/{ref}",
+        mime_type="text/markdown",
+        description="Retrieve a supporting reference document for an agent skill.",
+    )
+    def dynamic_reference_resource(name: str, ref: str) -> str:
+        """Retrieve a supporting reference document for an agent skill."""
+        return read_reference_content(name, ref)
+
+    # 4. MCP Prompts
+
+    @mcp.prompt(
+        description="Comprehensive 10-step workflow to plan, construct, validate, and export a production architecture diagram."
+    )
+    def create_architecture_diagram(
+        system_description: str,
+        style: str = "modern",
+        output_name: str = "architecture",
+    ) -> str:
+        """Prompt guiding an AI agent to design and export a multi-tier system architecture diagram."""
+        arch_skill = read_skill_content("architecture-diagrams")
+        polish_skill = read_skill_content("human-style-and-polish")
+        handoff_skill = read_skill_content("verify-and-editable-handoff")
+
+        return f"""# Architecture Diagram Creation Task
+
+Target System: {system_description}
+Preferred Style: {style}
+Export Base Name: {output_name}
+
+You are acting as a Principal Software Architect. Follow this strict 10-step process to design, create, and verify the architecture diagram using exca-mcp tools:
+
+## 1. Inspect and Understand
+- Inspect the actual project codebase, services, data stores, external dependencies, and network boundaries.
+- Identify major architectural layers: Clients, Edge/Ingress, Application Services, Persistence/Storage, and External Integrations.
+
+## 2. Architectural Planning & Tiering
+- Cap component density: maximum 12-15 core nodes. Split into sub-diagrams if the topology is larger.
+- Establish clean vertical or horizontal tiers:
+  * Tier 1 (Clients / Presentation)
+  * Tier 2 (Gateway / Load Balancing)
+  * Tier 3 (Microservices / Business Logic)
+  * Tier 4 (Databases, Caches, Event Queues)
+  * Tier 5 (External APIs / Third-Party Services)
+
+## 3. Visual Craftsmanship & Semantic Palette
+- Apply the 60-30-10 palette rule:
+  * 60% Neutrals (canvas white `#ffffff`, frame background `#f8f9fa`, slate text `#212529`).
+  * 30% Structural Primary (core services: Soft Blue `#e7f5ff`, stroke `#1971c2`).
+  * 10% Intentional Accents (Storage: Mint `#e6fcf5`, Queues: Amber `#fff9db`, External/Warnings: Coral `#fff5f5`).
+- Typography hierarchy: 28px title, 20px frame headers, 16px service labels, 12-14px protocol subtext.
+- Grid clearances: maintain >= 30px gap between sibling shapes, 15px clearance around connector corridors, and >= 40px internal frame padding.
+
+## 4. Construction via Primitives
+- Use `add_frame(name, x, y, w, h)` to establish physical and logical deployment boundaries.
+- Use `add_rectangle(x, y, w, h, label="Title\\nSubtitle", frame_id=...)` to create components.
+- Use `connect(source_id, target_id, label="Protocol", elbowed=True)` to create bound, orthogonal connectors.
+  * Solid lines (`strokeStyle="solid"`) for synchronous HTTP/gRPC.
+  * Dashed lines (`strokeStyle="dashed"`) for asynchronous events, Kafka topics, or message queues.
+
+## 5. Geometry Verification & Auto-Repair
+- Call `auto_fix_layout(dry_run=True, repair_scope="all", min_gap=30.0)` to check for overlaps or spacing violations.
+- If issues exist, apply `auto_fix_layout(dry_run=False, aggressiveness="balanced", min_gap=30.0)`.
+
+## 6. Visual Preview Inspection
+- Call `preview(scale=1.0, padding=40, background=True)` and visually inspect the rendered PNG to verify visual balance and contrast.
+
+## 7. Delivery & Human Editability
+- Verify editability: all connectors must have bound endpoints (`source_id`, `target_id`), labels bound inside shapes, and no locked elements.
+- Save native editable document snapshot: `save(name="{output_name}", overwrite=True)`.
+- Export high-resolution PNG: `export_png(name="{output_name}", scale=2.0, overwrite=True)`.
+
+---
+### Supporting Reference Skills
+- Architecture Patterns: exca-mcp://skills/architecture-diagrams
+- Human Polish & Palette: exca-mcp://skills/human-style-and-polish
+- Verification Checklist: exca-mcp://skills/verify-and-editable-handoff
+"""
+
+    @mcp.prompt(
+        description="Prompt guiding an AI agent to design a clean, professional flowchart, pipeline, or decision logic diagram."
+    )
+    def create_flowchart(
+        process_description: str,
+        direction: str = "TB",
+        output_name: str = "flowchart",
+    ) -> str:
+        """Prompt guiding an AI agent to construct a flowchart or process diagram."""
+        return f"""# Flowchart & Process Diagram Task
+
+Process Description: {process_description}
+Primary Flow Direction: {direction} (Top-to-Bottom: TB, Left-to-Right: LR)
+Export Base Name: {output_name}
+
+Follow these professional flowchart rules using exca-mcp tools:
+
+1. Single Start Node: Exactly one entry point styled as a soft green pill (`roundness="round"`, backgroundColor="#e6fcf5", strokeColor="#0ca678").
+2. Explicit Decision Diamonds: Use `add_diamond` strictly for conditional branches. Phrased as questions ending with `?`. Minimum dimensions 180x110px.
+3. Labeled Outlets: Every connector exiting a diamond MUST have an explicit label (`"Yes"`, `"No"`, `"Retry"`, `"Timeout"`).
+4. Distinct Terminals: End every path with a terminal (Success in mint green `#ebfbee`, Failure/Abort in light red `#fff5f5`).
+5. Orthogonal Routing: Set `elbowed=True` on all `connect` calls.
+6. Perimeter Loops: Route retry or feedback loops around the exterior perimeter (>= 60px lateral clearance from trunk).
+7. Verification & Delivery:
+   - Run `auto_fix_layout(dry_run=True)` to confirm 0 defects.
+   - Inspect visual rendering with `preview(scale=1.0)`.
+   - Save native scene `save(name="{output_name}", overwrite=True)` and export `export_png(name="{output_name}", overwrite=True)`.
+
+Reference: exca-mcp://skills/flowcharts-and-processes
+"""
+
+    @mcp.prompt(
+        description="Formulate a written architectural plan, node inventory, tier breakdown, and palette selection before drawing."
+    )
+    def plan_diagram(
+        request: str,
+        diagram_type: str = "architecture",
+    ) -> str:
+        """Prompt guiding the upfront planning phase before invoking drawing tools."""
+        return f"""# Diagram Planning Task
+
+Raw Request: {request}
+Target Type: {diagram_type}
+
+Before making any drawing tool calls, create a written diagram plan covering:
+
+1. Audience & Intent: Who will read this diagram (executives, engineers, customers) and what decision or understanding does it support?
+2. Node Inventory & Density Cap:
+   - List every component, service, data store, and boundary.
+   - Count nodes: if > 15 nodes, partition into high-level system overview + focused sub-system diagrams.
+3. Layer Tiering & Flow Direction:
+   - Identify tiers (Clients, Gateway, Microservices, Storage, Third-party).
+   - Choose flow direction (Top-to-Bottom for multi-tier systems, Left-to-Right for event pipelines).
+4. Entry Tool Justification:
+   - Select and justify tool: Primitives (`add_frame`, `add_rectangle`, `connect`) for multi-tier production architecture, `draw_mermaid` for quick sequential pipelines.
+5. Semantic Palette Plan (60-30-10):
+   - 60% Neutrals (containers, borders, body text).
+   - 30% Structural Primary (core services).
+   - 10% Intentional Accent (data, queues, warnings).
+
+Reference: exca-mcp://skills/diagram-planning
+"""
+
+    @mcp.prompt(
+        description="Safely inspect and modify an existing Excalidraw scene while preserving layout structure and visual balance."
+    )
+    def edit_existing_diagram(
+        instructions: str,
+        scene_name: str = "",
+    ) -> str:
+        """Prompt guiding non-destructive edits to an active or loaded Excalidraw diagram."""
+        load_instruction = (
+            f"1. First load the target scene: `load(name='{scene_name}')`."
+            if scene_name
+            else "1. Inspect the currently active canvas."
+        )
+
+        return f"""# Edit Existing Diagram Task
+
+Edit Instructions: {instructions}
+Target Scene: {scene_name or "active canvas"}
+
+Perform targeted, non-destructive modifications to the diagram:
+
+{load_instruction}
+2. Call `get_scene()` to retrieve active elements, their IDs, positions, and connections.
+3. Plan minimal required mutations:
+   - To update labels or styles: call `update_element(element_id=..., ...)`.
+   - To reposition components: call `move(element_id=..., x=..., y=...)` (attached bound connectors will follow).
+   - To remove elements: call `delete(element_id=...)`.
+   - To connect new relationships: call `connect(source_id=..., target_id=..., label=..., elbowed=True)`.
+4. Maintain visual hierarchy and grid spacing: do not cause accidental overlaps or frame boundary escapes.
+5. Validate layout: run `auto_fix_layout(dry_run=True)` to confirm zero introduced defects.
+6. Check visual appearance with `preview(scale=1.0)`.
+7. Save snapshot: `save(name=..., overwrite=True)`.
+
+Reference: exca-mcp://skills/excalidraw-workflow
+"""
+
+    @mcp.prompt(
+        description="Comprehensive 5-step quality gate: diagnose layout, auto-repair, visual preview inspection, and dual export."
+    )
+    def verify_and_export_diagram(
+        output_name: str = "diagram",
+        directory: str = "docs",
+    ) -> str:
+        """Prompt guiding the final verification and export of an Excalidraw diagram."""
+        return f"""# Diagram Verification and Delivery Task
+
+Target Name: {output_name}
+Target Directory: {directory}
+
+Execute this quality gate before completing the diagram task:
+
+1. Step 1: Geometry Diagnostics
+   - Run `auto_fix_layout(dry_run=True, repair_scope='all', min_gap=30.0)`.
+   - If `status != 'no_changes_needed'`, inspect `initial_issues`.
+2. Step 2: Auto-Repair
+   - If defects exist, run `auto_fix_layout(dry_run=False, repair_scope='all', aggressiveness='balanced', min_gap=30.0)`.
+   - If changes are unsatisfactory, invoke `undo()` immediately.
+3. Step 3: Visual Inspection
+   - Call `preview(scale=1.0, padding=40, background=True)`.
+   - Visually check alignment, typography readability (>= 14px), frame padding (>= 40px), and connector clarity.
+4. Step 4: Human Editability Audit
+   - Confirm all connectors use bound endpoints (`source_id`, `target_id`).
+   - Confirm shape labels are bound to their host elements.
+   - Ensure no elements remain locked.
+5. Step 5: Dual Format Export
+   - Save native editable file: `save(name='{output_name}', overwrite=True)` or export scene JSON via `export_scene()`.
+   - Export high-resolution PNG: `export_png(name='{output_name}', directory='{directory}', scale=2.0, overwrite=True)`.
+
+Reference: exca-mcp://skills/verify-and-editable-handoff
+"""
