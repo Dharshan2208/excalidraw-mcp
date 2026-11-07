@@ -8,9 +8,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Dharshan2208/excalidraw-mcp/blob/main/LICENSE)
 [![Built with Hatchling](https://img.shields.io/badge/build-hatchling-purple.svg)](https://hatch.pypa.io/)
 
-Excalidraw MCP is a backend-oriented Model Context Protocol (MCP) server that enables AI agents to create, inspect, edit, diagnose, and export native [Excalidraw](https://excalidraw.com) diagrams over standard `stdio`.
+Excalidraw MCP is a backend oriented Model Context Protocol (MCP) server that enables AI agents to create, inspect, edit, diagnose, and export native [Excalidraw](https://excalidraw.com) diagrams over standard `stdio`.
 
-Unlike browser-automation wrappers, Excalidraw MCP operates directly on scene graphs and element trees in memory. AI coding agents can construct complex architectures, generate flowcharts from Mermaid syntax, inspect element hierarchies, and apply deterministic layout repairs without requiring a running web browser or graphical interface.
+Unlike browser automation wrappers, Excalidraw MCP operates directly on scene graphs and element trees in memory. AI coding agents can construct complex architectures, generate flowcharts from Mermaid syntax, inspect element hierarchies, and apply deterministic layout repairs without requiring a running web browser or graphical interface.
 
 Diagrams are serialized in native Excalidraw Schema v2 format, ensuring immediate compatibility with excalidraw.com, standard Excalidraw desktop extensions, and headless image export pipelines.
 
@@ -126,35 +126,8 @@ For full feature documentation, see [docs/features.md](docs/features.md).
 
 ## Architecture
 
-```
-                  +----------------------------------------------+
-                  |         AI Coding Assistants & Hosts         |
-                  |     (Claude Desktop, Cursor, Zed, OpenCode)  |
-                  +----------------------+-----------------------+
-                                         | stdio (JSON-RPC 2.0)
-                                         v
-+---------------------------------------------------------------------------------+
-| FastMCP Protocol Layer                                                          |
-| - Tool Routing (27 Core / 48 Full tools via EXCALIDRAW_TOOLSET)                 |
-| - Schema Validation & Resource Endpoints (excalidraw://capabilities, skills)    |
-+----------------------------------------+----------------------------------------+
-                                         |
-                                         v
-+---------------------------------------------------------------------------------+
-| State & Transaction Engine (SceneService)                                       |
-| - In-Memory Scene Graph (SceneState) & Element Remapping                        |
-| - Bounded History Stack (undo) & Monotonic Revisions                            |
-+-------------------+-------------------------------------+-----------------------+
-                    |                                     |
-                    v                                     v
-+-----------------------------------+   +-----------------------------------------+
-| Geometric Computation Subsystems  |   | Rendering, Persistence & Live Sync      |
-| - routing.py: Obstacle Corridors  |   | - renderer.py: Pillow Rasterization     |
-| - text_padding.py: Dynamic Bounds |   | - scene.py: Atomic POSIX Save/Load    |
-| - fonts.py: FreeType Metrics      |   | - sharing.py: Client-Side AES-GCM URLs  |
-| - auto_fix.py: 5-Phase Repair     |   | - live_server.py: Starlette & WebSocket |
-+-----------------------------------+   +-----------------------------------------+
-```
+![Excalidraw MCP System Architecture](https://raw.githubusercontent.com/Dharshan2208/excalidraw-mcp/main/docs/architecture.png)
+*This system architecture diagram was generated with Excalidraw MCP itself, serving as both a functional capability demo and the system architecture diagram. Editable source: [docs/architecture.excalidraw](https://github.com/Dharshan2208/excalidraw-mcp/blob/main/docs/architecture.excalidraw).*
 
 The server architecture consists of four primary internal subsystems:
 
