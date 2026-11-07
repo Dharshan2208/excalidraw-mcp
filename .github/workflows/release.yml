@@ -1,109 +1,112 @@
 name: Release & Publish to PyPI
 
-    on:
-      push:
-        tags:
-          - "v[0-9]+.[0-9]+.[0-9]+*"
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
 
-    concurrency:
-      group: release-${{ github.ref }}
-      cancel-in-progress: false
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
-    jobs:
-      test:
-        name: Run Test Suite & Quality Gates
-        runs-on: ubuntu-latest
-        steps:
-          - name: Check out repository
-            uses: actions/checkout@v4
+jobs:
+  test:
+    name: Run Test Suite & Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-          - name: Install uv
-            uses: astral-sh/setup-uv@v5
-            with:
-              enable-cache: true
-              version: "latest"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
 
-          - name: Set up Python
-            run: uv python install 3.12
+      - name: Set up Python
+        run: uv python install 3.12
 
-          - name: Byte-compile verification
-            run: uv run python -B -m compileall -q -f main.py excalidraw_mcp tests
+      - name: Install dependencies
+        run: uv sync --locked
 
-          - name: Run unit & contract tests
-            run: uv run --locked python -B -m unittest discover -s tests -v
+      - name: Byte-compile verification
+        run: uv run python -B -m compileall -q -f main.py excalidraw_mcp tests
 
-      build:
-        name: Build Wheel & Sdist
-        needs: test
-        runs-on: ubuntu-latest
-        outputs:
-          artifact-id: ${{ steps.upload-artifacts.outputs.artifact-id }}
-        steps:
-          - name: Check out repository
-            uses: actions/checkout@v4
+      - name: Run unit & contract tests
+        run: uv run --locked python -B -m unittest discover -s tests -v
 
-          - name: Install uv
-            uses: astral-sh/setup-uv@v5
-            with:
-              enable-cache: true
-              version: "latest"
+  build:
+    name: Build Wheel & Sdist
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-id: ${{ steps.upload-artifacts.outputs.artifact-id }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-          - name: Set up Python
-            run: uv python install 3.12
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
 
-          - name: Build sdist and wheel
-            run: uv build
+      - name: Set up Python
+        run: uv python install 3.12
 
-          - name: Validate distribution metadata
-            run: uvx twine check --strict dist/*
+      - name: Build sdist and wheel
+        run: uv build
 
-          - name: Upload build artifacts
-            id: upload-artifacts
-            uses: actions/upload-artifact@v4
-            with:
-              name: pypi-artifacts
-              path: dist/
-              if-no-files-found: error
-              retention-days: 7
+      - name: Validate distribution metadata
+        run: uvx twine check --strict dist/*
 
-      attest:
-        name: Attest Build Provenance
-        needs: build
-        runs-on: ubuntu-latest
-        permissions:
-          id-token: write
-          attestations: write
-          contents: read
-        steps:
-          - name: Download build artifacts
-            uses: actions/download-artifact@v4
-            with:
-              name: pypi-artifacts
-              path: dist/
+      - name: Upload build artifacts
+        id: upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-artifacts
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
 
-          - name: Generate build provenance attestation
-            uses: actions/attest-build-provenance@v2
-            with:
-              subject-path: "dist/*"
+  attest:
+    name: Attest Build Provenance
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: read
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-artifacts
+          path: dist/
 
-      publish:
-        name: Publish to PyPI
-        needs: [build, attest]
-        runs-on: ubuntu-latest
-        environment:
-          name: pypi
-          url: https://pypi.org/p/exca-mcp
-        permissions:
-          id-token: write 
-        steps:
-          - name: Download build artifacts
-            uses: actions/download-artifact@v4
-            with:
-              name: pypi-artifacts
-              path: dist/
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
 
-          - name: Publish package distributions to PyPI
-            uses: pypa/gh-action-pypi-publish@release/v1
-            with:
-              packages-dir: dist/
-              verify-metadata: true
+  publish:
+    name: Publish to PyPI
+    needs: [build, attest]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/exca-mcp
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-artifacts
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          verify-metadata: true
