@@ -922,14 +922,28 @@ def create_server(
         }
         return json.dumps(info, indent=2)
 
+    # Register agent skills discovery index, individual skills, and task prompts
+    from .skills import register_skills_mcp
+
+    register_skills_mcp(mcp)
+
     return mcp
 
 
 mcp = create_server()
 
 
-def main():
-    """Run the installed stdio MCP server."""
+def main(argv: list[str] | None = None) -> None:
+    """Run the installed stdio MCP server or CLI subcommands."""
+    import sys
+
+    args = sys.argv[1:] if argv is None else argv
+
+    if args and args[0] == "install-skills":
+        from .installer import run_install_skills_cli
+
+        sys.exit(run_install_skills_cli(args[1:]))
+
     mcp.run()
 
 
