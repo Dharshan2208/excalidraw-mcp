@@ -47,6 +47,11 @@ EXPECTED_REFERENCES = {
 
 
 class SkillsDistributionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """Build wheel and sdist once before running archive/distribution tests."""
+        subprocess.run(["uv", "build"], check=True, capture_output=True)
+
     def test_list_skills(self):
         """Verify all six skills are discoverable."""
         skills = list_skills()
@@ -159,7 +164,6 @@ class SkillsDistributionTests(unittest.TestCase):
 
     def test_wheel_archive_contents(self):
         """Verify that uv build produces a wheel containing all skills and references."""
-        subprocess.run(["uv", "build"], check=True, capture_output=True)
         dist_dir = Path("dist")
         wheels = list(dist_dir.glob("*.whl"))
         self.assertGreater(len(wheels), 0)
