@@ -153,6 +153,15 @@ def _style_kwargs(
     return {k: v for k, v in locals().items() if v is not None}
 
 
+def get_server_version() -> str:
+    """Return dynamically detected package version with safe fallback."""
+    try:
+        from importlib.metadata import version
+        return version("exca-mcp")
+    except Exception:
+        return "0.3.0"
+
+
 def create_server(
     service: SceneService | None = None,
     toolset: str | None = None,
@@ -856,7 +865,7 @@ def create_server(
         info = {
             "active_toolset": active_toolset,
             "available_toolsets": ["core", "full"],
-            "server_version": "0.2.0",
+            "server_version": get_server_version(),
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
             "tool_count": 20 if is_full else 12,
             "capabilities": {
