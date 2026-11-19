@@ -160,7 +160,12 @@ def create_server(
         toolset if toolset is not None else configured_toolset()
     ).strip().lower()
     is_full = active_toolset == "full"
-    mcp = FastMCP("Excalidraw MCP")
+    instructions = (
+        "Create and edit Excalidraw diagrams. Use create_shape, create_connector, add_text, "
+        "and add_frame for primitives, or batch_mutate for atomic updates. Use inspect_scene to query "
+        "elements and metrics. Use auto_fix_layout to repair defects, and preview to inspect visuals."
+    )
+    mcp = FastMCP("Excalidraw MCP", instructions=instructions)
     _configure_tool_registration(mcp)
 
     def invoke(operation, *args, **kwargs):
@@ -537,6 +542,32 @@ def create_server(
         """Read a validated saved scene without changing the active scene."""
         return invoke(service.read_saved_scene, name)
 
+    @mcp.resource("excalidraw://fonts", mime_type="application/json")
+    def fonts_resource() -> str:
+        """Read discoverable fonts and semantic categories available on the server."""
+        import json
+        return json.dumps(invoke(service.list_fonts))
+
+    @mcp.resource("excalidraw://guide/{topic}", mime_type="text/markdown")
+    def diagram_guide_resource(topic: str) -> str:
+        """Read diagram guidelines for layout, spacing, colors, typography, and arrows."""
+        res = invoke(service.read_diagram_guide, topic=topic)
+        guide = res.get("guide", {})
+        if isinstance(guide, dict):
+            lines = [f"# {guide.get('title', topic.title())}\n"]
+            if "principles" in guide and isinstance(guide["principles"], list):
+                lines.append("## Principles\n")
+                for p in guide["principles"]:
+                    lines.append(f"- {p}")
+                lines.append("")
+            if "recommendations" in guide and isinstance(guide["recommendations"], dict):
+                lines.append("## Recommendations\n")
+                for k, v in guide["recommendations"].items():
+                    lines.append(f"- **{k}**: {v}")
+                lines.append("")
+            return "\n".join(lines).strip()
+        return str(guide)
+
     @mcp.tool(annotations=READ_ONLY)
     def preview(
         scale: PreviewScale = 1.0,
@@ -623,13 +654,6 @@ def create_server(
                 background=background,
                 overwrite=overwrite,
             )
-
-        @mcp.tool(annotations=READ_ONLY)
-        def list_fonts(
-            category: FontCategory | None = None,
-        ) -> FontListResult:
-            """Discover and list available system fonts and semantic font categories."""
-            return invoke(service.list_fonts, category=category)
 
         @mcp.tool(
             annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
@@ -765,7 +789,8 @@ def create_server(
     if is_full:
         @mcp.tool(annotations=READ_ONLY)
         def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
-            """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
+            """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability.
+            Prefer reading the 'excalidraw://guide/{topic}' resource if your client supports MCP resources."""
             return invoke(service.read_diagram_guide, topic=topic)
 
         @mcp.tool(
@@ -795,23 +820,20 @@ def create_server(
             "available_toolsets": ["core", "full"],
             "server_version": "0.2.0",
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 31 if is_full else 17,
+            "tool_count": 20 if is_full else 12,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
                 "export": ["png", "excalidraw_json"],
                 "repair": "5-phase topological auto_fix_layout with rollback",
                 "full_only_features": [
-                    "live_server",
-                    "draw_graph",
-                    "batch_mutate",
-                    "add_code_block",
+                    "scene_storage",
+                    "export_png",
+                    "generate_diagram",
+                    "manage_element_state",
                     "set_viewport",
-                    "duplicate_elements",
-                    "import_scene",
+                    "live_server",
                     "export_to_excalidraw_url",
-                    "list_saved_scenes",
-                    "list_fonts",
                     "read_diagram_guide",
                 ],
             },

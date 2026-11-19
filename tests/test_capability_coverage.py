@@ -206,8 +206,9 @@ class CapabilityCoverageTests(unittest.IsolatedAsyncioTestCase):
         # 43. stop_live_server -> live_server(action="stop")
         self.assertIn("live_server", tools)
 
-        # 44. list_fonts -> list_fonts
-        self.assertIn("list_fonts", tools)
+        # 44. list_fonts -> MCP resource excalidraw://fonts
+        fonts_res = await self.server.read_resource("excalidraw://fonts")
+        self.assertIn("fonts", str(fonts_res))
 
         # 45. read_diagram_guide -> read_diagram_guide
         self.assertIn("read_diagram_guide", tools)

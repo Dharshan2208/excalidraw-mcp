@@ -74,7 +74,7 @@ class MCPContractTests(unittest.TestCase):
             templates = asyncio.run(server.list_resource_templates())
             self.assertEqual(
                 [str(item.uri_template) for item in templates],
-                ["excalidraw://scenes/{name}.excalidraw"],
+                ["excalidraw://scenes/{name}.excalidraw", "excalidraw://guide/{topic}"],
             )
             provider = templates[0]
             result = asyncio.run(provider.read({"name": "example"}))

@@ -73,7 +73,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 21)
+        self.assertEqual(len(tools), 20)
         tool_names = {t.name for t in tools}
         self.assertIn("generate_diagram", tool_names)
         self.assertIn("scene_storage", tool_names)
@@ -81,6 +81,8 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("inspect_scene", tool_names)
         self.assertIn("live_server", tool_names)
         self.assertIn("manage_element_state", tool_names)
+        self.assertIn("read_diagram_guide", tool_names)
+        self.assertNotIn("list_fonts", tool_names)
         self.assertNotIn("start_live_server", tool_names)
         self.assertNotIn("stop_live_server", tool_names)
         self.assertNotIn("set_element_locked", tool_names)
@@ -127,9 +129,26 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["server_version"], "0.2.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 31 if mode == "full" else 17)
+            self.assertEqual(data["tool_count"], 20 if mode == "full" else 12)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
+
+    async def test_documentation_and_font_resources(self):
+        server = create_server(toolset="core")
+        resources = await server.list_resources()
+        resource_uris = {str(r.uri) for r in resources}
+        self.assertIn("excalidraw://fonts", resource_uris)
+
+        fonts_res = await server.read_resource("excalidraw://fonts")
+        self.assertTrue(len(fonts_res.contents) > 0)
+        fonts_data = json.loads(fonts_res.contents[0].content)
+        self.assertIn("fonts", fonts_data)
+        self.assertIn("total", fonts_data)
+
+        guide_res = await server.read_resource("excalidraw://guide/layout")
+        self.assertTrue(len(guide_res.contents) > 0)
+        self.assertIn("# Diagram Layout & Flow Structure", guide_res.contents[0].content)
+        self.assertIn("## Principles", guide_res.contents[0].content)
 
 
 class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):

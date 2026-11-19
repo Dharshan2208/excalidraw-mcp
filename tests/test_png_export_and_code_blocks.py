@@ -281,10 +281,9 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_export_png_and_code_blocks(self):
         server = create_server(toolset="full")
         async with Client(server, timeout=5) as client:
-            # 1. Test list_fonts
-            fonts_res = await client.call_tool("list_fonts", {"category": "monospace"})
-            self.assertFalse(fonts_res.is_error)
-            fonts_data = json.loads(fonts_res.content[0].text)
+            # 1. Test fonts resource
+            fonts_res = await client.read_resource("excalidraw://fonts")
+            fonts_data = json.loads(fonts_res[0].text)
             self.assertIn("total", fonts_data)
             self.assertIn("fonts", fonts_data)
 
