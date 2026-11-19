@@ -70,6 +70,7 @@ from excalidraw_mcp.contracts import (
     DuplicateResult,
     ElementId,
     ElementResult,
+    ElementStateAction,
     ElementSummary,
     ElementType,
     FillStyle,
@@ -88,6 +89,7 @@ from excalidraw_mcp.contracts import (
     InspectMode,
     Label,
     LayoutType,
+    LiveServerAction,
     LiveServerResult,
     LoadResult,
     LockResult,
@@ -533,7 +535,7 @@ def create_server(
             """Atomically execute a batch of creation, editing, and deletion operations."""
             return invoke(
                 service.batch_mutate,
-                [op.model_dump(exclude_unset=False) for op in operations],
+                [op.model_dump(exclude_none=True) for op in operations],
             )
 
     @mcp.tool(annotations=MUTATING)
@@ -623,38 +625,6 @@ def create_server(
         )
 
     if is_full:
-        @mcp.tool(annotations=MUTATING)
-        def add_code_block(
-            code: str,
-            language: str = "python",
-            x: Coordinate = 0,
-            y: Coordinate = 0,
-            title: str | None = None,
-            theme: CodeTheme = "dark",
-            font_size: FontSize = 14,
-            font_family: str | None = "monospace",
-            line_numbers: Boolean = True,
-            w: Dimension | None = None,
-            h: Dimension | None = None,
-            frame_id: ElementId | None = None,
-        ) -> CodeBlockResult:
-            """Add a syntax-highlighted code block with window controls and line numbers."""
-            return invoke(
-                service.add_code_block,
-                code=code,
-                language=language,
-                x=x,
-                y=y,
-                title=title,
-                theme=theme,
-                font_size=font_size,
-                font_family=font_family,
-                line_numbers=line_numbers,
-                w=w,
-                h=h,
-                frame_id=frame_id,
-            )
-
         @mcp.tool(annotations=READ_ONLY)
         def list_fonts(
             category: FontCategory | None = None,
@@ -741,21 +711,26 @@ def create_server(
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
         )
-        def set_element_locked(
-            element_ids: list[ElementId],
-            locked: Boolean = True,
-        ) -> LockResult | UnlockResult:
-            """Lock or unlock elements and their bound labels to prevent or permit mutations."""
-            return invoke(service.set_element_locked, element_ids, locked=locked)
-
-        @mcp.tool(annotations=MUTATING)
-        def manage_groups(
+        def manage_element_state(
             element_ids: list[ElementId] | None = None,
+            action: ElementStateAction = "lock",
             group_id: str | None = None,
-            action: Literal["group", "ungroup"] = "group",
-        ) -> GroupResult | UngroupResult:
-            """Group or ungroup multiple elements together."""
-            return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action=action)
+            offset_x: Coordinate = 20.0,
+            offset_y: Coordinate = 20.0,
+        ) -> Any:
+            """Lock or unlock elements, manage groupings, or duplicate elements with relationship remapping."""
+            if action == "lock":
+                return invoke(service.set_element_locked, element_ids or [], locked=True)
+            elif action == "unlock":
+                return invoke(service.set_element_locked, element_ids or [], locked=False)
+            elif action in ("group", "ungroup"):
+                return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action=action)
+            elif action == "duplicate":
+                if not element_ids:
+                    raise ToolError("manage_element_state(action='duplicate') requires element_ids parameter.")
+                return invoke(service.duplicate_elements, element_ids=element_ids, offset_x=offset_x, offset_y=offset_y)
+            else:
+                raise ToolError(f"Unsupported element action: {action}")
 
     if is_full:
         @mcp.tool(
@@ -794,33 +769,21 @@ def create_server(
             """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability."""
             return invoke(service.read_diagram_guide, topic=topic)
 
-        @mcp.tool(annotations=MUTATING)
-        def duplicate_elements(
-            element_ids: list[ElementId],
-            offset_x: Coordinate = 20.0,
-            offset_y: Coordinate = 20.0,
-        ) -> DuplicateResult:
-            """Duplicate multiple elements with spatial offsets, relationship remapping, and internal binding preservation."""
-            return invoke(
-                service.duplicate_elements,
-                element_ids=element_ids,
-                offset_x=offset_x,
-                offset_y=offset_y,
-            )
-
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=True),
         )
-        def start_live_server(host: str = "127.0.0.1", port: int = 8080) -> LiveServerResult:
-            """Start the background browser-connected Excalidraw live canvas server with real-time synchronization."""
-            return invoke(service.start_live_server, host=host, port=port)
-
-        @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        )
-        def stop_live_server() -> LiveServerResult:
-            """Stop the background live canvas server."""
-            return invoke(service.stop_live_server)
+        def live_server(
+            action: LiveServerAction = "start",
+            host: str = "127.0.0.1",
+            port: int = 8080,
+        ) -> LiveServerResult:
+            """Start or stop the background browser-connected Excalidraw live canvas server with real-time synchronization."""
+            if action == "start":
+                return invoke(service.start_live_server, host=host, port=port)
+            elif action == "stop":
+                return invoke(service.stop_live_server)
+            else:
+                raise ToolError(f"Unsupported live_server action: {action}")
 
     @mcp.resource("excalidraw://capabilities", mime_type="application/json")
     def capabilities_resource() -> str:

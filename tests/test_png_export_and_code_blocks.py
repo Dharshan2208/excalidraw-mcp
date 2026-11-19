@@ -288,20 +288,25 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("total", fonts_data)
             self.assertIn("fonts", fonts_data)
 
-            # 2. Test add_code_block
+            # 2. Test add_code_block via batch_mutate
             cb_res = await client.call_tool(
-                "add_code_block",
+                "batch_mutate",
                 {
-                    "code": "def solve():\n    return 42",
-                    "language": "python",
-                    "title": "solution.py",
-                    "x": 50,
-                    "y": 50,
-                    "theme": "dark",
+                    "operations": [
+                        {
+                            "action": "add_code_block",
+                            "code": "def solve():\n    return 42",
+                            "language": "python",
+                            "title": "solution.py",
+                            "x": 50,
+                            "y": 50,
+                            "theme": "dark",
+                        }
+                    ]
                 },
             )
             self.assertFalse(cb_res.is_error)
-            container_id = json.loads(cb_res.content[0].text)["container_id"]
+            container_id = json.loads(cb_res.content[0].text)["results"][0]["container_id"]
             self.assertIsNotNone(container_id)
 
             # 3. Test export_png

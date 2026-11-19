@@ -143,6 +143,9 @@ DiagramResult = dict[str, Any]
 StorageAction = Literal["save", "load", "list", "export", "import", "share_url"]
 StorageResult = dict[str, Any]
 
+ElementStateAction = Literal["lock", "unlock", "group", "ungroup", "duplicate"]
+LiveServerAction = Literal["start", "stop"]
+
 
 class BatchOperation(BaseModel):
     model_config = ConfigDict(extra="allow")

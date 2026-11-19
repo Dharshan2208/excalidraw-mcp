@@ -66,20 +66,27 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("focus_elements", tool_names)
         self.assertNotIn("start_live_server", tool_names)
         self.assertNotIn("stop_live_server", tool_names)
+        self.assertNotIn("live_server", tool_names)
+        self.assertNotIn("manage_element_state", tool_names)
         self.assertNotIn("get_live_server_status", tool_names)
 
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 25)
+        self.assertEqual(len(tools), 21)
         tool_names = {t.name for t in tools}
         self.assertIn("generate_diagram", tool_names)
         self.assertIn("scene_storage", tool_names)
         self.assertIn("batch_mutate", tool_names)
         self.assertIn("inspect_scene", tool_names)
-        self.assertIn("start_live_server", tool_names)
-        self.assertIn("set_element_locked", tool_names)
-        self.assertIn("manage_groups", tool_names)
+        self.assertIn("live_server", tool_names)
+        self.assertIn("manage_element_state", tool_names)
+        self.assertNotIn("start_live_server", tool_names)
+        self.assertNotIn("stop_live_server", tool_names)
+        self.assertNotIn("set_element_locked", tool_names)
+        self.assertNotIn("manage_groups", tool_names)
+        self.assertNotIn("duplicate_elements", tool_names)
+        self.assertNotIn("add_code_block", tool_names)
         self.assertNotIn("save", tool_names)
         self.assertNotIn("load", tool_names)
         self.assertNotIn("list_saved_scenes", tool_names)
@@ -122,14 +129,15 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         rid = rect["rectangle_id"]
 
         # Lock via unified tool
-        res1 = tools["set_element_locked"](element_ids=[rid], locked=True)
+        res1 = tools["manage_element_state"](element_ids=[rid], action="lock")
         self.assertEqual(res1["status"], "locked")
 
         # Unlock via unified tool
-        res2 = tools["set_element_locked"](element_ids=[rid], locked=False)
+        res2 = tools["manage_element_state"](element_ids=[rid], action="unlock")
         self.assertEqual(res2["status"], "unlocked")
 
         # Verify legacy wrappers are removed from MCP tools
+        self.assertNotIn("set_element_locked", tools)
         self.assertNotIn("lock_elements", tools)
         self.assertNotIn("unlock_elements", tools)
 
@@ -141,15 +149,16 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         ids = [r1["rectangle_id"], r2["rectangle_id"]]
 
         # Group via unified tool
-        res1 = tools["manage_groups"](element_ids=ids, action="group")
+        res1 = tools["manage_element_state"](element_ids=ids, action="group")
         self.assertEqual(res1["status"], "grouped")
         gid = res1["group_id"]
 
         # Ungroup via unified tool
-        res2 = tools["manage_groups"](group_id=gid, action="ungroup")
+        res2 = tools["manage_element_state"](group_id=gid, action="ungroup")
         self.assertEqual(res2["status"], "ungrouped")
 
         # Verify legacy wrappers are removed from MCP tools
+        self.assertNotIn("manage_groups", tools)
         self.assertNotIn("group_elements", tools)
         self.assertNotIn("ungroup_elements", tools)
 

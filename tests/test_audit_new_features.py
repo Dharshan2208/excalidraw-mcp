@@ -330,12 +330,12 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         r2_id = r2["rectangle_id"]
 
         # 2. Group
-        grp = tools["manage_groups"](element_ids=[r1_id, r2_id], action="group")
+        grp = tools["manage_element_state"](element_ids=[r1_id, r2_id], action="group")
         self.assertEqual(grp["status"], "grouped")
         gid = grp["group_id"]
 
         # 3. Lock r1
-        locked = tools["set_element_locked"](element_ids=[r1_id], locked=True)
+        locked = tools["manage_element_state"](element_ids=[r1_id], action="lock")
         self.assertEqual(locked["status"], "locked")
 
         # 4. Viewport
@@ -356,11 +356,11 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(summary["groups"]), 1)
 
         # 7. Unlock r1
-        unl = tools["set_element_locked"](element_ids=[r1_id], locked=False)
+        unl = tools["manage_element_state"](element_ids=[r1_id], action="unlock")
         self.assertEqual(unl["status"], "unlocked")
 
         # 8. Ungroup
-        ungrp = tools["manage_groups"](group_id=gid, action="ungroup")
+        ungrp = tools["manage_element_state"](group_id=gid, action="ungroup")
         self.assertEqual(ungrp["status"], "ungrouped")
 
         # 9. Mermaid
