@@ -135,6 +135,30 @@ class SceneDescriptionTests(unittest.TestCase):
         self.assertEqual(desc["connections"][0]["label"], "HTTPS")
         self.assertIsNotNone(desc["bounds"])
 
+    def test_describe_scene_mcp_adapter_defaults(self):
+        import asyncio
+        from excalidraw_mcp.server import create_server
+        from fastmcp import Client
+        import json
+
+        async def _run():
+            server = create_server()
+            async with Client(server) as client:
+                await client.call_tool("create_shape", {"type": "rectangle", "x": 0, "y": 0, "w": 100, "h": 50, "label": "Box"})
+                # Default: only summary returned
+                res_default = await client.call_tool("inspect_scene", {"mode": "describe"})
+                data_default = json.loads(res_default.content[0].text)
+                self.assertIn("summary", data_default)
+                self.assertNotIn("elements", data_default)
+                # include_raw=True: full dictionary returned
+                res_raw = await client.call_tool("inspect_scene", {"mode": "describe", "include_raw": True})
+                data_raw = json.loads(res_raw.content[0].text)
+                self.assertIn("summary", data_raw)
+                self.assertIn("elements", data_raw)
+                self.assertIn("connections", data_raw)
+
+        asyncio.run(_run())
+
 
 class ExportToExcalidrawUrlTests(unittest.TestCase):
     def setUp(self):
@@ -194,6 +218,29 @@ class CanvasScreenshotTests(unittest.TestCase):
         embedded_doc = json.loads(pil_img.info["application/vnd.excalidraw+json"])
         self.assertIn("elements", embedded_doc)
         self.assertEqual(len(embedded_doc["elements"]), 2)  # Rectangle + label
+
+    def test_preview_max_dimension_and_format(self):
+        server = create_server(self.service, toolset="full")
+        tools = {tool.name: tool.fn for tool in asyncio.run(server.list_tools())}
+        # (a) preview of small scene returns dimensions <= 1568 untouched
+        img_default = tools["preview"]()
+        pil_def = PILImage.open(io.BytesIO(img_default.data))
+        self.assertEqual(pil_def.format, "PNG")
+        self.assertLessEqual(max(pil_def.size), 1568)
+        self.assertEqual(img_default.data, self.service.preview())
+
+        # (b) preview with max_dimension=200 downscales an image that would otherwise be larger (360x360 at scale=2.0)
+        img_downscaled = tools["preview"](scale=2.0, max_dimension=200)
+        pil_down = PILImage.open(io.BytesIO(img_downscaled.data))
+        self.assertEqual(pil_down.format, "PNG")
+        self.assertEqual(max(pil_down.size), 200)
+        self.assertNotEqual(img_downscaled.data, img_default.data)
+
+        # (c) preview with format="jpeg" returns a JPEG MIME type image
+        img_jpeg = tools["preview"](format="jpeg")
+        self.assertEqual(img_jpeg.to_image_content().mimeType, "image/jpeg")
+        pil_jpg = PILImage.open(io.BytesIO(img_jpeg.data))
+        self.assertEqual(pil_jpg.format, "JPEG")
 
 
 class GenericResourceAccessTests(unittest.TestCase):

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 
 from fastmcp import Client
@@ -136,20 +137,37 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
         server = create_server(toolset="full")
         tools = {tool.name: tool for tool in await server.list_tools()}
 
-        self.assertIn("deleted_ids", tools["delete"].output_schema["properties"])
-        self.assertIn("x", tools["move"].output_schema["properties"])
-        self.assertIn("y", tools["move"].output_schema["properties"])
-        self.assertIn("path", tools["save"].output_schema["properties"])
-        self.assertIn("scenes", tools["list_saved_scenes"].output_schema["properties"])
-        self.assertIn("label_id", tools["update_element"].output_schema["properties"])
-        self.assertIn("width", tools["resize"].output_schema["properties"])
-        self.assertIn("arrow_id", tools["connect"].output_schema["properties"])
-        self.assertIn("history_depth", tools["undo"].output_schema["properties"])
-        self.assertIn("loaded", tools["load"].output_schema["properties"])
-        self.assertIn("next_step", tools["draw_architecture"].output_schema["properties"])
+        # Output schemas are stripped from tools/list to optimize token consumption
+        self.assertTrue(all(tool.output_schema is None for tool in tools.values()))
+
+        # Underlying contracts retain typed definitions
+        from excalidraw_mcp.contracts import (
+            ArchitectureResult,
+            ConnectResult,
+            DeleteResult,
+            LoadResult,
+            MoveResult,
+            ResizeResult,
+            SavedScenesResult,
+            SaveResult,
+            UndoResult,
+            UpdateResult,
+        )
+
+        self.assertIn("deleted_ids", DeleteResult.__annotations__)
+        self.assertIn("x", MoveResult.__annotations__)
+        self.assertIn("y", MoveResult.__annotations__)
+        self.assertIn("path", SaveResult.__annotations__)
+        self.assertIn("scenes", SavedScenesResult.__annotations__)
+        self.assertIn("label_id", UpdateResult.__annotations__)
+        self.assertIn("width", ResizeResult.__annotations__)
+        self.assertIn("arrow_id", ConnectResult.__annotations__)
+        self.assertIn("history_depth", UndoResult.__annotations__)
+        self.assertIn("loaded", LoadResult.__annotations__)
+        self.assertIn("next_step", ArchitectureResult.__annotations__)
 
     async def test_protocol_rejects_coerced_booleans_in_pagination(self):
-        async with Client(create_server(), timeout=5) as client:
+        async with Client(create_server(toolset="full"), timeout=5) as client:
             res1 = await client.call_tool(
                 "get_scene", {"offset": True}, raise_on_error=False
             )
@@ -162,7 +180,7 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_rejects_empty_content_in_add_text_and_draw_architecture(
         self,
     ):
-        async with Client(create_server(), timeout=5) as client:
+        async with Client(create_server(toolset="full"), timeout=5) as client:
             res1 = await client.call_tool(
                 "add_text",
                 {"x": 0, "y": 0, "content": "   "},
@@ -170,8 +188,8 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(res1.is_error)
             res2 = await client.call_tool(
-                "draw_architecture",
-                {"prompt": "   "},
+                "generate_diagram",
+                {"format": "architecture", "prompt": "   "},
                 raise_on_error=False,
             )
             self.assertTrue(res2.is_error)
@@ -181,27 +199,29 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
         server = create_server(service)
         async with Client(server, timeout=5) as client:
             arrow_res = await client.call_tool(
-                "add_arrow",
+                "create_connector",
                 {"x": 0, "y": 0, "x2": 100, "y2": 100, "roughness": 2},
             )
-            arrow_id = arrow_res.structured_content["arrow_id"]
+            arrow_id = json.loads(arrow_res.content[0].text)["arrow_id"]
             self.assertEqual(service.state.get(arrow_id)["roughness"], 2)
 
             rect_a = await client.call_tool(
-                "add_rectangle", {"x": 0, "y": 0, "w": 50, "h": 50}
+                "create_shape", {"type": "rectangle", "x": 0, "y": 0, "w": 50, "h": 50}
             )
             rect_b = await client.call_tool(
-                "add_rectangle", {"x": 200, "y": 0, "w": 50, "h": 50}
+                "create_shape", {"type": "rectangle", "x": 200, "y": 0, "w": 50, "h": 50}
             )
+            rect_a_id = json.loads(rect_a.content[0].text)["rectangle_id"]
+            rect_b_id = json.loads(rect_b.content[0].text)["rectangle_id"]
             connect_res = await client.call_tool(
-                "connect",
+                "create_connector",
                 {
-                    "source_id": rect_a.structured_content["rectangle_id"],
-                    "target_id": rect_b.structured_content["rectangle_id"],
+                    "source_id": rect_a_id,
+                    "target_id": rect_b_id,
                     "roughness": 3,
                 },
             )
-            conn_id = connect_res.structured_content["arrow_id"]
+            conn_id = json.loads(connect_res.content[0].text)["arrow_id"]
             self.assertEqual(service.state.get(conn_id)["roughness"], 3)
 
 

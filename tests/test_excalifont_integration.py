@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -309,15 +310,17 @@ class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):
         self.assertIn("font_family", schema.get("properties", {}))
         self.assertIn("font_size", schema.get("properties", {}))
 
-    def test_mcp_server_draw_graph_tool_font_properties(self):
+    def test_mcp_server_generate_diagram_tool_font_properties(self):
         server = create_server(toolset="full")
         tools = {t.name: t for t in asyncio.run(server.list_tools())}
-        self.assertIn("draw_graph", tools)
-        schema = tools["draw_graph"].parameters
+        self.assertIn("generate_diagram", tools)
+        schema = tools["generate_diagram"].parameters
         self.assertIn("font_family", schema.get("properties", {}))
         self.assertIn("font_size", schema.get("properties", {}))
         # Node properties also accept font_family
-        node_props = schema["properties"]["nodes"]["items"]["properties"]
+        nodes_schema = schema["properties"]["nodes"]
+        node_def = nodes_schema["anyOf"][0]["items"] if "anyOf" in nodes_schema else nodes_schema["items"]
+        node_props = node_def["properties"]
         self.assertIn("font_family", node_props)
         self.assertIn("font_size", node_props)
 
@@ -335,11 +338,11 @@ class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):
                 },
             )
             self.assertFalse(res.is_error)
-            txt_id = res.structured_content["text_id"]
+            txt_id = json.loads(res.content[0].text)["text_id"]
 
-            elem_res = await client.call_tool("get_element", {"element_id": txt_id})
+            elem_res = await client.call_tool("inspect_scene", {"mode": "element", "element_id": txt_id})
             self.assertFalse(elem_res.is_error)
-            element = elem_res.structured_content["element"]
+            element = json.loads(elem_res.content[0].text)["element"]
             self.assertEqual(element["fontFamily"], 1)
             self.assertEqual(element["fontSize"], 24)
             self.assertEqual(element["text"], "MCP Agent handwritten text")

@@ -229,13 +229,13 @@ class DocumentTests(unittest.TestCase):
         before, revision = service.state.document(), service.state.revision
         tools = {
             tool.name: tool.fn
-            for tool in asyncio.run(create_server(service).list_tools())
+            for tool in asyncio.run(create_server(service, toolset="full").list_tools())
         }
         with patch(
             "excalidraw_mcp.service.save_scene",
             side_effect=AssertionError("unexpected save"),
         ):
-            result = tools["export_scene"]()
+            result = tools["scene_storage"](action="export")
         self.assertEqual(result.type, "resource")
         self.assertEqual(result.resource.mimeType, MIME_TYPE)
         self.assertTrue(str(result.resource.uri).endswith(".excalidraw"))
@@ -266,12 +266,12 @@ class DocumentTests(unittest.TestCase):
         result = service.add_shape("rectangle", 0, 0, 100, 100)
         tools = {
             tool.name: tool.fn
-            for tool in asyncio.run(create_server(service).list_tools())
+            for tool in asyncio.run(create_server(service, toolset="full").list_tools())
         }
-        first = tools["export_scene"]()
-        self.assertEqual(first.resource.uri, tools["export_scene"]().resource.uri)
+        first = tools["scene_storage"](action="export")
+        self.assertEqual(first.resource.uri, tools["scene_storage"](action="export").resource.uri)
         service.move(result["rectangle_id"], 10, 20)
-        second = tools["export_scene"]()
+        second = tools["scene_storage"](action="export")
         self.assertNotEqual(first.resource.uri, second.resource.uri)
         self.assertEqual(json.loads(first.resource.text)["elements"][0]["x"], 0)
         self.assertEqual(json.loads(second.resource.text)["elements"][0]["x"], 10)

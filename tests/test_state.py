@@ -159,60 +159,32 @@ class StateTests(unittest.TestCase):
         self.assertEqual(
             set(first),
             {
-                "add_rectangle",
-                "add_circle",
-                "add_diamond",
-                "add_arrow",
+                "create_shape",
+                "create_connector",
                 "add_text",
                 "clear",
                 "delete",
-                "move",
-                "resize",
                 "update_element",
-                "connect",
                 "undo",
-                "save",
-                "load",
+                "scene_storage",
                 "preview",
-                "draw_architecture",
-                "draw_graph",
-                "export_scene",
-                "get_scene",
-                "get_element",
-                "list_saved_scenes",
+                "generate_diagram",
+                "inspect_scene",
                 "add_frame",
-                "find_elements",
                 "batch_mutate",
                 "export_png",
-                "add_code_block",
-                "list_fonts",
-                "lock_elements",
-                "unlock_elements",
-                "group_elements",
-                "ungroup_elements",
-                "draw_mermaid",
-                "get_viewport",
                 "set_viewport",
-                "focus_elements",
-                "get_scene_summary",
                 "export_to_excalidraw_url",
-                "describe_scene",
-                "get_resource",
                 "read_diagram_guide",
-                "duplicate_elements",
-                "import_scene",
-                "start_live_server",
-                "stop_live_server",
-                "get_live_server_status",
+                "manage_element_state",
+                "live_server",
                 "auto_fix_layout",
-                "set_element_locked",
-                "manage_groups",
             },
         )
-        result = first["add_rectangle"](0, 0, 10, 10, label="A")
+        result = first["create_shape"](type="rectangle", x=0, y=0, w=10, h=10, label="A")
         with self.assertRaisesRegex(ToolError, "not found"):
-            second["move"](result["rectangle_id"], 20, 20)
-        first["move"](result["rectangle_id"], 20, 20)
+            second["update_element"](result["rectangle_id"], x=20, y=20)
+        first["update_element"](result["rectangle_id"], x=20, y=20)
 
     def test_history_limit_configuration_is_validated(self):
         with patch.dict(os.environ, {"EXCALIDRAW_HISTORY_LIMIT": "2"}):

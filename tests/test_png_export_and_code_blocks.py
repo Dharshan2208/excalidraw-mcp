@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import json
 import os
 import shutil
 import tempfile
@@ -280,26 +281,31 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_export_png_and_code_blocks(self):
         server = create_server(toolset="full")
         async with Client(server, timeout=5) as client:
-            # 1. Test list_fonts
-            fonts_res = await client.call_tool("list_fonts", {"category": "monospace"})
-            self.assertFalse(fonts_res.is_error)
-            self.assertIn("total", fonts_res.structured_content)
-            self.assertIn("fonts", fonts_res.structured_content)
+            # 1. Test fonts resource
+            fonts_res = await client.read_resource("excalidraw://fonts")
+            fonts_data = json.loads(fonts_res[0].text)
+            self.assertIn("total", fonts_data)
+            self.assertIn("fonts", fonts_data)
 
-            # 2. Test add_code_block
+            # 2. Test add_code_block via batch_mutate
             cb_res = await client.call_tool(
-                "add_code_block",
+                "batch_mutate",
                 {
-                    "code": "def solve():\n    return 42",
-                    "language": "python",
-                    "title": "solution.py",
-                    "x": 50,
-                    "y": 50,
-                    "theme": "dark",
+                    "operations": [
+                        {
+                            "action": "add_code_block",
+                            "code": "def solve():\n    return 42",
+                            "language": "python",
+                            "title": "solution.py",
+                            "x": 50,
+                            "y": 50,
+                            "theme": "dark",
+                        }
+                    ]
                 },
             )
             self.assertFalse(cb_res.is_error)
-            container_id = cb_res.structured_content["container_id"]
+            container_id = json.loads(cb_res.content[0].text)["results"][0]["container_id"]
             self.assertIsNotNone(container_id)
 
             # 3. Test export_png
@@ -314,7 +320,7 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
                     },
                 )
                 self.assertFalse(export_res.is_error)
-                content = export_res.structured_content
+                content = json.loads(export_res.content[0].text)
                 self.assertEqual(content["status"], "png exported")
                 self.assertTrue(os.path.exists(content["path"]))
 

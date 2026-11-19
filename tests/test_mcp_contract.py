@@ -18,26 +18,28 @@ class MCPContractTests(unittest.TestCase):
 
     def test_tools_have_constraints_outputs_and_behavior_annotations(self):
         tools = self.metadata(create_server(toolset="full"))
-        structured = set(tools) - {"export_scene", "preview"}
-        self.assertTrue(all(tools[name].output_schema for name in structured))
-        width = tools["add_rectangle"].parameters["properties"]["w"]
+        # Output schemas stripped from tools/list to reduce client schema footprint
+        self.assertTrue(all(tool.output_schema is None for tool in tools.values()))
+        width = tools["create_shape"].parameters["properties"]["w"]
         self.assertEqual((width["exclusiveMinimum"], width["maximum"]), (0, 100000))
         self.assertEqual(
-            tools["add_rectangle"].parameters["properties"]["fillStyle"]["anyOf"][0][
+            tools["create_shape"].parameters["properties"]["fillStyle"]["anyOf"][0][
                 "enum"
             ],
             ["solid", "hachure", "cross-hatch", "zigzag"],
         )
-        self.assertTrue(tools["get_scene"].annotations.readOnlyHint)
-        self.assertFalse(tools["get_scene"].annotations.openWorldHint)
+        self.assertTrue(tools["inspect_scene"].annotations.readOnlyHint)
+        self.assertFalse(tools["inspect_scene"].annotations.openWorldHint)
         self.assertTrue(tools["clear"].annotations.destructiveHint)
-        self.assertTrue(tools["save"].annotations.openWorldHint)
-        self.assertTrue(tools["draw_graph"].annotations.destructiveHint)
+        self.assertTrue(tools["scene_storage"].annotations.destructiveHint)
+        self.assertTrue(tools["export_to_excalidraw_url"].annotations.openWorldHint)
+        self.assertTrue(tools["generate_diagram"].annotations.destructiveHint)
         self.assertTrue(all(tool.run_in_thread for tool in tools.values()))
 
     def test_graph_schema_rejects_unknown_fields_and_has_enums(self):
-        schema = self.metadata(create_server(toolset="full"))["draw_graph"].parameters
-        node_definition = schema["properties"]["nodes"]["items"]
+        schema = self.metadata(create_server(toolset="full"))["generate_diagram"].parameters
+        nodes_schema = schema["properties"]["nodes"]
+        node_definition = nodes_schema["anyOf"][0]["items"] if "anyOf" in nodes_schema else nodes_schema["items"]
         self.assertFalse(node_definition["additionalProperties"])
         self.assertEqual(
             node_definition["properties"]["shape"]["enum"],
@@ -55,7 +57,7 @@ class MCPContractTests(unittest.TestCase):
         from fastmcp.exceptions import ToolError
 
         with self.assertRaises(ToolError):
-            tools["get_element"]("missing")
+            tools["inspect_scene"](mode="element", element_id="missing")
         with self.assertRaises(ToolError):
             tools["delete"]("missing")
 
@@ -72,7 +74,7 @@ class MCPContractTests(unittest.TestCase):
             templates = asyncio.run(server.list_resource_templates())
             self.assertEqual(
                 [str(item.uri_template) for item in templates],
-                ["excalidraw://scenes/{name}.excalidraw"],
+                ["excalidraw://scenes/{name}.excalidraw", "excalidraw://guide/{topic}"],
             )
             provider = templates[0]
             result = asyncio.run(provider.read({"name": "example"}))
@@ -89,8 +91,9 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_calls_return_structured_success_and_errors(self):
         async with Client(create_server(toolset="full"), timeout=5) as client:
             created = await client.call_tool(
-                "add_rectangle",
+                "create_shape",
                 {
+                    "type": "rectangle",
                     "x": 0,
                     "y": 0,
                     "w": 100,
@@ -98,10 +101,11 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
                     "label": "API",
                 },
             )
-            inspected = await client.call_tool("get_scene", {})
+            inspected = await client.call_tool("inspect_scene", {"mode": "elements"})
             invalid = await client.call_tool(
-                "add_rectangle",
+                "create_shape",
                 {
+                    "type": "rectangle",
                     "x": 0,
                     "y": 0,
                     "w": -1,
@@ -117,17 +121,18 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
                 raise_on_error=False,
             )
             graph = await client.call_tool(
-                "draw_graph",
+                "generate_diagram",
                 {
+                    "format": "graph",
                     "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
                     "edges": [{"id": "a-to-b", "source": "a", "target": "b"}],
                 },
             )
         self.assertFalse(created.is_error)
-        self.assertEqual(inspected.structured_content["total"], 2)
+        self.assertEqual(json.loads(inspected.content[0].text)["total"], 2)
         self.assertTrue(invalid.is_error)
         self.assertTrue(missing.is_error)
-        self.assertEqual(graph.structured_content["node_map"].keys(), {"a", "b"})
+        self.assertEqual(json.loads(graph.content[0].text)["node_map"].keys(), {"a", "b"})
 
 
 if __name__ == "__main__":

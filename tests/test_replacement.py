@@ -26,7 +26,7 @@ class ReplacementTests(unittest.TestCase):
         self.original["files"] = {"asset": {"dataURL": "data:image/png;base64,example"}}
         self.original["custom"] = "preserve me"
         self.scene.replace(self.original)
-        server = main.create_server(SceneService(self.scene))
+        server = main.create_server(SceneService(self.scene), toolset="full")
         self.tools = SimpleNamespace(
             **{tool.name: tool.fn for tool in asyncio.run(server.list_tools())}
         )
@@ -41,7 +41,7 @@ class ReplacementTests(unittest.TestCase):
         for prompt in ("", " \n, ", "box:", "-*", "box: API, circle:"):
             with self.subTest(prompt=prompt):
                 with self.assertRaises(ToolError):
-                    self.tools.draw_architecture(prompt)
+                    self.tools.generate_diagram(format="architecture", prompt=prompt)
                 self.assertEqual(self.scene.document(), self.original)
 
     def test_construction_failure_keeps_current_document(self):
@@ -49,7 +49,7 @@ class ReplacementTests(unittest.TestCase):
             service_module, "text", side_effect=RuntimeError("construction failed")
         ):
             with self.assertRaises(RuntimeError):
-                self.tools.draw_architecture("box: API, box: Database")
+                self.tools.generate_diagram(format="architecture", prompt="box: API, box: Database")
         self.assertEqual(self.scene.document(), self.original)
 
     def test_failed_load_keeps_current_document(self):
@@ -62,19 +62,19 @@ class ReplacementTests(unittest.TestCase):
                 json.dumps(document), encoding="utf-8"
             )
             with self.assertRaises(ToolError):
-                self.tools.load("bad")
+                self.tools.scene_storage(action="load", name="bad")
             self.assertEqual(self.scene.document(), self.original)
         with self.assertRaises(ToolError):
-            self.tools.load("absent")
+            self.tools.scene_storage(action="load", name="absent")
         self.assertEqual(self.scene.document(), self.original)
 
     def test_tool_roundtrip_preserves_metadata_and_assets(self):
-        result = self.tools.save("roundtrip")
+        result = self.tools.scene_storage(action="save", name="roundtrip")
         self.assertTrue(Path(result["path"]).is_absolute())
         self.scene.clear()
-        self.tools.load("roundtrip")
-        self.tools.move(self.original["elements"][0]["id"], 10, 20)
-        self.tools.save("roundtrip", overwrite=True)
+        self.tools.scene_storage(action="load", name="roundtrip")
+        self.tools.update_element(self.original["elements"][0]["id"], x=10, y=20)
+        self.tools.scene_storage(action="save", name="roundtrip", overwrite=True)
         document = json.loads((self.root / "roundtrip.excalidraw").read_text())
         self.assertEqual(document["files"], self.original["files"])
         self.assertEqual(document["appState"], self.original["appState"])
@@ -82,12 +82,12 @@ class ReplacementTests(unittest.TestCase):
         self.assertEqual(document["elements"][0]["x"], 10)
 
     def test_tool_save_reports_overwrite_error(self):
-        self.tools.save("existing")
+        self.tools.scene_storage(action="save", name="existing")
         with self.assertRaisesRegex(ToolError, "overwrite=true"):
-            self.tools.save("existing")
+            self.tools.scene_storage(action="save", name="existing")
 
     def test_successful_architecture_commits_complete_document(self):
-        result = self.tools.draw_architecture("box: API, circle: Database")
+        result = self.tools.generate_diagram(format="architecture", prompt="box: API, circle: Database")
         self.assertEqual(result["nodes"], 2)
         self.assertIsNone(result["url"])
         self.assertEqual(len(self.scene.all()), 5)

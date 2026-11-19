@@ -324,47 +324,47 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         tools = {t.name: t.fn for t in await server.list_tools()}
 
         # 1. Add rectangles
-        r1 = tools["add_rectangle"](x=10, y=10, w=100, h=50, label="Service 1")
-        r2 = tools["add_rectangle"](x=200, y=10, w=100, h=50, label="Service 2")
+        r1 = tools["create_shape"](type="rectangle", x=10, y=10, w=100, h=50, label="Service 1")
+        r2 = tools["create_shape"](type="rectangle", x=200, y=10, w=100, h=50, label="Service 2")
         r1_id = r1["rectangle_id"]
         r2_id = r2["rectangle_id"]
 
         # 2. Group
-        grp = tools["group_elements"](element_ids=[r1_id, r2_id])
+        grp = tools["manage_element_state"](element_ids=[r1_id, r2_id], action="group")
         self.assertEqual(grp["status"], "grouped")
         gid = grp["group_id"]
 
         # 3. Lock r1
-        locked = tools["lock_elements"](element_ids=[r1_id])
+        locked = tools["manage_element_state"](element_ids=[r1_id], action="lock")
         self.assertEqual(locked["status"], "locked")
 
         # 4. Viewport
-        vp = tools["get_viewport"]()
+        vp = tools["inspect_scene"](mode="viewport")
         self.assertEqual(vp["zoom"], 1.0)
         set_vp = tools["set_viewport"](zoom=2.0, background_color="#f8f9fa")
         self.assertEqual(set_vp["zoom"], 2.0)
         self.assertEqual(set_vp["view_background_color"], "#f8f9fa")
 
         # 5. Focus
-        foc = tools["focus_elements"](element_ids=[r1_id, r2_id])
+        foc = tools["set_viewport"](focus_element_ids=[r1_id, r2_id], padding=50)
         self.assertEqual(foc["status"], "focused")
         self.assertIn("bounding_box", foc)
 
         # 6. Scene summary
-        summary = tools["get_scene_summary"]()
+        summary = tools["inspect_scene"](mode="summary")
         self.assertGreaterEqual(summary["element_count"], 2)
         self.assertEqual(len(summary["groups"]), 1)
 
         # 7. Unlock r1
-        unl = tools["unlock_elements"](element_ids=[r1_id])
+        unl = tools["manage_element_state"](element_ids=[r1_id], action="unlock")
         self.assertEqual(unl["status"], "unlocked")
 
         # 8. Ungroup
-        ungrp = tools["ungroup_elements"](group_id=gid)
+        ungrp = tools["manage_element_state"](group_id=gid, action="ungroup")
         self.assertEqual(ungrp["status"], "ungrouped")
 
         # 9. Mermaid
-        m_res = tools["draw_mermaid"](mermaid_code="graph TD\nClient --> Server")
+        m_res = tools["generate_diagram"](format="mermaid", mermaid_code="graph TD\nClient --> Server")
         self.assertEqual(m_res["status"], "graph drawn")
         self.assertEqual(m_res["nodes"], 2)
 

@@ -11,6 +11,7 @@ Covers:
 
 import asyncio
 from copy import deepcopy
+import json
 import unittest
 from unittest.mock import patch
 
@@ -669,8 +670,8 @@ class AutoFixMCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
         server = create_server()
         async with Client(server, timeout=5) as client:
             # Add two colliding rectangles
-            await client.call_tool("add_rectangle", {"x": 100, "y": 100, "w": 100, "h": 100, "label": "Service 1"})
-            await client.call_tool("add_rectangle", {"x": 120, "y": 100, "w": 100, "h": 100, "label": "Service 2"})
+            await client.call_tool("create_shape", {"type": "rectangle", "x": 100, "y": 100, "w": 100, "h": 100, "label": "Service 1"})
+            await client.call_tool("create_shape", {"type": "rectangle", "x": 120, "y": 100, "w": 100, "h": 100, "label": "Service 2"})
 
             # Call auto_fix_layout
             call_res = await client.call_tool(
@@ -678,12 +679,21 @@ class AutoFixMCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
                 {"repair_scope": "all", "aggressiveness": "balanced", "min_gap": 30.0},
             )
             self.assertFalse(call_res.is_error)
-            content = call_res.structured_content
+            content = json.loads(call_res.content[0].text)
             self.assertEqual(content["status"], "repaired")
             self.assertFalse(content["rolled_back"])
             self.assertFalse(content["dry_run"])
-            self.assertGreater(len(content["applied_changes"]), 0)
+            self.assertGreater(content["applied_change_count"], 0)
+            self.assertGreater(len(content["changed_element_ids"]), 0)
             self.assertIn("revision", content)
+
+            # Test verbose=True returns full applied_changes
+            verbose_res = await client.call_tool(
+                "auto_fix_layout",
+                {"verbose": True},
+            )
+            verbose_content = json.loads(verbose_res.content[0].text)
+            self.assertIn("applied_changes", verbose_content)
 
 
 

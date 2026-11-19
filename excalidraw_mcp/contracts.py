@@ -25,6 +25,10 @@ Roughness = Annotated[int, Field(strict=True, ge=0, le=3)]
 FillStyle = Literal["solid", "hachure", "cross-hatch", "zigzag"]
 StrokeStyle = Literal["solid", "dashed", "dotted"]
 ShapeType = Literal["rectangle", "ellipse", "diamond"]
+CreateShapeType = Literal["rectangle", "ellipse", "diamond", "circle"]
+InspectMode = Literal[
+    "summary", "describe", "elements", "element", "find", "viewport", "live_server", "resource"
+]
 ElementType = Literal["rectangle", "ellipse", "diamond", "arrow", "text", "frame"]
 Roundness = Literal["adaptive", "round", "sharp"]
 CodeTheme = Literal["dark", "monokai", "github-dark", "light", "solarized-dark"]
@@ -40,6 +44,8 @@ Offset = Annotated[int, Field(strict=True, ge=0)]
 PageLimit = Annotated[int, Field(strict=True, ge=1, le=200)]
 PreviewScale = Annotated[float, Field(strict=True, ge=0.25, le=4.0)]
 PreviewPadding = Annotated[int, Field(strict=True, ge=0, le=200)]
+PreviewMaxDimension = Annotated[int, Field(strict=True, ge=50, le=4096)]
+PreviewFormat = Literal["png", "jpeg"]
 NonEmptyText = Annotated[
     str, Field(strict=True, min_length=1, max_length=2_000, pattern=r".*\S.*")
 ]
@@ -131,6 +137,16 @@ class GraphResult(TypedDict):
     edge_map: dict[str, dict[str, str | None]]
     cluster_map: NotRequired[dict[str, str]]
     revision: int
+
+
+DiagramFormat = Literal["mermaid", "architecture", "graph"]
+DiagramResult = dict[str, Any]
+
+StorageAction = Literal["save", "load", "list", "export", "import", "share_url"]
+StorageResult = dict[str, Any]
+
+ElementStateAction = Literal["lock", "unlock", "group", "ungroup", "duplicate"]
+LiveServerAction = Literal["start", "stop"]
 
 
 class BatchOperation(BaseModel):

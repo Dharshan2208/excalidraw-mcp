@@ -33,44 +33,30 @@ class ToolsetConfigurationTests(unittest.TestCase):
 
 
 class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_core_toolset_registers_exactly_27_tools(self):
+    async def test_core_toolset_registers_curated_tools(self):
         server = create_server(toolset="core")
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 27)
-        # Verify essential core tools are present
-        self.assertIn("add_rectangle", tool_names)
-        self.assertIn("add_circle", tool_names)
-        self.assertIn("add_diamond", tool_names)
-        self.assertIn("add_arrow", tool_names)
-        self.assertIn("connect", tool_names)
+        self.assertEqual(len(tools), 12)
+        # Verify essential core tools are present (Option B Core Roster)
+        self.assertIn("create_shape", tool_names)
+        self.assertIn("create_connector", tool_names)
         self.assertIn("add_frame", tool_names)
         self.assertIn("add_text", tool_names)
-        self.assertIn("move", tool_names)
-        self.assertIn("resize", tool_names)
         self.assertIn("update_element", tool_names)
         self.assertIn("delete", tool_names)
         self.assertIn("clear", tool_names)
         self.assertIn("undo", tool_names)
-        self.assertIn("get_scene", tool_names)
-        self.assertIn("get_element", tool_names)
-        self.assertIn("get_scene_summary", tool_names)
-        self.assertIn("describe_scene", tool_names)
+        self.assertIn("batch_mutate", tool_names)
+        self.assertIn("inspect_scene", tool_names)
         self.assertIn("auto_fix_layout", tool_names)
-        self.assertIn("find_elements", tool_names)
-        self.assertIn("get_resource", tool_names)
-        self.assertIn("draw_mermaid", tool_names)
-        self.assertIn("draw_architecture", tool_names)
-        self.assertIn("save", tool_names)
-        self.assertIn("load", tool_names)
         self.assertIn("preview", tool_names)
-        self.assertIn("export_png", tool_names)
-        self.assertIn("export_scene", tool_names)
 
         # Verify full-only tools are NOT in core
-        self.assertNotIn("draw_graph", tool_names)
-        self.assertNotIn("batch_mutate", tool_names)
+        self.assertNotIn("generate_diagram", tool_names)
+        self.assertNotIn("scene_storage", tool_names)
+        self.assertNotIn("export_png", tool_names)
         self.assertNotIn("lock_elements", tool_names)
         self.assertNotIn("unlock_elements", tool_names)
         self.assertNotIn("group_elements", tool_names)
@@ -80,19 +66,58 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("focus_elements", tool_names)
         self.assertNotIn("start_live_server", tool_names)
         self.assertNotIn("stop_live_server", tool_names)
+        self.assertNotIn("live_server", tool_names)
+        self.assertNotIn("manage_element_state", tool_names)
         self.assertNotIn("get_live_server_status", tool_names)
 
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 48)
+        self.assertEqual(len(tools), 20)
         tool_names = {t.name for t in tools}
-        self.assertIn("draw_graph", tool_names)
+        self.assertIn("generate_diagram", tool_names)
+        self.assertIn("scene_storage", tool_names)
         self.assertIn("batch_mutate", tool_names)
-        self.assertIn("find_elements", tool_names)
-        self.assertIn("start_live_server", tool_names)
-        self.assertIn("set_element_locked", tool_names)
-        self.assertIn("manage_groups", tool_names)
+        self.assertIn("inspect_scene", tool_names)
+        self.assertIn("live_server", tool_names)
+        self.assertIn("manage_element_state", tool_names)
+        self.assertIn("read_diagram_guide", tool_names)
+        self.assertNotIn("list_fonts", tool_names)
+        self.assertNotIn("start_live_server", tool_names)
+        self.assertNotIn("stop_live_server", tool_names)
+        self.assertNotIn("set_element_locked", tool_names)
+        self.assertNotIn("manage_groups", tool_names)
+        self.assertNotIn("duplicate_elements", tool_names)
+        self.assertNotIn("add_code_block", tool_names)
+        self.assertNotIn("save", tool_names)
+        self.assertNotIn("load", tool_names)
+        self.assertNotIn("list_saved_scenes", tool_names)
+        self.assertNotIn("export_scene", tool_names)
+        self.assertNotIn("import_scene", tool_names)
+        self.assertNotIn("draw_graph", tool_names)
+        self.assertNotIn("draw_mermaid", tool_names)
+        self.assertNotIn("draw_architecture", tool_names)
+        self.assertNotIn("move", tool_names)
+        self.assertNotIn("resize", tool_names)
+        self.assertNotIn("get_scene", tool_names)
+        self.assertNotIn("get_element", tool_names)
+        self.assertNotIn("find_elements", tool_names)
+        self.assertNotIn("get_resource", tool_names)
+        self.assertNotIn("get_viewport", tool_names)
+        self.assertNotIn("get_scene_summary", tool_names)
+        self.assertNotIn("describe_scene", tool_names)
+        self.assertNotIn("get_live_server_status", tool_names)
+
+    async def test_batch_mutate_in_core_actionable_errors(self):
+        server = create_server(toolset="core")
+        async with Client(server) as client:
+            res = await client.call_tool(
+                "batch_mutate",
+                {"operations": [{"action": "move", "element_id": "nonexistent", "x": 10, "y": 20}]},
+                raise_on_error=False,
+            )
+            self.assertTrue(res.is_error)
+            self.assertIn("Element 'nonexistent' not found", res.content[0].text)
 
     async def test_capabilities_resource_provides_metadata(self):
         for mode in ("core", "full"):
@@ -101,64 +126,77 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(len(res.contents) > 0)
             data = json.loads(res.contents[0].content)
             self.assertEqual(data["active_toolset"], mode)
-            self.assertEqual(data["server_version"], "0.2.0")
+            self.assertEqual(data["server_version"], "0.3.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 48 if mode == "full" else 27)
+            self.assertEqual(data["tool_count"], 20 if mode == "full" else 12)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
+
+    async def test_documentation_and_font_resources(self):
+        server = create_server(toolset="core")
+        resources = await server.list_resources()
+        resource_uris = {str(r.uri) for r in resources}
+        self.assertIn("excalidraw://fonts", resource_uris)
+
+        fonts_res = await server.read_resource("excalidraw://fonts")
+        self.assertTrue(len(fonts_res.contents) > 0)
+        fonts_data = json.loads(fonts_res.contents[0].content)
+        self.assertIn("fonts", fonts_data)
+        self.assertIn("total", fonts_data)
+
+        guide_res = await server.read_resource("excalidraw://guide/layout")
+        self.assertTrue(len(guide_res.contents) > 0)
+        self.assertIn("# Diagram Layout & Flow Structure", guide_res.contents[0].content)
+        self.assertIn("## Principles", guide_res.contents[0].content)
 
 
 class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
     async def test_set_element_locked_and_wrappers(self):
         server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
-        rect = tools["add_rectangle"](x=0, y=0, w=100, h=50, label="Box")
+        rect = tools["create_shape"](type="rectangle", x=0, y=0, w=100, h=50, label="Box")
         rid = rect["rectangle_id"]
 
         # Lock via unified tool
-        res1 = tools["set_element_locked"](element_ids=[rid], locked=True)
+        res1 = tools["manage_element_state"](element_ids=[rid], action="lock")
         self.assertEqual(res1["status"], "locked")
 
         # Unlock via unified tool
-        res2 = tools["set_element_locked"](element_ids=[rid], locked=False)
+        res2 = tools["manage_element_state"](element_ids=[rid], action="unlock")
         self.assertEqual(res2["status"], "unlocked")
 
-        # Lock via legacy wrapper
-        res3 = tools["lock_elements"](element_ids=[rid])
-        self.assertEqual(res3["status"], "locked")
-
-        # Unlock via legacy wrapper
-        res4 = tools["unlock_elements"](element_ids=[rid])
-        self.assertEqual(res4["status"], "unlocked")
+        # Verify legacy wrappers are removed from MCP tools
+        self.assertNotIn("set_element_locked", tools)
+        self.assertNotIn("lock_elements", tools)
+        self.assertNotIn("unlock_elements", tools)
 
     async def test_manage_groups_and_wrappers(self):
         server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
-        r1 = tools["add_rectangle"](x=0, y=0, w=100, h=50, label="A")
-        r2 = tools["add_rectangle"](x=120, y=0, w=100, h=50, label="B")
+        r1 = tools["create_shape"](type="rectangle", x=0, y=0, w=100, h=50, label="A")
+        r2 = tools["create_shape"](type="rectangle", x=120, y=0, w=100, h=50, label="B")
         ids = [r1["rectangle_id"], r2["rectangle_id"]]
 
         # Group via unified tool
-        res1 = tools["manage_groups"](element_ids=ids, action="group")
+        res1 = tools["manage_element_state"](element_ids=ids, action="group")
         self.assertEqual(res1["status"], "grouped")
         gid = res1["group_id"]
 
         # Ungroup via unified tool
-        res2 = tools["manage_groups"](group_id=gid, action="ungroup")
+        res2 = tools["manage_element_state"](group_id=gid, action="ungroup")
         self.assertEqual(res2["status"], "ungrouped")
 
-        # Group and ungroup via legacy wrappers
-        res3 = tools["group_elements"](element_ids=ids)
-        self.assertEqual(res3["status"], "grouped")
-        res4 = tools["ungroup_elements"](group_id=res3["group_id"])
-        self.assertEqual(res4["status"], "ungrouped")
+        # Verify legacy wrappers are removed from MCP tools
+        self.assertNotIn("manage_groups", tools)
+        self.assertNotIn("group_elements", tools)
+        self.assertNotIn("ungroup_elements", tools)
 
     async def test_set_viewport_with_focus_elements(self):
         server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
-        r1 = tools["add_rectangle"](x=50, y=50, w=100, h=50, label="A")
-        r2 = tools["add_rectangle"](x=200, y=100, w=100, h=50, label="B")
+        r1 = tools["create_shape"](type="rectangle", x=50, y=50, w=100, h=50, label="A")
+        r2 = tools["create_shape"](type="rectangle", x=200, y=100, w=100, h=50, label="B")
         ids = [r1["rectangle_id"], r2["rectangle_id"]]
 
         # Set viewport with focus_element_ids
@@ -166,10 +204,25 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["status"], "focused")
         self.assertIn("bounding_box", res)
 
-        # Legacy focus_elements wrapper
-        res2 = tools["focus_elements"](element_ids=ids, padding=40)
-        self.assertEqual(res2["status"], "focused")
-        self.assertIn("bounding_box", res2)
+        # Verify legacy wrapper is removed from MCP tools
+        self.assertNotIn("focus_elements", tools)
+
+    async def test_update_element_absorbs_move_and_resize(self):
+        server = create_server(toolset="full")
+        tools = {t.name: t.fn for t in await server.list_tools()}
+        rect = tools["create_shape"](type="rectangle", x=10, y=20, w=100, h=50, label="Original")
+        rid = rect["rectangle_id"]
+
+        # Move and resize via update_element
+        res = tools["update_element"](element_id=rid, x=50, y=60, width=150, height=80, label="Updated")
+        self.assertEqual(res["element_id"], rid)
+        el = tools["inspect_scene"](mode="element", element_id=rid)["element"]
+        self.assertEqual(el["x"], 50)
+        self.assertEqual(el["y"], 60)
+        self.assertEqual(el["width"], 150)
+        self.assertEqual(el["height"], 80)
+        self.assertNotIn("move", tools)
+        self.assertNotIn("resize", tools)
 
 
 if __name__ == "__main__":

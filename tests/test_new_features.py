@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import json
 import unittest
 
 from fastmcp import Client
@@ -451,12 +452,13 @@ class MCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
                 {"name": "Cluster", "x": 0, "y": 0, "w": 300, "h": 200},
             )
             self.assertFalse(f_res.is_error)
-            frame_id = f_res.structured_content["frame_id"]
+            frame_id = json.loads(f_res.content[0].text)["frame_id"]
 
-            # 2. Test add_rectangle with adaptive roundness inside frame
+            # 2. Test create_shape with adaptive roundness inside frame
             r_res = await client.call_tool(
-                "add_rectangle",
+                "create_shape",
                 {
+                    "type": "rectangle",
                     "x": 20,
                     "y": 20,
                     "w": 100,
@@ -467,17 +469,18 @@ class MCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
                 },
             )
             self.assertFalse(r_res.is_error)
-            rect_id = r_res.structured_content["rectangle_id"]
+            rect_id = json.loads(r_res.content[0].text)["rectangle_id"]
 
-            # 3. Test find_elements
+            # 3. Test find_elements via inspect_scene
             find_res = await client.call_tool(
-                "find_elements",
-                {"query": "Worker"},
+                "inspect_scene",
+                {"mode": "find", "query": "Worker"},
             )
             self.assertFalse(find_res.is_error)
-            self.assertEqual(find_res.structured_content["total"], 1)
+            find_data = json.loads(find_res.content[0].text)
+            self.assertEqual(find_data["total"], 1)
             self.assertEqual(
-                find_res.structured_content["matches"][0]["id"], rect_id
+                find_data["matches"][0]["id"], rect_id
             )
 
             # 4. Test batch_mutate
@@ -504,10 +507,11 @@ class MCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
                 },
             )
             self.assertFalse(batch_res.is_error)
+            batch_data = json.loads(batch_res.content[0].text)
             self.assertEqual(
-                batch_res.structured_content["operations_executed"], 2
+                batch_data["operations_executed"], 2
             )
-            self.assertIn("d1", batch_res.structured_content["ref_map"])
+            self.assertIn("d1", batch_data["ref_map"])
 
 
             # 5. Test preview tool over MCP protocol
