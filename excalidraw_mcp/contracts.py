@@ -44,6 +44,8 @@ Offset = Annotated[int, Field(strict=True, ge=0)]
 PageLimit = Annotated[int, Field(strict=True, ge=1, le=200)]
 PreviewScale = Annotated[float, Field(strict=True, ge=0.25, le=4.0)]
 PreviewPadding = Annotated[int, Field(strict=True, ge=0, le=200)]
+PreviewMaxDimension = Annotated[int, Field(strict=True, ge=50, le=4096)]
+PreviewFormat = Literal["png", "jpeg"]
 NonEmptyText = Annotated[
     str, Field(strict=True, min_length=1, max_length=2_000, pattern=r".*\S.*")
 ]

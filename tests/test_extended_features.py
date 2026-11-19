@@ -219,6 +219,29 @@ class CanvasScreenshotTests(unittest.TestCase):
         self.assertIn("elements", embedded_doc)
         self.assertEqual(len(embedded_doc["elements"]), 2)  # Rectangle + label
 
+    def test_preview_max_dimension_and_format(self):
+        server = create_server(self.service, toolset="full")
+        tools = {tool.name: tool.fn for tool in asyncio.run(server.list_tools())}
+        # (a) preview of small scene returns dimensions <= 1568 untouched
+        img_default = tools["preview"]()
+        pil_def = PILImage.open(io.BytesIO(img_default.data))
+        self.assertEqual(pil_def.format, "PNG")
+        self.assertLessEqual(max(pil_def.size), 1568)
+        self.assertEqual(img_default.data, self.service.preview())
+
+        # (b) preview with max_dimension=200 downscales an image that would otherwise be larger (360x360 at scale=2.0)
+        img_downscaled = tools["preview"](scale=2.0, max_dimension=200)
+        pil_down = PILImage.open(io.BytesIO(img_downscaled.data))
+        self.assertEqual(pil_down.format, "PNG")
+        self.assertEqual(max(pil_down.size), 200)
+        self.assertNotEqual(img_downscaled.data, img_default.data)
+
+        # (c) preview with format="jpeg" returns a JPEG MIME type image
+        img_jpeg = tools["preview"](format="jpeg")
+        self.assertEqual(img_jpeg.to_image_content().mimeType, "image/jpeg")
+        pil_jpg = PILImage.open(io.BytesIO(img_jpeg.data))
+        self.assertEqual(pil_jpg.format, "JPEG")
+
 
 class GenericResourceAccessTests(unittest.TestCase):
     def setUp(self):

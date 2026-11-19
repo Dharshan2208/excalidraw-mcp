@@ -99,6 +99,8 @@ from excalidraw_mcp.contracts import (
     Opacity,
     PageLimit,
     PngExportResult,
+    PreviewFormat,
+    PreviewMaxDimension,
     PreviewPadding,
     PreviewScale,
     RepairScope,
@@ -573,15 +575,51 @@ def create_server(
         scale: PreviewScale = 1.0,
         padding: PreviewPadding = 40,
         background: Boolean = True,
+        max_dimension: PreviewMaxDimension = 1568,
+        format: PreviewFormat = "png",
     ) -> Image:
-        """Render an inline PNG image preview of the active Excalidraw canvas."""
+        """Render an inline image preview of the active Excalidraw canvas."""
         data = invoke(
             service.preview,
             scale=scale,
             padding=padding,
             background=background,
         )
-        return Image(data=data, format="png")
+        fmt = format.lower()
+        if max_dimension is not None and max_dimension > 0:
+            import io
+            from PIL import Image as PILImage
+
+            with PILImage.open(io.BytesIO(data)) as im:
+                w, h = im.size
+                needs_resize = max(w, h) > max_dimension
+                needs_format_change = fmt == "jpeg"
+
+                if needs_resize or needs_format_change:
+                    if needs_resize:
+                        ratio = max_dimension / max(w, h)
+                        new_w = max(1, int(round(w * ratio)))
+                        new_h = max(1, int(round(h * ratio)))
+                        im = im.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
+
+                    out_buf = io.BytesIO()
+                    if fmt == "jpeg":
+                        if im.mode in ("RGBA", "LA", "P"):
+                            rgb_im = PILImage.new("RGB", im.size, (255, 255, 255))
+                            if im.mode == "P":
+                                im = im.convert("RGBA")
+                            rgb_im.paste(
+                                im, mask=im.split()[-1] if "A" in im.mode else None
+                            )
+                            rgb_im.save(out_buf, format="JPEG", quality=85)
+                        else:
+                            im.save(out_buf, format="JPEG", quality=85)
+                        data = out_buf.getvalue()
+                    elif needs_resize:
+                        im.save(out_buf, format="PNG")
+                        data = out_buf.getvalue()
+
+        return Image(data=data, format=fmt)
 
     if is_full:
         @mcp.tool(
