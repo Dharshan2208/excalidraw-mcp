@@ -64,3 +64,179 @@ Resources allow clients and models to discover metadata, documentation, and save
 | `excalidraw://scenes/{name}.excalidraw` | `application/vnd.excalidraw+json` | Reads a saved scene directly from storage without changing the active working canvas. |
 | `exca-mcp://skills/index` | `application/json` | Index of all bundled AI agent skills and reference guides. |
 | `exca-mcp://skills/{name}` | `text/markdown` | Full content of a specific packaged agent skill. |
+
+---
+
+## 4. MCP Task Prompts
+
+Clients can invoke pre-configured task prompts that guide AI models through multi-step diagramming tasks:
+
+| Prompt Name | Arguments | Description |
+|---|---|---|
+| `create_architecture_diagram` | `system_description`, `style="modern"`, `output_name="architecture"` | Strict 10-step process guiding the agent to plan tiers, construct via primitives, diagnose geometry, auto-repair, and export. |
+| `create_flowchart` | `process_description`, `direction="TB"`, `output_name="flowchart"` | Guides construction of flowcharts with single starts, clear terminals, labeled decision diamonds, and perimeter loops. |
+| `plan_diagram` | `request`, `diagram_type="architecture"` | Guides the upfront planning phase (node density caps, 60-30-10 palette selection, tier structure) before drawing. |
+| `edit_existing_diagram` | `instructions`, `scene_name=""` | Guides non-destructive updates to active or saved diagrams while preserving existing layout and hierarchy. |
+| `verify_and_export_diagram` | `output_name="diagram"`, `directory="docs"` | 5-step quality gate: auto-repair diagnostics, visual review, human editability check, and dual `.excalidraw` + PNG export. |
+
+---
+
+## 5. Parameter Reference & Practical Examples
+
+### `create_shape`
+Creates a geometric primitive (`"rectangle"`, `"ellipse"`, `"diamond"`, or `"circle"`) with font-aware label containment:
+
+```python
+shape = create_shape(
+    type="rectangle",             # "rectangle" | "ellipse" | "diamond" | "circle"
+    x=100.0,
+    y=120.0,
+    w=200.0,
+    h=90.0,                       # Defaults to w if None
+    label="Order Service\nREST",
+    frame_id=None,                # Optional parent frame ID
+    roundness="adaptive",         # "adaptive" | "round" | "sharp"
+    backgroundColor="#e7f5ff",    # Hex color code
+    strokeColor="#1971c2",
+    fillStyle="solid",            # "solid" | "hachure" | "cross-hatch" | "zigzag"
+    strokeWidth=2,                # 1 to 20
+    strokeStyle="solid",          # "solid" | "dashed" | "dotted"
+    opacity=100,                  # 0 to 100
+    roughness=1,                  # 0 to 3
+    font_family="sans-serif",     # "sans-serif" | "excalifont" | "monospace" | "comic-shanns"
+    font_size=16                  # 8 to 200
+)
+# Returns: {"rectangle_id": "...", "id": "...", "element_id": "...", "label_id": "..."}
+```
+
+### `create_connector`
+Connects arbitrary canvas coordinates or binds two existing shapes with obstacle-avoiding orthogonal routing:
+
+```python
+connector = create_connector(
+    source_id="rect_1",
+    target_id="rect_2",
+    label="publish(event)",
+    elbowed=True,                 # True for orthogonal routing, False for straight arrow
+    strokeStyle="dashed",
+    strokeColor="#495057",
+    strokeWidth=2
+)
+# Returns: {"arrow_id": "...", "id": "...", "element_id": "...", "label_id": "..."}
+```
+
+### `batch_mutate`
+Executes multiple creation, styling, routing, and repair actions atomically in one turn with dynamic `client_id` resolution:
+
+```python
+result = batch_mutate(operations=[
+    {
+        "action": "add_frame",
+        "client_id": "vpc",
+        "name": "Cloud VPC",
+        "x": 80, "y": 80, "w": 640, "h": 260
+    },
+    {
+        "action": "add_rectangle",
+        "client_id": "web",
+        "x": 120, "y": 140, "w": 180, "h": 80,
+        "label": "Web Frontend",
+        "frame_id": "vpc",
+        "backgroundColor": "#e7f5ff"
+    },
+    {
+        "action": "add_rectangle",
+        "client_id": "api",
+        "x": 480, "y": 140, "w": 180, "h": 80,
+        "label": "API Backend",
+        "frame_id": "vpc",
+        "backgroundColor": "#fff3bf"
+    },
+    {
+        "action": "connect",
+        "source_id": "web",
+        "target_id": "api",
+        "label": "HTTPS / JSON",
+        "elbowed": True
+    },
+    {
+        "action": "add_code_block",
+        "x": 120, "y": 240,
+        "code": "GET /healthz HTTP/1.1\nHost: api.internal",
+        "language": "http",
+        "theme": "dark"
+    },
+    {
+        "action": "auto_fix_layout",
+        "repair_scope": "all",
+        "min_gap": 30.0
+    }
+])
+# Returns: {"status": "applied", "operations_executed": 6, "results": [...], "revision": 2}
+```
+
+### `inspect_scene`
+Unified query interface covering metrics, descriptions, search, and viewport status:
+
+```python
+# Semantic summary
+summary = inspect_scene(mode="summary")
+
+# Natural-language topological description for AI reasoning
+description = inspect_scene(mode="describe", detailed=True)
+
+# Search for specific elements
+matches = inspect_scene(mode="find", query="Postgres", type="rectangle")
+
+# Paginated element listing
+elements_page = inspect_scene(mode="elements", offset=0, limit=20)
+```
+
+### `auto_fix_layout`
+Layout repair engine with simulation mode and rollback protection:
+
+```python
+# Simulation mode: report defects without mutating active canvas
+audit = auto_fix_layout(dry_run=True, repair_scope="all")
+
+# Apply deterministic repairs across all phases
+repair = auto_fix_layout(
+    dry_run=False,
+    repair_scope="all",             # "all" | "overlaps" | "connectors" | "containment" | "text" | "spacing"
+    aggressiveness="balanced",      # "gentle" | "balanced" | "aggressive"
+    min_gap=30.0,
+    verbose=False                   # Return compact summary or verbose defect lists
+)
+```
+
+### `preview`
+Inline visual preview directly viewable in LLM turns:
+
+```python
+# Preview capped at 1568px (optimal vision envelope for Claude models)
+preview(scale=1.0, padding=40, background=True, max_dimension=1568, format="png")
+```
+
+### `generate_diagram` (Full Profile)
+Generates diagrams from Mermaid syntax, architecture DSL prompts, or Sugiyama graphs:
+
+```python
+# From Mermaid flowchart syntax
+generate_diagram(
+    format="mermaid",
+    mermaid_code="""
+    graph TD
+        Client[Mobile App] --> APIGW[API Gateway]
+        APIGW --> Auth[Auth Service]
+        APIGW --> DB[(PostgreSQL)]
+    """,
+    direction="vertical",
+    elbowed=True
+)
+
+# From rapid architectural sketch prompt
+generate_diagram(
+    format="architecture",
+    prompt="box: Client Web App, box: API Gateway, circle: Redis Cache, db: Postgres Primary"
+)
+```

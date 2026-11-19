@@ -2,24 +2,28 @@
 
 This document describes the security model, configuration, and controls for the Excalidraw MCP Server (`exca-mcp`).
 
+---
+
 ## Protocol Security & Execution Boundaries
 
 Excalidraw MCP communicates with AI agents over standard input/output (`stdio`) using the Model Context Protocol (MCP) JSON-RPC 2.0 specification.
 
-- **Local Process Execution**: When running as an MCP stdio server, `exca-mcp` runs locally as a child process of your MCP client (Claude Desktop, Cursor, Zed, OpenCode, Codex, etc.).
+- **Local Process Execution**: When running as an MCP stdio server, `exca-mcp` executes locally as a child process of your MCP client (Claude Desktop, Cursor, Zed, OpenCode, Codex, Antigravity, etc.).
 - **Process Isolation**: The server operates with the privileges of the executing user account. It does not spawn background processes or listen on network sockets unless the optional live server is explicitly launched.
+
+---
 
 ## Filesystem Write Confinement & Sandboxing
 
 The server strictly restricts filesystem write access to prevent directory traversal or unauthorized file modification.
 
-### 1. Scene Persistence (`save`)
-- Saved `.excalidraw` scenes are written only to the directory specified by `EXCALIDRAW_SCENE_DIR` (defaults to `.excalidraw` in the current working directory).
-- File names must match `^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`. Path separators (`/`, `\`), null bytes, parent references (`..`), and symlinks are rejected.
+### 1. Scene Persistence (`scene_storage`)
+- Saved `.excalidraw` scenes are written only to the directory specified by `EXCALIDRAW_SCENE_DIR` (defaults to the platform-standard user data directory: `$XDG_DATA_HOME/excalidraw-mcp/scenes` on Linux, `~/Library/Application Support/excalidraw-mcp/scenes` on macOS, and `%APPDATA%\excalidraw-mcp\scenes` on Windows).
+- File names must strictly match `^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`. Path separators (`/`, `\`), null bytes, parent references (`..`), and symlinks are rejected.
 
 ### 2. Image Exports (`export_png`)
 - PNG exports are restricted to an explicit whitelist of allowed directories:
-  1. Configured export directory (`EXCALIDRAW_EXPORT_DIR`, defaults to `./exports`)
+  1. Configured export directory (`EXCALIDRAW_EXPORT_DIR`, defaults to `EXCALIDRAW_SCENE_DIR/exports`)
   2. Configured scene directory (`EXCALIDRAW_SCENE_DIR`)
   3. Current working directory (`Path.cwd()`)
   4. System temporary directory (`tempfile.gettempdir()`)
@@ -28,13 +32,15 @@ The server strictly restricts filesystem write access to prevent directory trave
 
 ### 3. Agent Skills Installation (`exca-mcp install-skills`)
 - Skill installation requires an explicit target directory (`--target <path>`).
-- Writing to system root (`/`) is explicitly rejected.
+- Writing directly to the system root (`/`, `C:\`) is explicitly rejected.
 - Directory traversal and escaping symlinks are rejected.
 - Existing skill directories are never overwritten unless the `--force` flag is provided.
 
+---
+
 ## Live Canvas Server Security
 
-When the optional browser canvas server is started (`start_live_server`), additional network security controls are enforced:
+When the optional browser canvas server is started (`live_server(action="start")`), additional network security controls are enforced:
 
 ### 1. Token Authentication (`EXCALIDRAW_LIVE_TOKEN`)
 Set `EXCALIDRAW_LIVE_TOKEN` to require a shared secret for all live canvas operations:
@@ -55,6 +61,16 @@ The live server validates incoming request origins against an allowlist:
 - By default, the live server binds only to loopback interfaces (`127.0.0.1` or `localhost`).
 - Binding to `0.0.0.0` or external network interfaces is blocked unless explicitly overridden by setting `EXCALIDRAW_ALLOW_REMOTE=true`. This prevents accidental exposure of the canvas to local networks.
 
+---
+
+## Cloud Sharing Encryption (`export_to_excalidraw_url`)
+
+When publishing scenes to `excalidraw.com`:
+- Diagrams are encrypted in memory using client-side 128-bit AES-GCM before transmission.
+- The decryption key is embedded solely in the URL fragment (`#json=...`) and is never sent to the remote sharing server.
+
+---
+
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in Excalidraw MCP, please report it via the [GitHub Security Advisory form](https://github.com/Dharshan2208/excalidraw-mcp/security/advisories/new).
+If you discover a security vulnerability in Excalidraw MCP, please report it via the [GitHub Security Advisory form](https://github.com/Dharshan2208/excalidraw-mcp/security/advisories/new) or see [SECURITY.md](../SECURITY.md).
