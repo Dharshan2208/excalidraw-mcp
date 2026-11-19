@@ -85,7 +85,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 48)
+        self.assertEqual(len(tools), 43)
         tool_names = {t.name for t in tools}
         self.assertIn("draw_graph", tool_names)
         self.assertIn("batch_mutate", tool_names)
@@ -93,6 +93,11 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("start_live_server", tool_names)
         self.assertIn("set_element_locked", tool_names)
         self.assertIn("manage_groups", tool_names)
+        self.assertNotIn("lock_elements", tool_names)
+        self.assertNotIn("unlock_elements", tool_names)
+        self.assertNotIn("group_elements", tool_names)
+        self.assertNotIn("ungroup_elements", tool_names)
+        self.assertNotIn("focus_elements", tool_names)
 
     async def test_capabilities_resource_provides_metadata(self):
         for mode in ("core", "full"):
@@ -104,7 +109,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["server_version"], "0.2.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 48 if mode == "full" else 27)
+            self.assertEqual(data["tool_count"], 43 if mode == "full" else 27)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 
@@ -124,13 +129,9 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         res2 = tools["set_element_locked"](element_ids=[rid], locked=False)
         self.assertEqual(res2["status"], "unlocked")
 
-        # Lock via legacy wrapper
-        res3 = tools["lock_elements"](element_ids=[rid])
-        self.assertEqual(res3["status"], "locked")
-
-        # Unlock via legacy wrapper
-        res4 = tools["unlock_elements"](element_ids=[rid])
-        self.assertEqual(res4["status"], "unlocked")
+        # Verify legacy wrappers are removed from MCP tools
+        self.assertNotIn("lock_elements", tools)
+        self.assertNotIn("unlock_elements", tools)
 
     async def test_manage_groups_and_wrappers(self):
         server = create_server(toolset="full")
@@ -148,11 +149,9 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         res2 = tools["manage_groups"](group_id=gid, action="ungroup")
         self.assertEqual(res2["status"], "ungrouped")
 
-        # Group and ungroup via legacy wrappers
-        res3 = tools["group_elements"](element_ids=ids)
-        self.assertEqual(res3["status"], "grouped")
-        res4 = tools["ungroup_elements"](group_id=res3["group_id"])
-        self.assertEqual(res4["status"], "ungrouped")
+        # Verify legacy wrappers are removed from MCP tools
+        self.assertNotIn("group_elements", tools)
+        self.assertNotIn("ungroup_elements", tools)
 
     async def test_set_viewport_with_focus_elements(self):
         server = create_server(toolset="full")
@@ -166,10 +165,8 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["status"], "focused")
         self.assertIn("bounding_box", res)
 
-        # Legacy focus_elements wrapper
-        res2 = tools["focus_elements"](element_ids=ids, padding=40)
-        self.assertEqual(res2["status"], "focused")
-        self.assertIn("bounding_box", res2)
+        # Verify legacy wrapper is removed from MCP tools
+        self.assertNotIn("focus_elements", tools)
 
 
 if __name__ == "__main__":

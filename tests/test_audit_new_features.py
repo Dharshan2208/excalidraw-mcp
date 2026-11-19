@@ -330,12 +330,12 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         r2_id = r2["rectangle_id"]
 
         # 2. Group
-        grp = tools["group_elements"](element_ids=[r1_id, r2_id])
+        grp = tools["manage_groups"](element_ids=[r1_id, r2_id], action="group")
         self.assertEqual(grp["status"], "grouped")
         gid = grp["group_id"]
 
         # 3. Lock r1
-        locked = tools["lock_elements"](element_ids=[r1_id])
+        locked = tools["set_element_locked"](element_ids=[r1_id], locked=True)
         self.assertEqual(locked["status"], "locked")
 
         # 4. Viewport
@@ -346,7 +346,7 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set_vp["view_background_color"], "#f8f9fa")
 
         # 5. Focus
-        foc = tools["focus_elements"](element_ids=[r1_id, r2_id])
+        foc = tools["set_viewport"](focus_element_ids=[r1_id, r2_id], padding=50)
         self.assertEqual(foc["status"], "focused")
         self.assertIn("bounding_box", foc)
 
@@ -356,11 +356,11 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(summary["groups"]), 1)
 
         # 7. Unlock r1
-        unl = tools["unlock_elements"](element_ids=[r1_id])
+        unl = tools["set_element_locked"](element_ids=[r1_id], locked=False)
         self.assertEqual(unl["status"], "unlocked")
 
         # 8. Ungroup
-        ungrp = tools["ungroup_elements"](group_id=gid)
+        ungrp = tools["manage_groups"](group_id=gid, action="ungroup")
         self.assertEqual(ungrp["status"], "ungrouped")
 
         # 9. Mermaid

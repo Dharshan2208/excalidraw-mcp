@@ -765,20 +765,6 @@ def create_server(
             """Lock or unlock elements and their bound labels to prevent or permit mutations."""
             return invoke(service.set_element_locked, element_ids, locked=locked)
 
-        @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        )
-        def lock_elements(element_ids: list[ElementId]) -> LockResult:
-            """Lock elements and their bound labels to protect them from unintended mutations."""
-            return invoke(service.set_element_locked, element_ids, locked=True)
-
-        @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        )
-        def unlock_elements(element_ids: list[ElementId]) -> UnlockResult:
-            """Unlock previously locked elements and their bound labels."""
-            return invoke(service.set_element_locked, element_ids, locked=False)
-
         @mcp.tool(annotations=MUTATING)
         def manage_groups(
             element_ids: list[ElementId] | None = None,
@@ -787,19 +773,6 @@ def create_server(
         ) -> GroupResult | UngroupResult:
             """Group or ungroup multiple elements together."""
             return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action=action)
-
-        @mcp.tool(annotations=MUTATING)
-        def group_elements(element_ids: list[ElementId]) -> GroupResult:
-            """Group multiple elements together so they move and behave as a cohesive group."""
-            return invoke(service.manage_groups, element_ids=element_ids, action="group")
-
-        @mcp.tool(annotations=MUTATING)
-        def ungroup_elements(
-            element_ids: list[ElementId] | None = None,
-            group_id: str | None = None,
-        ) -> UngroupResult:
-            """Disband an element group by group_id or remove elements from their groups."""
-            return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action="ungroup")
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
@@ -848,16 +821,6 @@ def create_server(
                 focus_element_ids=focus_element_ids,
                 padding=padding,
             )
-
-        @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-        )
-        def focus_elements(
-            element_ids: list[ElementId] | None = None,
-            padding: PreviewPadding = 50,
-        ) -> FocusResult:
-            """Center and zoom the viewport camera to frame specified elements or the entire diagram."""
-            return invoke(service.focus_elements, element_ids=element_ids, padding=padding)
 
     @mcp.tool(annotations=READ_ONLY)
     def get_scene_summary() -> SceneSummaryResult:
@@ -950,8 +913,8 @@ def create_server(
             "active_toolset": active_toolset,
             "available_toolsets": ["core", "full"],
             "server_version": "0.2.0",
-            # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (48 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 48 if is_full else 27,
+            # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
+            "tool_count": 43 if is_full else 27,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
@@ -964,11 +927,6 @@ def create_server(
                     "add_code_block",
                     "get_viewport",
                     "set_viewport",
-                    "focus_elements",
-                    "lock_elements",
-                    "unlock_elements",
-                    "group_elements",
-                    "ungroup_elements",
                     "duplicate_elements",
                     "import_scene",
                     "export_to_excalidraw_url",
