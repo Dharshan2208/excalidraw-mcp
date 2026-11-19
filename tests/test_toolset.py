@@ -38,7 +38,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 14)
+        self.assertEqual(len(tools), 15)
         # Verify essential core tools are present
         self.assertIn("create_shape", tool_names)
         self.assertIn("create_connector", tool_names)
@@ -48,6 +48,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("delete", tool_names)
         self.assertIn("clear", tool_names)
         self.assertIn("undo", tool_names)
+        self.assertIn("batch_mutate", tool_names)
         self.assertIn("inspect_scene", tool_names)
         self.assertIn("auto_fix_layout", tool_names)
         self.assertIn("generate_diagram", tool_names)
@@ -56,7 +57,6 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("export_png", tool_names)
 
         # Verify full-only tools are NOT in core
-        self.assertNotIn("batch_mutate", tool_names)
         self.assertNotIn("lock_elements", tool_names)
         self.assertNotIn("unlock_elements", tool_names)
         self.assertNotIn("group_elements", tool_names)
@@ -105,6 +105,17 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("get_scene_summary", tool_names)
         self.assertNotIn("describe_scene", tool_names)
         self.assertNotIn("get_live_server_status", tool_names)
+
+    async def test_batch_mutate_in_core_actionable_errors(self):
+        server = create_server(toolset="core")
+        async with Client(server) as client:
+            res = await client.call_tool(
+                "batch_mutate",
+                {"operations": [{"action": "move", "element_id": "nonexistent", "x": 10, "y": 20}]},
+                raise_on_error=False,
+            )
+            self.assertTrue(res.is_error)
+            self.assertIn("Element 'nonexistent' not found", res.content[0].text)
 
     async def test_capabilities_resource_provides_metadata(self):
         for mode in ("core", "full"):

@@ -527,16 +527,15 @@ def create_server(
             )
         return res
 
-    if is_full:
-        @mcp.tool(annotations=MUTATING)
-        def batch_mutate(
-            operations: list[BatchOperation],
-        ) -> BatchResult:
-            """Atomically execute a batch of creation, editing, and deletion operations."""
-            return invoke(
-                service.batch_mutate,
-                [op.model_dump(exclude_none=True) for op in operations],
-            )
+    @mcp.tool(annotations=MUTATING)
+    def batch_mutate(
+        operations: list[BatchOperation],
+    ) -> BatchResult:
+        """Atomically execute a batch of creation, editing, and deletion operations."""
+        return invoke(
+            service.batch_mutate,
+            [op.model_dump(exclude_none=True) for op in operations],
+        )
 
     @mcp.tool(annotations=MUTATING)
     def auto_fix_layout(
