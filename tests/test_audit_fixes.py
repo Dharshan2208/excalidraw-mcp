@@ -188,8 +188,8 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(res1.is_error)
             res2 = await client.call_tool(
-                "draw_architecture",
-                {"prompt": "   "},
+                "generate_diagram",
+                {"format": "architecture", "prompt": "   "},
                 raise_on_error=False,
             )
             self.assertTrue(res2.is_error)

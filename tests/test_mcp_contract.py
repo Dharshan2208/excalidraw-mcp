@@ -32,12 +32,13 @@ class MCPContractTests(unittest.TestCase):
         self.assertFalse(tools["inspect_scene"].annotations.openWorldHint)
         self.assertTrue(tools["clear"].annotations.destructiveHint)
         self.assertTrue(tools["save"].annotations.openWorldHint)
-        self.assertTrue(tools["draw_graph"].annotations.destructiveHint)
+        self.assertTrue(tools["generate_diagram"].annotations.destructiveHint)
         self.assertTrue(all(tool.run_in_thread for tool in tools.values()))
 
     def test_graph_schema_rejects_unknown_fields_and_has_enums(self):
-        schema = self.metadata(create_server(toolset="full"))["draw_graph"].parameters
-        node_definition = schema["properties"]["nodes"]["items"]
+        schema = self.metadata(create_server(toolset="full"))["generate_diagram"].parameters
+        nodes_schema = schema["properties"]["nodes"]
+        node_definition = nodes_schema["anyOf"][0]["items"] if "anyOf" in nodes_schema else nodes_schema["items"]
         self.assertFalse(node_definition["additionalProperties"])
         self.assertEqual(
             node_definition["properties"]["shape"]["enum"],
@@ -119,8 +120,9 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
                 raise_on_error=False,
             )
             graph = await client.call_tool(
-                "draw_graph",
+                "generate_diagram",
                 {
+                    "format": "graph",
                     "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
                     "edges": [{"id": "a-to-b", "source": "a", "target": "b"}],
                 },

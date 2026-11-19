@@ -364,7 +364,7 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ungrp["status"], "ungrouped")
 
         # 9. Mermaid
-        m_res = tools["draw_mermaid"](mermaid_code="graph TD\nClient --> Server")
+        m_res = tools["generate_diagram"](format="mermaid", mermaid_code="graph TD\nClient --> Server")
         self.assertEqual(m_res["status"], "graph drawn")
         self.assertEqual(m_res["nodes"], 2)
 

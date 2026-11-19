@@ -137,6 +137,10 @@ class GraphResult(TypedDict):
     revision: int
 
 
+DiagramFormat = Literal["mermaid", "architecture", "graph"]
+DiagramResult = dict[str, Any]
+
+
 class BatchOperation(BaseModel):
     model_config = ConfigDict(extra="allow")
     action: Literal[

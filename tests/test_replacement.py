@@ -41,7 +41,7 @@ class ReplacementTests(unittest.TestCase):
         for prompt in ("", " \n, ", "box:", "-*", "box: API, circle:"):
             with self.subTest(prompt=prompt):
                 with self.assertRaises(ToolError):
-                    self.tools.draw_architecture(prompt)
+                    self.tools.generate_diagram(format="architecture", prompt=prompt)
                 self.assertEqual(self.scene.document(), self.original)
 
     def test_construction_failure_keeps_current_document(self):
@@ -49,7 +49,7 @@ class ReplacementTests(unittest.TestCase):
             service_module, "text", side_effect=RuntimeError("construction failed")
         ):
             with self.assertRaises(RuntimeError):
-                self.tools.draw_architecture("box: API, box: Database")
+                self.tools.generate_diagram(format="architecture", prompt="box: API, box: Database")
         self.assertEqual(self.scene.document(), self.original)
 
     def test_failed_load_keeps_current_document(self):
@@ -87,7 +87,7 @@ class ReplacementTests(unittest.TestCase):
             self.tools.save("existing")
 
     def test_successful_architecture_commits_complete_document(self):
-        result = self.tools.draw_architecture("box: API, circle: Database")
+        result = self.tools.generate_diagram(format="architecture", prompt="box: API, circle: Database")
         self.assertEqual(result["nodes"], 2)
         self.assertIsNone(result["url"])
         self.assertEqual(len(self.scene.all()), 5)

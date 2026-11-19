@@ -62,7 +62,9 @@ from excalidraw_mcp.contracts import (
     CreateResult,
     CreateShapeType,
     DeleteResult,
+    DiagramFormat,
     DiagramGuideResult,
+    DiagramResult,
     Dimension,
     Direction,
     DuplicateResult,
@@ -648,8 +650,21 @@ def create_server(
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
     )
-    def draw_architecture(
-        prompt: NonEmptyText,
+    def generate_diagram(
+        format: DiagramFormat = "mermaid",
+        mermaid_code: str | None = None,
+        prompt: str | None = None,
+        nodes: list[GraphNode] | None = None,
+        edges: list[GraphEdge] | None = None,
+        clusters: list[GraphCluster] | None = None,
+        layout: LayoutType = "layered",
+        direction: Direction | None = None,
+        elbowed: Boolean = False,
+        roundness: Roundness | None = None,
+        font_family: FontFamily | None = None,
+        font_size: FontSize | None = None,
+        cycle_fallback: Boolean = False,
+        expected_revision: int | None = None,
         strokeColor: Color | None = None,
         backgroundColor: Color | None = None,
         fillStyle: FillStyle | None = None,
@@ -657,63 +672,57 @@ def create_server(
         strokeStyle: StrokeStyle | None = None,
         opacity: Opacity | None = None,
         roughness: Roughness | None = None,
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
-    ) -> ArchitectureResult:
-        """Replace the scene with a diagram from comma/newline-separated components.
-
-        Supports ``"shape: label"`` syntax where shape can be
-        ``rectangle``/``box``, ``circle``/``ellipse``, or ``diamond``.
-        Components are arranged horizontally with automatic connectors.
-
-        All style parameters are optional and apply globally to every element.
-        """
-        style = _style_kwargs(
-            strokeColor=strokeColor,
-            backgroundColor=backgroundColor,
-            fillStyle=fillStyle,
-            strokeWidth=strokeWidth,
-            strokeStyle=strokeStyle,
-            opacity=opacity,
-            roughness=roughness,
-            font_family=font_family,
-            font_size=font_size,
-        )
-        return invoke(service.draw_architecture, prompt, **style)
-
-    if is_full:
-        @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        )
-        def draw_graph(
-            nodes: list[GraphNode],
-            edges: list[GraphEdge],
-            clusters: list[GraphCluster] | None = None,
-            layout: LayoutType = "layered",
-            direction: Direction = "horizontal",
-            elbowed: Boolean = False,
-            roundness: Roundness | None = None,
-            font_family: FontFamily | None = None,
-            font_size: FontSize | None = None,
-            cycle_fallback: Boolean = False,
-        ) -> GraphResult:
-            """Replace the scene with a structured graph and return stable ID mappings."""
+    ) -> DiagramResult:
+        """Generate high-level diagrams from Mermaid syntax, quick text architecture prompts, or structured graphs (destructiveHint=True)."""
+        if format == "mermaid":
+            if not mermaid_code or not mermaid_code.strip():
+                raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
+            return invoke(
+                service.draw_mermaid,
+                mermaid_code=mermaid_code,
+                direction=direction,
+                layout=layout,
+                elbowed=elbowed,
+                roundness=roundness,
+            )
+        elif format == "architecture":
+            if not prompt or not prompt.strip():
+                raise ToolError("generate_diagram(format='architecture') requires non-empty prompt parameter.")
+            style = _style_kwargs(
+                strokeColor=strokeColor,
+                backgroundColor=backgroundColor,
+                fillStyle=fillStyle,
+                strokeWidth=strokeWidth,
+                strokeStyle=strokeStyle,
+                opacity=opacity,
+                roughness=roughness,
+                font_family=font_family,
+                font_size=font_size,
+            )
+            return invoke(service.draw_architecture, prompt, **style)
+        elif format == "graph":
+            if nodes is None or edges is None:
+                raise ToolError("generate_diagram(format='graph') requires nodes and edges parameters.")
             return invoke(
                 service.draw_graph,
-                [node.model_dump() for node in nodes],
-                [edge.model_dump() for edge in edges],
-                clusters=[cluster.model_dump() for cluster in clusters]
+                [node.model_dump() if hasattr(node, "model_dump") else node for node in nodes],
+                [edge.model_dump() if hasattr(edge, "model_dump") else edge for edge in edges],
+                clusters=[cluster.model_dump() if hasattr(cluster, "model_dump") else cluster for cluster in clusters]
                 if clusters
                 else None,
                 layout=layout,
-                direction=direction,
+                direction=direction or "horizontal",
                 elbowed=elbowed,
                 roundness=roundness,
                 font_family=font_family,
                 font_size=font_size,
                 cycle_fallback=cycle_fallback,
+                expected_revision=expected_revision,
             )
+        else:
+            raise ToolError(f"Unsupported diagram format: {format}")
 
+    if is_full:
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
         )
@@ -732,26 +741,6 @@ def create_server(
         ) -> GroupResult | UngroupResult:
             """Group or ungroup multiple elements together."""
             return invoke(service.manage_groups, element_ids=element_ids, group_id=group_id, action=action)
-
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-    )
-    def draw_mermaid(
-        mermaid_code: NonEmptyText,
-        direction: Direction | None = None,
-        layout: LayoutType = "layered",
-        elbowed: Boolean = False,
-        roundness: Roundness | None = None,
-    ) -> GraphResult:
-        """Parse Mermaid flowchart/graph code and render it directly to the Excalidraw scene."""
-        return invoke(
-            service.draw_mermaid,
-            mermaid_code=mermaid_code,
-            direction=direction,
-            layout=layout,
-            elbowed=elbowed,
-            roundness=roundness,
-        )
 
     if is_full:
         @mcp.tool(
