@@ -318,55 +318,6 @@ def create_server(
         """Delete an element and its owned label; detach surviving connectors."""
         return invoke(service.delete, element_id)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-    )
-    def scene_storage(
-        action: StorageAction = "save",
-        name: SceneName | None = None,
-        overwrite: Boolean = False,
-        data: str | None = None,
-        mode: Literal["replace", "merge"] = "replace",
-        offset_x: Coordinate = 0.0,
-        offset_y: Coordinate = 0.0,
-    ) -> Any:
-        """Manage diagram storage: save snapshots to disk, load scenes, list saved files, export document JSON, or import files (destructiveHint=True)."""
-        if action == "save":
-            if not name:
-                raise ToolError("scene_storage(action='save') requires name parameter.")
-            return invoke(service.save, name, overwrite=overwrite)
-        elif action == "load":
-            if not name:
-                raise ToolError("scene_storage(action='load') requires name parameter.")
-            return invoke(service.load, name)
-        elif action == "list":
-            return invoke(service.list_saved_scenes)
-        elif action == "export":
-            payload = invoke(service.export_scene)
-            snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
-            return EmbeddedResource(
-                type="resource",
-                resource=TextResourceContents(
-                    uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw"),
-                    mimeType=MIME_TYPE,
-                    text=payload,
-                ),
-            )
-        elif action == "import":
-            if not data:
-                raise ToolError("scene_storage(action='import') requires data parameter.")
-            return invoke(
-                service.import_scene,
-                data=data,
-                mode=mode,
-                offset_x=offset_x,
-                offset_y=offset_y,
-            )
-        elif action == "share_url":
-            return invoke(service.export_to_excalidraw_url, name=name)
-        else:
-            raise ToolError(f"Unsupported storage action: {action}")
-
     @mcp.tool(annotations=READ_ONLY)
     def inspect_scene(
         mode: InspectMode = "summary",
@@ -534,7 +485,7 @@ def create_server(
         """Atomically execute a batch of creation, editing, and deletion operations."""
         return invoke(
             service.batch_mutate,
-            [op.model_dump(exclude_none=True) for op in operations],
+            [op.model_dump(exclude_none=True) if hasattr(op, "model_dump") else op for op in operations],
         )
 
     @mcp.tool(annotations=MUTATING)
@@ -601,29 +552,78 @@ def create_server(
         )
         return Image(data=data, format="png")
 
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
-    )
-    def export_png(
-        name: SceneName,
-        directory: str | None = None,
-        scale: PreviewScale = 1.0,
-        padding: PreviewPadding = 40,
-        background: Boolean = True,
-        overwrite: Boolean = False,
-    ) -> PngExportResult:
-        """Export the active scene to a PNG image file in a project or configured directory."""
-        return invoke(
-            service.export_png,
-            name=name,
-            directory=directory,
-            scale=scale,
-            padding=padding,
-            background=background,
-            overwrite=overwrite,
-        )
-
     if is_full:
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
+        )
+        def scene_storage(
+            action: StorageAction = "save",
+            name: SceneName | None = None,
+            overwrite: Boolean = False,
+            data: str | None = None,
+            mode: Literal["replace", "merge"] = "replace",
+            offset_x: Coordinate = 0.0,
+            offset_y: Coordinate = 0.0,
+        ) -> Any:
+            """Manage diagram storage: save snapshots to disk, load scenes, list saved files, export document JSON, or import files (destructiveHint=True)."""
+            if action == "save":
+                if not name:
+                    raise ToolError("scene_storage(action='save') requires name parameter.")
+                return invoke(service.save, name, overwrite=overwrite)
+            elif action == "load":
+                if not name:
+                    raise ToolError("scene_storage(action='load') requires name parameter.")
+                return invoke(service.load, name)
+            elif action == "list":
+                return invoke(service.list_saved_scenes)
+            elif action == "export":
+                payload = invoke(service.export_scene)
+                snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
+                return EmbeddedResource(
+                    type="resource",
+                    resource=TextResourceContents(
+                        uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw"),
+                        mimeType=MIME_TYPE,
+                        text=payload,
+                    ),
+                )
+            elif action == "import":
+                if not data:
+                    raise ToolError("scene_storage(action='import') requires data parameter.")
+                return invoke(
+                    service.import_scene,
+                    data=data,
+                    mode=mode,
+                    offset_x=offset_x,
+                    offset_y=offset_y,
+                )
+            elif action == "share_url":
+                return invoke(service.export_to_excalidraw_url, name=name)
+            else:
+                raise ToolError(f"Unsupported storage action: {action}")
+
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
+        )
+        def export_png(
+            name: SceneName,
+            directory: str | None = None,
+            scale: PreviewScale = 1.0,
+            padding: PreviewPadding = 40,
+            background: Boolean = True,
+            overwrite: Boolean = False,
+        ) -> PngExportResult:
+            """Export the active scene to a PNG image file in a project or configured directory."""
+            return invoke(
+                service.export_png,
+                name=name,
+                directory=directory,
+                scale=scale,
+                padding=padding,
+                background=background,
+                overwrite=overwrite,
+            )
+
         @mcp.tool(annotations=READ_ONLY)
         def list_fonts(
             category: FontCategory | None = None,
@@ -631,80 +631,80 @@ def create_server(
             """Discover and list available system fonts and semantic font categories."""
             return invoke(service.list_fonts, category=category)
 
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-    )
-    def generate_diagram(
-        format: DiagramFormat = "mermaid",
-        mermaid_code: str | None = None,
-        prompt: str | None = None,
-        nodes: list[GraphNode] | None = None,
-        edges: list[GraphEdge] | None = None,
-        clusters: list[GraphCluster] | None = None,
-        layout: LayoutType = "layered",
-        direction: Direction | None = None,
-        elbowed: Boolean = False,
-        roundness: Roundness | None = None,
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
-        cycle_fallback: Boolean = False,
-        expected_revision: int | None = None,
-        strokeColor: Color | None = None,
-        backgroundColor: Color | None = None,
-        fillStyle: FillStyle | None = None,
-        strokeWidth: StrokeWidth | None = None,
-        strokeStyle: StrokeStyle | None = None,
-        opacity: Opacity | None = None,
-        roughness: Roughness | None = None,
-    ) -> DiagramResult:
-        """Generate high-level diagrams from Mermaid syntax, quick text architecture prompts, or structured graphs (destructiveHint=True)."""
-        if format == "mermaid":
-            if not mermaid_code or not mermaid_code.strip():
-                raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
-            return invoke(
-                service.draw_mermaid,
-                mermaid_code=mermaid_code,
-                direction=direction,
-                layout=layout,
-                elbowed=elbowed,
-                roundness=roundness,
-            )
-        elif format == "architecture":
-            if not prompt or not prompt.strip():
-                raise ToolError("generate_diagram(format='architecture') requires non-empty prompt parameter.")
-            style = _style_kwargs(
-                strokeColor=strokeColor,
-                backgroundColor=backgroundColor,
-                fillStyle=fillStyle,
-                strokeWidth=strokeWidth,
-                strokeStyle=strokeStyle,
-                opacity=opacity,
-                roughness=roughness,
-                font_family=font_family,
-                font_size=font_size,
-            )
-            return invoke(service.draw_architecture, prompt, **style)
-        elif format == "graph":
-            if nodes is None or edges is None:
-                raise ToolError("generate_diagram(format='graph') requires nodes and edges parameters.")
-            return invoke(
-                service.draw_graph,
-                [node.model_dump() if hasattr(node, "model_dump") else node for node in nodes],
-                [edge.model_dump() if hasattr(edge, "model_dump") else edge for edge in edges],
-                clusters=[cluster.model_dump() if hasattr(cluster, "model_dump") else cluster for cluster in clusters]
-                if clusters
-                else None,
-                layout=layout,
-                direction=direction or "horizontal",
-                elbowed=elbowed,
-                roundness=roundness,
-                font_family=font_family,
-                font_size=font_size,
-                cycle_fallback=cycle_fallback,
-                expected_revision=expected_revision,
-            )
-        else:
-            raise ToolError(f"Unsupported diagram format: {format}")
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
+        )
+        def generate_diagram(
+            format: DiagramFormat = "mermaid",
+            mermaid_code: str | None = None,
+            prompt: str | None = None,
+            nodes: list[GraphNode] | None = None,
+            edges: list[GraphEdge] | None = None,
+            clusters: list[GraphCluster] | None = None,
+            layout: LayoutType = "layered",
+            direction: Direction | None = None,
+            elbowed: Boolean = False,
+            roundness: Roundness | None = None,
+            font_family: FontFamily | None = None,
+            font_size: FontSize | None = None,
+            cycle_fallback: Boolean = False,
+            expected_revision: int | None = None,
+            strokeColor: Color | None = None,
+            backgroundColor: Color | None = None,
+            fillStyle: FillStyle | None = None,
+            strokeWidth: StrokeWidth | None = None,
+            strokeStyle: StrokeStyle | None = None,
+            opacity: Opacity | None = None,
+            roughness: Roughness | None = None,
+        ) -> DiagramResult:
+            """Generate high-level diagrams from Mermaid syntax, quick text architecture prompts, or structured graphs (destructiveHint=True)."""
+            if format == "mermaid":
+                if not mermaid_code or not mermaid_code.strip():
+                    raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
+                return invoke(
+                    service.draw_mermaid,
+                    mermaid_code=mermaid_code,
+                    direction=direction,
+                    layout=layout,
+                    elbowed=elbowed,
+                    roundness=roundness,
+                )
+            elif format == "architecture":
+                if not prompt or not prompt.strip():
+                    raise ToolError("generate_diagram(format='architecture') requires non-empty prompt parameter.")
+                style = _style_kwargs(
+                    strokeColor=strokeColor,
+                    backgroundColor=backgroundColor,
+                    fillStyle=fillStyle,
+                    strokeWidth=strokeWidth,
+                    strokeStyle=strokeStyle,
+                    opacity=opacity,
+                    roughness=roughness,
+                    font_family=font_family,
+                    font_size=font_size,
+                )
+                return invoke(service.draw_architecture, prompt, **style)
+            elif format == "graph":
+                if nodes is None or edges is None:
+                    raise ToolError("generate_diagram(format='graph') requires nodes and edges parameters.")
+                return invoke(
+                    service.draw_graph,
+                    [node.model_dump() if hasattr(node, "model_dump") else node for node in nodes],
+                    [edge.model_dump() if hasattr(edge, "model_dump") else edge for edge in edges],
+                    clusters=[cluster.model_dump() if hasattr(cluster, "model_dump") else cluster for cluster in clusters]
+                    if clusters
+                    else None,
+                    layout=layout,
+                    direction=direction or "horizontal",
+                    elbowed=elbowed,
+                    roundness=roundness,
+                    font_family=font_family,
+                    font_size=font_size,
+                    cycle_fallback=cycle_fallback,
+                    expected_revision=expected_revision,
+                )
+            else:
+                raise ToolError(f"Unsupported diagram format: {format}")
 
     if is_full:
         @mcp.tool(

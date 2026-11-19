@@ -167,7 +167,7 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("next_step", ArchitectureResult.__annotations__)
 
     async def test_protocol_rejects_coerced_booleans_in_pagination(self):
-        async with Client(create_server(), timeout=5) as client:
+        async with Client(create_server(toolset="full"), timeout=5) as client:
             res1 = await client.call_tool(
                 "get_scene", {"offset": True}, raise_on_error=False
             )
@@ -180,7 +180,7 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_rejects_empty_content_in_add_text_and_draw_architecture(
         self,
     ):
-        async with Client(create_server(), timeout=5) as client:
+        async with Client(create_server(toolset="full"), timeout=5) as client:
             res1 = await client.call_tool(
                 "add_text",
                 {"x": 0, "y": 0, "content": "   "},

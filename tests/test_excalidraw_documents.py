@@ -229,7 +229,7 @@ class DocumentTests(unittest.TestCase):
         before, revision = service.state.document(), service.state.revision
         tools = {
             tool.name: tool.fn
-            for tool in asyncio.run(create_server(service).list_tools())
+            for tool in asyncio.run(create_server(service, toolset="full").list_tools())
         }
         with patch(
             "excalidraw_mcp.service.save_scene",
@@ -266,7 +266,7 @@ class DocumentTests(unittest.TestCase):
         result = service.add_shape("rectangle", 0, 0, 100, 100)
         tools = {
             tool.name: tool.fn
-            for tool in asyncio.run(create_server(service).list_tools())
+            for tool in asyncio.run(create_server(service, toolset="full").list_tools())
         }
         first = tools["scene_storage"](action="export")
         self.assertEqual(first.resource.uri, tools["scene_storage"](action="export").resource.uri)

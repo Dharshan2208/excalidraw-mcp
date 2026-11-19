@@ -26,7 +26,7 @@ class ReplacementTests(unittest.TestCase):
         self.original["files"] = {"asset": {"dataURL": "data:image/png;base64,example"}}
         self.original["custom"] = "preserve me"
         self.scene.replace(self.original)
-        server = main.create_server(SceneService(self.scene))
+        server = main.create_server(SceneService(self.scene), toolset="full")
         self.tools = SimpleNamespace(
             **{tool.name: tool.fn for tool in asyncio.run(server.list_tools())}
         )

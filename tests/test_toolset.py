@@ -38,8 +38,8 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 15)
-        # Verify essential core tools are present
+        self.assertEqual(len(tools), 12)
+        # Verify essential core tools are present (Option B Core Roster)
         self.assertIn("create_shape", tool_names)
         self.assertIn("create_connector", tool_names)
         self.assertIn("add_frame", tool_names)
@@ -51,12 +51,12 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("batch_mutate", tool_names)
         self.assertIn("inspect_scene", tool_names)
         self.assertIn("auto_fix_layout", tool_names)
-        self.assertIn("generate_diagram", tool_names)
-        self.assertIn("scene_storage", tool_names)
         self.assertIn("preview", tool_names)
-        self.assertIn("export_png", tool_names)
 
         # Verify full-only tools are NOT in core
+        self.assertNotIn("generate_diagram", tool_names)
+        self.assertNotIn("scene_storage", tool_names)
+        self.assertNotIn("export_png", tool_names)
         self.assertNotIn("lock_elements", tool_names)
         self.assertNotIn("unlock_elements", tool_names)
         self.assertNotIn("group_elements", tool_names)
