@@ -33,19 +33,17 @@ class ToolsetConfigurationTests(unittest.TestCase):
 
 
 class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_core_toolset_registers_exactly_24_tools(self):
+    async def test_core_toolset_registers_exactly_22_tools(self):
         server = create_server(toolset="core")
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 24)
+        self.assertEqual(len(tools), 22)
         # Verify essential core tools are present
         self.assertIn("create_shape", tool_names)
         self.assertIn("create_connector", tool_names)
         self.assertIn("add_frame", tool_names)
         self.assertIn("add_text", tool_names)
-        self.assertIn("move", tool_names)
-        self.assertIn("resize", tool_names)
         self.assertIn("update_element", tool_names)
         self.assertIn("delete", tool_names)
         self.assertIn("clear", tool_names)
@@ -82,7 +80,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 40)
+        self.assertEqual(len(tools), 38)
         tool_names = {t.name for t in tools}
         self.assertIn("draw_graph", tool_names)
         self.assertIn("batch_mutate", tool_names)
@@ -90,6 +88,8 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("start_live_server", tool_names)
         self.assertIn("set_element_locked", tool_names)
         self.assertIn("manage_groups", tool_names)
+        self.assertNotIn("move", tool_names)
+        self.assertNotIn("resize", tool_names)
         self.assertNotIn("lock_elements", tool_names)
         self.assertNotIn("unlock_elements", tool_names)
         self.assertNotIn("group_elements", tool_names)
@@ -106,7 +106,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["server_version"], "0.2.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 40 if mode == "full" else 24)
+            self.assertEqual(data["tool_count"], 38 if mode == "full" else 22)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 
@@ -164,6 +164,23 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
 
         # Verify legacy wrapper is removed from MCP tools
         self.assertNotIn("focus_elements", tools)
+
+    async def test_update_element_absorbs_move_and_resize(self):
+        server = create_server(toolset="full")
+        tools = {t.name: t.fn for t in await server.list_tools()}
+        rect = tools["create_shape"](type="rectangle", x=10, y=20, w=100, h=50, label="Original")
+        rid = rect["rectangle_id"]
+
+        # Move and resize via update_element
+        res = tools["update_element"](element_id=rid, x=50, y=60, width=150, height=80, label="Updated")
+        self.assertEqual(res["element_id"], rid)
+        el = tools["get_element"](element_id=rid)["element"]
+        self.assertEqual(el["x"], 50)
+        self.assertEqual(el["y"], 60)
+        self.assertEqual(el["width"], 150)
+        self.assertEqual(el["height"], 80)
+        self.assertNotIn("move", tools)
+        self.assertNotIn("resize", tools)
 
 
 if __name__ == "__main__":

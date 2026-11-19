@@ -164,8 +164,6 @@ class StateTests(unittest.TestCase):
                 "add_text",
                 "clear",
                 "delete",
-                "move",
-                "resize",
                 "update_element",
                 "undo",
                 "save",
@@ -203,8 +201,8 @@ class StateTests(unittest.TestCase):
         )
         result = first["create_shape"](type="rectangle", x=0, y=0, w=10, h=10, label="A")
         with self.assertRaisesRegex(ToolError, "not found"):
-            second["move"](result["rectangle_id"], 20, 20)
-        first["move"](result["rectangle_id"], 20, 20)
+            second["update_element"](result["rectangle_id"], x=20, y=20)
+        first["update_element"](result["rectangle_id"], x=20, y=20)
 
     def test_history_limit_configuration_is_validated(self):
         with patch.dict(os.environ, {"EXCALIDRAW_HISTORY_LIMIT": "2"}):

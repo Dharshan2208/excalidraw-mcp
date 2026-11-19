@@ -73,7 +73,7 @@ class ReplacementTests(unittest.TestCase):
         self.assertTrue(Path(result["path"]).is_absolute())
         self.scene.clear()
         self.tools.load("roundtrip")
-        self.tools.move(self.original["elements"][0]["id"], 10, 20)
+        self.tools.update_element(self.original["elements"][0]["id"], x=10, y=20)
         self.tools.save("roundtrip", overwrite=True)
         document = json.loads((self.root / "roundtrip.excalidraw").read_text())
         self.assertEqual(document["files"], self.original["files"])

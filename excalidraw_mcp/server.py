@@ -312,13 +312,6 @@ def create_server(
         return invoke(service.delete, element_id)
 
     @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-    )
-    def move(element_id: ElementId, x: Coordinate, y: Coordinate) -> MoveResult:
-        """Move an element and its label. Shape connectors follow; directly moved arrows detach."""
-        return invoke(service.move, element_id, x, y)
-
-    @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
     )
     def save(name: SceneName, overwrite: Boolean = False) -> SaveResult:
@@ -384,34 +377,68 @@ def create_server(
         strokeStyle: StrokeStyle | None = None,
         opacity: Opacity | None = None,
         roughness: Roughness | None = None,
-    ) -> UpdateResult:
-        """Update a label, font, and/or styles. An empty label removes an existing label."""
-        return invoke(
-            service.update_element,
-            element_id,
-            label,
-            strokeColor,
-            backgroundColor,
-            fillStyle,
-            strokeWidth,
-            strokeStyle,
-            opacity,
-            roughness,
-            roundness=roundness,
-            frame_id=frame_id,
-            elbowed=elbowed,
-            font_family=font_family,
-            font_size=font_size,
+        x: Coordinate | None = None,
+        y: Coordinate | None = None,
+        width: Dimension | None = None,
+        height: Dimension | None = None,
+    ) -> dict[str, Any]:
+        """Update an element's position (x, y), dimensions (width, height), label, typography, or visual styling."""
+        res: dict[str, Any] = {"status": "updated", "element_id": element_id}
+        if width is not None or height is not None:
+            if width is None or height is None:
+                el = invoke(service.get_element, element_id)["element"]
+                w_val = float(width if width is not None else el.get("width", 100))
+                h_val = float(height if height is not None else el.get("height", 100))
+            else:
+                w_val, h_val = width, height
+            res.update(invoke(service.resize, element_id, w_val, h_val))
+        if x is not None or y is not None:
+            if x is None or y is None:
+                el = invoke(service.get_element, element_id)["element"]
+                x_val = float(x if x is not None else el.get("x", 0))
+                y_val = float(y if y is not None else el.get("y", 0))
+            else:
+                x_val, y_val = x, y
+            res.update(invoke(service.move, element_id, x_val, y_val))
+        has_updates = any(
+            v is not None
+            for v in (
+                label,
+                strokeColor,
+                backgroundColor,
+                fillStyle,
+                strokeWidth,
+                strokeStyle,
+                opacity,
+                roughness,
+                roundness,
+                frame_id,
+                elbowed,
+                font_family,
+                font_size,
+            )
         )
-
-    @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
-    )
-    def resize(
-        element_id: ElementId, width: Dimension, height: Dimension
-    ) -> ResizeResult:
-        """Resize a shape and recenter its label."""
-        return invoke(service.resize, element_id, width, height)
+        if has_updates or (width is None and height is None and x is None and y is None):
+            res.update(
+                invoke(
+                    service.update_element,
+                    element_id,
+                    label,
+                    strokeColor,
+                    backgroundColor,
+                    fillStyle,
+                    strokeWidth,
+                    strokeStyle,
+                    opacity,
+                    roughness,
+                    roundness=roundness,
+                    frame_id=frame_id,
+                    elbowed=elbowed,
+                    font_family=font_family,
+                    font_size=font_size,
+                )
+            )
+        return res
 
     @mcp.tool(annotations=READ_ONLY)
     def find_elements(
@@ -835,7 +862,7 @@ def create_server(
             "available_toolsets": ["core", "full"],
             "server_version": "0.2.0",
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 40 if is_full else 24,
+            "tool_count": 38 if is_full else 22,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
