@@ -140,6 +140,9 @@ class GraphResult(TypedDict):
 DiagramFormat = Literal["mermaid", "architecture", "graph"]
 DiagramResult = dict[str, Any]
 
+StorageAction = Literal["save", "load", "list", "export", "import", "share_url"]
+StorageResult = dict[str, Any]
+
 
 class BatchOperation(BaseModel):
     model_config = ConfigDict(extra="allow")

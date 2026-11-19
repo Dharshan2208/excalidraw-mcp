@@ -31,7 +31,8 @@ class MCPContractTests(unittest.TestCase):
         self.assertTrue(tools["inspect_scene"].annotations.readOnlyHint)
         self.assertFalse(tools["inspect_scene"].annotations.openWorldHint)
         self.assertTrue(tools["clear"].annotations.destructiveHint)
-        self.assertTrue(tools["save"].annotations.openWorldHint)
+        self.assertTrue(tools["scene_storage"].annotations.destructiveHint)
+        self.assertTrue(tools["export_to_excalidraw_url"].annotations.openWorldHint)
         self.assertTrue(tools["generate_diagram"].annotations.destructiveHint)
         self.assertTrue(all(tool.run_in_thread for tool in tools.values()))
 

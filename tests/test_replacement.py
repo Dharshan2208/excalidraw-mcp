@@ -62,19 +62,19 @@ class ReplacementTests(unittest.TestCase):
                 json.dumps(document), encoding="utf-8"
             )
             with self.assertRaises(ToolError):
-                self.tools.load("bad")
+                self.tools.scene_storage(action="load", name="bad")
             self.assertEqual(self.scene.document(), self.original)
         with self.assertRaises(ToolError):
-            self.tools.load("absent")
+            self.tools.scene_storage(action="load", name="absent")
         self.assertEqual(self.scene.document(), self.original)
 
     def test_tool_roundtrip_preserves_metadata_and_assets(self):
-        result = self.tools.save("roundtrip")
+        result = self.tools.scene_storage(action="save", name="roundtrip")
         self.assertTrue(Path(result["path"]).is_absolute())
         self.scene.clear()
-        self.tools.load("roundtrip")
+        self.tools.scene_storage(action="load", name="roundtrip")
         self.tools.update_element(self.original["elements"][0]["id"], x=10, y=20)
-        self.tools.save("roundtrip", overwrite=True)
+        self.tools.scene_storage(action="save", name="roundtrip", overwrite=True)
         document = json.loads((self.root / "roundtrip.excalidraw").read_text())
         self.assertEqual(document["files"], self.original["files"])
         self.assertEqual(document["appState"], self.original["appState"])
@@ -82,9 +82,9 @@ class ReplacementTests(unittest.TestCase):
         self.assertEqual(document["elements"][0]["x"], 10)
 
     def test_tool_save_reports_overwrite_error(self):
-        self.tools.save("existing")
+        self.tools.scene_storage(action="save", name="existing")
         with self.assertRaisesRegex(ToolError, "overwrite=true"):
-            self.tools.save("existing")
+            self.tools.scene_storage(action="save", name="existing")
 
     def test_successful_architecture_commits_complete_document(self):
         result = self.tools.generate_diagram(format="architecture", prompt="box: API, circle: Database")

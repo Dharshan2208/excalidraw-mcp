@@ -38,7 +38,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 16)
+        self.assertEqual(len(tools), 14)
         # Verify essential core tools are present
         self.assertIn("create_shape", tool_names)
         self.assertIn("create_connector", tool_names)
@@ -51,11 +51,9 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("inspect_scene", tool_names)
         self.assertIn("auto_fix_layout", tool_names)
         self.assertIn("generate_diagram", tool_names)
-        self.assertIn("save", tool_names)
-        self.assertIn("load", tool_names)
+        self.assertIn("scene_storage", tool_names)
         self.assertIn("preview", tool_names)
         self.assertIn("export_png", tool_names)
-        self.assertIn("export_scene", tool_names)
 
         # Verify full-only tools are NOT in core
         self.assertNotIn("batch_mutate", tool_names)
@@ -73,14 +71,20 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 29)
+        self.assertEqual(len(tools), 25)
         tool_names = {t.name for t in tools}
         self.assertIn("generate_diagram", tool_names)
+        self.assertIn("scene_storage", tool_names)
         self.assertIn("batch_mutate", tool_names)
         self.assertIn("inspect_scene", tool_names)
         self.assertIn("start_live_server", tool_names)
         self.assertIn("set_element_locked", tool_names)
         self.assertIn("manage_groups", tool_names)
+        self.assertNotIn("save", tool_names)
+        self.assertNotIn("load", tool_names)
+        self.assertNotIn("list_saved_scenes", tool_names)
+        self.assertNotIn("export_scene", tool_names)
+        self.assertNotIn("import_scene", tool_names)
         self.assertNotIn("draw_graph", tool_names)
         self.assertNotIn("draw_mermaid", tool_names)
         self.assertNotIn("draw_architecture", tool_names)

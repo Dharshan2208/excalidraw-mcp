@@ -113,6 +113,8 @@ from excalidraw_mcp.contracts import (
     ShapeType,
     ShareUrlResult,
     StatusResult,
+    StorageAction,
+    StorageResult,
     StrokeStyle,
     StrokeWidth,
     UndoResult,
@@ -315,11 +317,53 @@ def create_server(
         return invoke(service.delete, element_id)
 
     @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
+        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
     )
-    def save(name: SceneName, overwrite: Boolean = False) -> SaveResult:
-        """Save a consistent snapshot. Set overwrite=true to replace an existing file."""
-        return invoke(service.save, name, overwrite=overwrite)
+    def scene_storage(
+        action: StorageAction = "save",
+        name: SceneName | None = None,
+        overwrite: Boolean = False,
+        data: str | None = None,
+        mode: Literal["replace", "merge"] = "replace",
+        offset_x: Coordinate = 0.0,
+        offset_y: Coordinate = 0.0,
+    ) -> Any:
+        """Manage diagram storage: save snapshots to disk, load scenes, list saved files, export document JSON, or import files (destructiveHint=True)."""
+        if action == "save":
+            if not name:
+                raise ToolError("scene_storage(action='save') requires name parameter.")
+            return invoke(service.save, name, overwrite=overwrite)
+        elif action == "load":
+            if not name:
+                raise ToolError("scene_storage(action='load') requires name parameter.")
+            return invoke(service.load, name)
+        elif action == "list":
+            return invoke(service.list_saved_scenes)
+        elif action == "export":
+            payload = invoke(service.export_scene)
+            snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
+            return EmbeddedResource(
+                type="resource",
+                resource=TextResourceContents(
+                    uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw"),
+                    mimeType=MIME_TYPE,
+                    text=payload,
+                ),
+            )
+        elif action == "import":
+            if not data:
+                raise ToolError("scene_storage(action='import') requires data parameter.")
+            return invoke(
+                service.import_scene,
+                data=data,
+                mode=mode,
+                offset_x=offset_x,
+                offset_y=offset_y,
+            )
+        elif action == "share_url":
+            return invoke(service.export_to_excalidraw_url, name=name)
+        else:
+            raise ToolError(f"Unsupported storage action: {action}")
 
     @mcp.tool(annotations=READ_ONLY)
     def inspect_scene(
@@ -376,14 +420,6 @@ def create_server(
             )
         else:
             raise ToolError(f"Unknown inspect mode: '{mode}'")
-
-    if is_full:
-        @mcp.tool(
-            annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
-        )
-        def list_saved_scenes() -> SavedScenesResult:
-            """List scene names available in the configured storage directory."""
-            return invoke(service.list_saved_scenes)
 
     @mcp.tool(annotations=MUTATING)
     def add_text(
@@ -543,27 +579,6 @@ def create_server(
     def undo() -> UndoResult:
         """Restore the scene before the most recent successful mutation."""
         return invoke(service.undo)
-
-    @mcp.tool(annotations=READ_ONLY)
-    def export_scene() -> EmbeddedResource:
-        """Return an embedded .excalidraw document for the client to save/import. No file is written."""
-        payload = invoke(service.export_scene)
-        snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
-        return EmbeddedResource(
-            type="resource",
-            resource=TextResourceContents(
-                uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw"),
-                mimeType=MIME_TYPE,
-                text=payload,
-            ),
-        )
-
-    @mcp.tool(
-        annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
-    )
-    def load(name: SceneName) -> LoadResult:
-        """Replace the scene with a saved document; concurrent changes cause a retry error."""
-        return invoke(service.load, name)
 
     @mcp.resource("excalidraw://scenes/{name}.excalidraw", mime_type=MIME_TYPE)
     def saved_scene_resource(name: SceneName) -> str:
@@ -789,24 +804,6 @@ def create_server(
             return invoke(
                 service.duplicate_elements,
                 element_ids=element_ids,
-                offset_x=offset_x,
-                offset_y=offset_y,
-            )
-
-        @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
-        )
-        def import_scene(
-            data: str,
-            mode: Literal["replace", "merge"] = "replace",
-            offset_x: Coordinate = 0.0,
-            offset_y: Coordinate = 0.0,
-        ) -> ImportResult:
-            """Import scene from raw JSON, .excalidraw file, Obsidian .excalidraw.md, or embedded PNG with collision prevention."""
-            return invoke(
-                service.import_scene,
-                data=data,
-                mode=mode,
                 offset_x=offset_x,
                 offset_y=offset_y,
             )
