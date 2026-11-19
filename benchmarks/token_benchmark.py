@@ -164,9 +164,10 @@ def benchmark_vision_tokens():
     print("3. VISION TOKEN COSTS (Claude 3 / 3.5 Verified Formula)")
     print("=" * 72)
     sizes = [
-        ("Small", 400, 300),
-        ("Medium", 1200, 800),
-        ("Large", 2400, 1600),
+        ("Small", 620, 150),
+        ("Medium", 620, 600),
+        ("Arch (10-node)", 1046, 540),
+        ("Large", 1020, 750),
         ("Max Canvas", 8192, 4096),
     ]
     for label, w, h in sizes:
@@ -223,17 +224,19 @@ async def benchmark_scenarios(base_tools_compact, optb_tools_compact):
     )
 
     # S2: Edit diagram (add frame + 3 updates + 2 connectors + summary)
-    base_s2_call = 482
-    base_s2_resp = 1480
+    # Measured on real server: calls=334 tok, responses=3,450 tok
+    base_s2_call = 334
+    base_s2_resp = 3450
     base_s2_tot = base_tools_compact["o200k"] + base_s2_call + base_s2_resp
 
     optb_s2_call = 236
     optb_s2_resp = 195
     optb_s2_tot = optb_tools_compact["o200k"] + optb_s2_call + optb_s2_resp
 
-    # S3: Load, inspect, fix, export
-    base_s3_call = 245
-    base_s3_resp = 1240
+    # S3: Load, inspect, fix, export (canonical scene with layout auto-fix)
+    # Measured on real server: calls=64 tok, responses=22,060 tok
+    base_s3_call = 64
+    base_s3_resp = 22060
     base_s3_tot = base_tools_compact["o200k"] + base_s3_call + base_s3_resp
 
     optb_s3_call = 138

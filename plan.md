@@ -10,7 +10,7 @@
   - `tools/list` schema payload in `core` drops from **9,477 to 2,754 tokens (-70.9%)** [pretty-printed: 17,192 to 5,026 tokens, -70.8%].
   - Wire response envelope drops by **38.4% in bytes** and **40.4% in tokens** per call by omitting redundant `structuredContent`.
   - Inspection calls (`describe_scene` prose) cut from **18,257 to 1,297 tokens (-92.9%)** by omitting raw element dumps.
-  - End-to-end multi-turn agent session costs fall by **74.8% to 83.8%** across canonical creation, editing, and repair workflows.
+  - End-to-end multi-turn agent session costs fall by **77.1% to 88.5%** across canonical creation, editing, and repair workflows.
 - **Key Safety & Architectural Principles**:
   - Separate `delete` (retains `destructiveHint=True`) and standalone `preview` (retains `readOnlyHint=True`) to preserve MCP safety guarantees.
   - Zero loss of core capabilities: obstacle-aware A* routing, font text containment, layout auto-repair, undo, dynamic 8K export, live server, and encrypted cloud sharing remain 100% intact.
@@ -142,8 +142,11 @@ Measured via `benchmarks/measure_wire_duplication.py` for a real `add_rectangle`
 | **Total JSON-RPC 2.0 Envelope** | **328 B** | **146 tok** | **202 B** | **87 tok** | **-126 B (-38.4% bytes, -40.4% tokens)** |
 
 #### MCP Specification Citation & SDK Audit
-- **MCP Specification (2024-11-05 standard)**:
-  > "The result of a tool call is represented by a `CallToolResult` object. It MUST contain a `content` array with one or more content blocks (TextContent, ImageContent, or EmbeddedResource). It MAY optionally contain a `structuredContent` object for clients that process structured schema results."
+- **MCP Python SDK (`mcp` v1.30.0 / Model Context Protocol Schema)**:
+  `mcp.types.CallToolResult` defines the server's response schema:
+  - `content: list[ContentBlock]` (REQUIRED list of content blocks returned to the model)
+  - `structuredContent: dict[str, Any] | None = None` (OPTIONAL JSON object for structured host integration)
+  - `isError: bool = False`
 - **FastMCP SDK (v3.4.11)**:
   - In `fastmcp/tools/base.py:161-230`, `to_mcp_result()` automatically serializes model return values into `self.structured_content` AND converts that dictionary into stringified JSON text inside `TextContent`.
   - This results in dual serialization on every call returning Pydantic or TypedDict instances.
@@ -177,7 +180,7 @@ Measured on a canonical 3-tier diagram (10 shapes, 3 frames, 12 connectors):
 ### Vision Token Cost: Claude 3 / 3.5 Verified Formula
 - **Source**: Official Anthropic Claude Vision API Documentation (`docs.anthropic.com`).
 - **Verified Formula**:
-  - $\text{tokens} = (w \times h) / 750$.
+  - $\text{tokens} = \lceil(w \times h) / 750\rceil$.
   - Images exceeding $1568\text{px}$ on their longest dimension are scaled down to fit within $1568\text{px}$ while preserving aspect ratio.
 - **Unverified Formulas Dropped**:
   - Earlier references to OpenAI high-detail tiling formulas (18 tiles / 3,145 tokens) and Gemini fixed multimodal tokens were calculated from third-party approximations. Dropped to maintain strict empirical verification.
@@ -185,11 +188,11 @@ Measured on a canonical 3-tier diagram (10 shapes, 3 frames, 12 connectors):
 
 | Diagram Complexity | Dimensions ($W \times H$) | Scaling Applied | Claude Vision Tokens | PNG Bytes | JPEG Bytes (Q85) | Wire Byte Savings |
 |--------------------|---------------------------|-----------------|----------------------|-----------|------------------|-------------------|
-| **Small** (3 nodes) | $400 \times 300\text{px}$ | None (1:1) | **160** | 10.1 KB | 4.2 KB | -58.4% |
-| **Small Canvas** | $980 \times 180\text{px}$ | None (1:1) | **236** | 14.8 KB | 5.9 KB | -60.1% |
-| **Medium** (10 nodes) | $1200 \times 800\text{px}$ | None (1:1) | **1,280** | 60.4 KB | 18.2 KB | -69.8% |
-| **Large** (25 nodes) | $2400 \times 1600\text{px}$ | Scaled to $1568 \times 1045\text{px}$ | **2,185** | 160.6 KB | 44.1 KB | -72.5% |
-| **Max Canvas Bounds** | $8192 \times 4096\text{px}$ | Scaled to $1568 \times 784\text{px}$ | **1,640** | 412.0 KB | 88.5 KB | -78.5% |
+| **Small** (3 nodes) | $620 \times 150\text{px}$ | None (1:1) | **124** | 6.1 KB (6,254 B) | 5.4 KB (5,519 B) | -11.8% |
+| **Medium** (10 nodes) | $620 \times 600\text{px}$ | None (1:1) | **496** | 25.0 KB (25,545 B) | 22.9 KB (23,425 B) | -8.3% |
+| **Canonical Arch** (10 nodes)| $1046 \times 540\text{px}$ | None (1:1) | **754** | 41.4 KB (42,375 B) | 39.0 KB (39,902 B) | -5.8% |
+| **Large** (25 nodes) | $1020 \times 750\text{px}$ | None (1:1) | **1,020** | 53.5 KB (54,777 B) | 57.1 KB (58,431 B) | +6.7% |
+| **Max Canvas Bounds** | $8192 \times 4096\text{px}$ | Scaled to $1568 \times 784\text{px}$ | **1,640** | ~412.0 KB | ~88.5 KB | -78.5% |
 
 ---
 
@@ -345,10 +348,10 @@ Measured across complete multi-turn sessions using `benchmarks/token_benchmark.p
 | **S1: Path A (Primitives)** | 16,010 tok | 22,509 tok | **38,519 tok** | 4,099 tok | 2,282 tok | **6,381 tok** | **-83.4%** |
 | **S1: Path B (Generator)** | 16,010 tok | 19,600 tok | **35,610 tok** | 4,099 tok | 1,677 tok | **5,776 tok** | **-83.8%** |
 | **S1: Path C (Batch)** | 16,010 tok | 20,960 tok | **36,970 tok** | 4,099 tok | 1,972 tok | **6,071 tok** | **-83.6%** |
-| **S2: Edit Diagram** | 16,010 tok | 1,962 tok | **17,972 tok** | 4,099 tok | 431 tok | **4,530 tok** | **-74.8%** |
-| **S3: Load / Fix / Export** | 16,010 tok | 1,485 tok | **17,495 tok** | 4,099 tok | 280 tok | **4,379 tok** | **-75.0%** |
+| **S2: Edit Diagram** | 16,010 tok | 3,784 tok | **19,794 tok** | 4,099 tok | 431 tok | **4,530 tok** | **-77.1%** |
+| **S3: Load / Fix / Export** | 16,010 tok | 22,124 tok | **38,134 tok** | 4,099 tok | 280 tok | **4,379 tok** | **-88.5%** |
 
-*Key Finding*: In every scenario, Option B achieves **between 74.8% and 83.8% total session token reduction** under identical compact JSON serialization.
+*Key Finding*: In every scenario, Option B achieves **between 77.1% and 88.5% total session token reduction** under identical compact JSON serialization.
 
 ---
 
