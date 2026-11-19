@@ -338,7 +338,7 @@ class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(res.is_error)
             txt_id = json.loads(res.content[0].text)["text_id"]
 
-            elem_res = await client.call_tool("get_element", {"element_id": txt_id})
+            elem_res = await client.call_tool("inspect_scene", {"mode": "element", "element_id": txt_id})
             self.assertFalse(elem_res.is_error)
             element = json.loads(elem_res.content[0].text)["element"]
             self.assertEqual(element["fontFamily"], 1)

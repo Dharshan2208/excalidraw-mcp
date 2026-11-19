@@ -28,8 +28,8 @@ class MCPContractTests(unittest.TestCase):
             ],
             ["solid", "hachure", "cross-hatch", "zigzag"],
         )
-        self.assertTrue(tools["get_scene"].annotations.readOnlyHint)
-        self.assertFalse(tools["get_scene"].annotations.openWorldHint)
+        self.assertTrue(tools["inspect_scene"].annotations.readOnlyHint)
+        self.assertFalse(tools["inspect_scene"].annotations.openWorldHint)
         self.assertTrue(tools["clear"].annotations.destructiveHint)
         self.assertTrue(tools["save"].annotations.openWorldHint)
         self.assertTrue(tools["draw_graph"].annotations.destructiveHint)
@@ -55,7 +55,7 @@ class MCPContractTests(unittest.TestCase):
         from fastmcp.exceptions import ToolError
 
         with self.assertRaises(ToolError):
-            tools["get_element"]("missing")
+            tools["inspect_scene"](mode="element", element_id="missing")
         with self.assertRaises(ToolError):
             tools["delete"]("missing")
 
@@ -99,7 +99,7 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
                     "label": "API",
                 },
             )
-            inspected = await client.call_tool("get_scene", {})
+            inspected = await client.call_tool("inspect_scene", {"mode": "elements"})
             invalid = await client.call_tool(
                 "create_shape",
                 {

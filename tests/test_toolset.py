@@ -33,12 +33,12 @@ class ToolsetConfigurationTests(unittest.TestCase):
 
 
 class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_core_toolset_registers_exactly_22_tools(self):
+    async def test_core_toolset_registers_exactly_17_tools(self):
         server = create_server(toolset="core")
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 22)
+        self.assertEqual(len(tools), 17)
         # Verify essential core tools are present
         self.assertIn("create_shape", tool_names)
         self.assertIn("create_connector", tool_names)
@@ -48,13 +48,8 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("delete", tool_names)
         self.assertIn("clear", tool_names)
         self.assertIn("undo", tool_names)
-        self.assertIn("get_scene", tool_names)
-        self.assertIn("get_element", tool_names)
-        self.assertIn("get_scene_summary", tool_names)
-        self.assertIn("describe_scene", tool_names)
+        self.assertIn("inspect_scene", tool_names)
         self.assertIn("auto_fix_layout", tool_names)
-        self.assertIn("find_elements", tool_names)
-        self.assertIn("get_resource", tool_names)
         self.assertIn("draw_mermaid", tool_names)
         self.assertIn("draw_architecture", tool_names)
         self.assertIn("save", tool_names)
@@ -80,21 +75,24 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 38)
+        self.assertEqual(len(tools), 31)
         tool_names = {t.name for t in tools}
         self.assertIn("draw_graph", tool_names)
         self.assertIn("batch_mutate", tool_names)
-        self.assertIn("find_elements", tool_names)
+        self.assertIn("inspect_scene", tool_names)
         self.assertIn("start_live_server", tool_names)
         self.assertIn("set_element_locked", tool_names)
         self.assertIn("manage_groups", tool_names)
         self.assertNotIn("move", tool_names)
         self.assertNotIn("resize", tool_names)
-        self.assertNotIn("lock_elements", tool_names)
-        self.assertNotIn("unlock_elements", tool_names)
-        self.assertNotIn("group_elements", tool_names)
-        self.assertNotIn("ungroup_elements", tool_names)
-        self.assertNotIn("focus_elements", tool_names)
+        self.assertNotIn("get_scene", tool_names)
+        self.assertNotIn("get_element", tool_names)
+        self.assertNotIn("find_elements", tool_names)
+        self.assertNotIn("get_resource", tool_names)
+        self.assertNotIn("get_viewport", tool_names)
+        self.assertNotIn("get_scene_summary", tool_names)
+        self.assertNotIn("describe_scene", tool_names)
+        self.assertNotIn("get_live_server_status", tool_names)
 
     async def test_capabilities_resource_provides_metadata(self):
         for mode in ("core", "full"):
@@ -106,7 +104,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["server_version"], "0.2.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 38 if mode == "full" else 22)
+            self.assertEqual(data["tool_count"], 31 if mode == "full" else 17)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 
@@ -174,7 +172,7 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         # Move and resize via update_element
         res = tools["update_element"](element_id=rid, x=50, y=60, width=150, height=80, label="Updated")
         self.assertEqual(res["element_id"], rid)
-        el = tools["get_element"](element_id=rid)["element"]
+        el = tools["inspect_scene"](mode="element", element_id=rid)["element"]
         self.assertEqual(el["x"], 50)
         self.assertEqual(el["y"], 60)
         self.assertEqual(el["width"], 150)

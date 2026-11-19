@@ -26,6 +26,9 @@ FillStyle = Literal["solid", "hachure", "cross-hatch", "zigzag"]
 StrokeStyle = Literal["solid", "dashed", "dotted"]
 ShapeType = Literal["rectangle", "ellipse", "diamond"]
 CreateShapeType = Literal["rectangle", "ellipse", "diamond", "circle"]
+InspectMode = Literal[
+    "summary", "describe", "elements", "element", "find", "viewport", "live_server", "resource"
+]
 ElementType = Literal["rectangle", "ellipse", "diamond", "arrow", "text", "frame"]
 Roundness = Literal["adaptive", "round", "sharp"]
 CodeTheme = Literal["dark", "monokai", "github-dark", "light", "solarized-dark"]

@@ -339,7 +339,7 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(locked["status"], "locked")
 
         # 4. Viewport
-        vp = tools["get_viewport"]()
+        vp = tools["inspect_scene"](mode="viewport")
         self.assertEqual(vp["zoom"], 1.0)
         set_vp = tools["set_viewport"](zoom=2.0, background_color="#f8f9fa")
         self.assertEqual(set_vp["zoom"], 2.0)
@@ -351,7 +351,7 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("bounding_box", foc)
 
         # 6. Scene summary
-        summary = tools["get_scene_summary"]()
+        summary = tools["inspect_scene"](mode="summary")
         self.assertGreaterEqual(summary["element_count"], 2)
         self.assertEqual(len(summary["groups"]), 1)
 

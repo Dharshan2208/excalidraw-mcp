@@ -471,10 +471,10 @@ class MCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(r_res.is_error)
             rect_id = json.loads(r_res.content[0].text)["rectangle_id"]
 
-            # 3. Test find_elements
+            # 3. Test find_elements via inspect_scene
             find_res = await client.call_tool(
-                "find_elements",
-                {"query": "Worker"},
+                "inspect_scene",
+                {"mode": "find", "query": "Worker"},
             )
             self.assertFalse(find_res.is_error)
             find_data = json.loads(find_res.content[0].text)

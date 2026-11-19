@@ -146,12 +146,12 @@ class SceneDescriptionTests(unittest.TestCase):
             async with Client(server) as client:
                 await client.call_tool("create_shape", {"type": "rectangle", "x": 0, "y": 0, "w": 100, "h": 50, "label": "Box"})
                 # Default: only summary returned
-                res_default = await client.call_tool("describe_scene", {})
+                res_default = await client.call_tool("inspect_scene", {"mode": "describe"})
                 data_default = json.loads(res_default.content[0].text)
                 self.assertIn("summary", data_default)
                 self.assertNotIn("elements", data_default)
                 # include_raw=True: full dictionary returned
-                res_raw = await client.call_tool("describe_scene", {"include_raw": True})
+                res_raw = await client.call_tool("inspect_scene", {"mode": "describe", "include_raw": True})
                 data_raw = json.loads(res_raw.content[0].text)
                 self.assertIn("summary", data_raw)
                 self.assertIn("elements", data_raw)

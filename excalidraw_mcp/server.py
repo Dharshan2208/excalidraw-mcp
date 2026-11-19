@@ -83,6 +83,7 @@ from excalidraw_mcp.contracts import (
     GraphResult,
     GroupResult,
     ImportResult,
+    InspectMode,
     Label,
     LayoutType,
     LiveServerResult,
@@ -319,14 +320,60 @@ def create_server(
         return invoke(service.save, name, overwrite=overwrite)
 
     @mcp.tool(annotations=READ_ONLY)
-    def get_scene(offset: Offset = 0, limit: PageLimit = 50) -> ScenePage:
-        """List active elements with pagination and the current revision."""
-        return invoke(service.get_scene, offset, limit)
-
-    @mcp.tool(annotations=READ_ONLY)
-    def get_element(element_id: ElementId) -> ElementResult:
-        """Return one active element by ID."""
-        return invoke(service.get_element, element_id)
+    def inspect_scene(
+        mode: InspectMode = "summary",
+        element_id: ElementId | None = None,
+        query: str | None = None,
+        type: ElementType | None = None,
+        frame_id: ElementId | None = None,
+        connected_to: ElementId | None = None,
+        include_bound_labels: bool = False,
+        limit: PageLimit = 50,
+        offset: Offset = 0,
+        detailed: Boolean = True,
+        include_raw: Boolean = False,
+        resource_uri: str | None = None,
+    ) -> dict[str, Any]:
+        """Inspect canvas state, metrics, elements, spatial descriptions, camera viewport, or server status (readOnlyHint=True)."""
+        if mode == "summary":
+            return invoke(service.get_scene_summary)
+        elif mode == "describe":
+            res = invoke(service.describe_scene, detailed=detailed)
+            if not include_raw:
+                return {"summary": res["summary"]}
+            return res
+        elif mode == "elements":
+            return invoke(service.get_scene, offset, limit)
+        elif mode == "element":
+            if not element_id:
+                raise ToolError("inspect_scene(mode='element') requires element_id parameter.")
+            return invoke(service.get_element, element_id)
+        elif mode == "find":
+            return invoke(
+                service.find_elements,
+                query=query,
+                type=type,
+                frame_id=frame_id,
+                element_id=element_id,
+                connected_to=connected_to,
+                include_bound_labels=include_bound_labels,
+                limit=limit,
+            )
+        elif mode == "viewport":
+            return invoke(service.get_viewport)
+        elif mode == "live_server":
+            return invoke(service.get_live_server_status)
+        elif mode == "resource":
+            if not resource_uri:
+                raise ToolError("inspect_scene(mode='resource') requires resource_uri parameter.")
+            return invoke(
+                service.get_resource,
+                uri=resource_uri,
+                resource_type=None,
+                identifier=element_id,
+            )
+        else:
+            raise ToolError(f"Unknown inspect mode: '{mode}'")
 
     if is_full:
         @mcp.tool(
@@ -439,42 +486,6 @@ def create_server(
                 )
             )
         return res
-
-    @mcp.tool(annotations=READ_ONLY)
-    def find_elements(
-        query: str | None = None,
-        type: ElementType | None = None,
-        frame_id: ElementId | None = None,
-        element_id: ElementId | None = None,
-        connected_to: ElementId | None = None,
-        include_bound_labels: bool = False,
-        limit: PageLimit = 50,
-    ) -> FindResult:
-        """Find active elements matching query string, type, frame, or connection criteria."""
-        return invoke(
-            service.find_elements,
-            query=query,
-            type=type,
-            frame_id=frame_id,
-            element_id=element_id,
-            connected_to=connected_to,
-            include_bound_labels=include_bound_labels,
-            limit=limit,
-        )
-
-    @mcp.tool(annotations=READ_ONLY)
-    def get_resource(
-        uri: str | None = None,
-        resource_type: str | None = None,
-        identifier: str | None = None,
-    ) -> ResourceResult:
-        """Retrieve scene, library, theme, or element resources through a unified interface."""
-        return invoke(
-            service.get_resource,
-            uri=uri,
-            resource_type=resource_type,
-            identifier=identifier,
-        )
 
     if is_full:
         @mcp.tool(annotations=MUTATING)
@@ -743,11 +754,6 @@ def create_server(
         )
 
     if is_full:
-        @mcp.tool(annotations=READ_ONLY)
-        def get_viewport() -> ViewportResult:
-            """Get current canvas camera viewport settings (scroll coordinates, zoom level, background color)."""
-            return invoke(service.get_viewport)
-
         @mcp.tool(
             annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
         )
@@ -770,11 +776,6 @@ def create_server(
                 padding=padding,
             )
 
-    @mcp.tool(annotations=READ_ONLY)
-    def get_scene_summary() -> SceneSummaryResult:
-        """Return structured numerical metrics and topological metadata (counts, element dimensions, layers, code blocks, text contents) for layout planning."""
-        return invoke(service.get_scene_summary)
-
     if is_full:
         @mcp.tool(
             annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
@@ -782,17 +783,6 @@ def create_server(
         def export_to_excalidraw_url(name: SceneName | None = None) -> ShareUrlResult:
             """Publish the scene to excalidraw.com with client-side encryption and return a shareable URL."""
             return invoke(service.export_to_excalidraw_url, name=name)
-
-    @mcp.tool(annotations=READ_ONLY)
-    def describe_scene(
-        detailed: Boolean = True,
-        include_raw: Boolean = False,
-    ) -> dict[str, Any]:
-        """Generate a human/agent-readable natural language prose description of the diagram's spatial layout, clusters, and connectivity for cognitive verification."""
-        result = invoke(service.describe_scene, detailed=detailed)
-        if not include_raw:
-            return {"summary": result["summary"]}
-        return result
 
     if is_full:
         @mcp.tool(annotations=READ_ONLY)
@@ -846,11 +836,6 @@ def create_server(
             """Stop the background live canvas server."""
             return invoke(service.stop_live_server)
 
-        @mcp.tool(annotations=READ_ONLY)
-        def get_live_server_status() -> LiveServerResult:
-            """Check status of the browser-connected live canvas server."""
-            return invoke(service.get_live_server_status)
-
     @mcp.resource("excalidraw://capabilities", mime_type="application/json")
     def capabilities_resource() -> str:
         """Read active server capabilities, toolset mode, and configuration metadata."""
@@ -862,7 +847,7 @@ def create_server(
             "available_toolsets": ["core", "full"],
             "server_version": "0.2.0",
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 38 if is_full else 22,
+            "tool_count": 31 if is_full else 17,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
@@ -873,7 +858,6 @@ def create_server(
                     "draw_graph",
                     "batch_mutate",
                     "add_code_block",
-                    "get_viewport",
                     "set_viewport",
                     "duplicate_elements",
                     "import_scene",

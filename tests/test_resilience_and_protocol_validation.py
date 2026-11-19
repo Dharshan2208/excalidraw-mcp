@@ -84,8 +84,7 @@ class ResilienceAndProtocolValidationTests(unittest.TestCase):
         tools = asyncio.run(mcp.list_tools())
         tool_map = {t.name: t.description for t in tools}
 
-        self.assertIn("get_scene_summary", tool_map)
-        self.assertIn("describe_scene", tool_map)
-        # Verify descriptions guide models on quantitative vs qualitative roles
-        self.assertIn("numerical metrics", tool_map["get_scene_summary"])
-        self.assertIn("natural language prose", tool_map["describe_scene"])
+        self.assertIn("inspect_scene", tool_map)
+        # Verify inspect_scene guides models on inspection roles
+        self.assertIn("metrics", tool_map["inspect_scene"])
+        self.assertIn("spatial descriptions", tool_map["inspect_scene"])
