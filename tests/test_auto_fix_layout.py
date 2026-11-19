@@ -11,6 +11,7 @@ Covers:
 
 import asyncio
 from copy import deepcopy
+import json
 import unittest
 from unittest.mock import patch
 
@@ -678,7 +679,7 @@ class AutoFixMCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
                 {"repair_scope": "all", "aggressiveness": "balanced", "min_gap": 30.0},
             )
             self.assertFalse(call_res.is_error)
-            content = call_res.structured_content
+            content = json.loads(call_res.content[0].text)
             self.assertEqual(content["status"], "repaired")
             self.assertFalse(content["rolled_back"])
             self.assertFalse(content["dry_run"])

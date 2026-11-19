@@ -1,14 +1,51 @@
 """MCP adapters; each server owns an explicit scene service."""
 
+import functools
 from hashlib import sha256
+import inspect
+import json
 from typing import Any, Literal
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from fastmcp.tools.base import Tool, ToolResult
 from fastmcp.utilities.types import Image
-from mcp.types import EmbeddedResource, TextResourceContents
+from mcp.types import ContentBlock, EmbeddedResource, TextContent, TextResourceContents
 from mcp.types import ToolAnnotations
 from pydantic import AnyUrl
+
+_orig_convert_result = Tool.convert_result
+
+
+def _compact_json(data: Any) -> str:
+    """Serialize data to minified JSON without redundant whitespace."""
+    if hasattr(data, "model_dump"):
+        data = data.model_dump(by_alias=True, exclude_none=True)
+    return json.dumps(data, separators=(",", ":"))
+
+
+def _custom_convert_result(self, raw_value: Any) -> ToolResult:
+    """Return single compact JSON TextContent with no structuredContent."""
+    if isinstance(raw_value, (ToolResult, Image, ContentBlock, EmbeddedResource)):
+        return _orig_convert_result(self, raw_value)
+    return ToolResult(
+        content=[TextContent(type="text", text=_compact_json(raw_value))],
+        structured_content=None,
+    )
+
+
+Tool.convert_result = _custom_convert_result
+
+
+def _configure_tool_registration(mcp: FastMCP) -> None:
+    """Shared mechanism to strip outputSchema from registered tools."""
+    orig_tool = mcp.tool
+
+    def custom_tool(name_or_fn=None, **kwargs):
+        kwargs["output_schema"] = None
+        return orig_tool(name_or_fn, **kwargs)
+
+    mcp.tool = custom_tool
 
 from excalidraw_mcp.contracts import (
     Aggressiveness,
@@ -116,6 +153,7 @@ def create_server(
     ).strip().lower()
     is_full = active_toolset == "full"
     mcp = FastMCP("Excalidraw MCP")
+    _configure_tool_registration(mcp)
 
     def invoke(operation, *args, **kwargs):
         try:

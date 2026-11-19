@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import json
 import os
 import shutil
 import tempfile
@@ -283,8 +284,9 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
             # 1. Test list_fonts
             fonts_res = await client.call_tool("list_fonts", {"category": "monospace"})
             self.assertFalse(fonts_res.is_error)
-            self.assertIn("total", fonts_res.structured_content)
-            self.assertIn("fonts", fonts_res.structured_content)
+            fonts_data = json.loads(fonts_res.content[0].text)
+            self.assertIn("total", fonts_data)
+            self.assertIn("fonts", fonts_data)
 
             # 2. Test add_code_block
             cb_res = await client.call_tool(
@@ -299,7 +301,7 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
                 },
             )
             self.assertFalse(cb_res.is_error)
-            container_id = cb_res.structured_content["container_id"]
+            container_id = json.loads(cb_res.content[0].text)["container_id"]
             self.assertIsNotNone(container_id)
 
             # 3. Test export_png
@@ -314,7 +316,7 @@ class MCPProtocolEndToEndTests(unittest.IsolatedAsyncioTestCase):
                     },
                 )
                 self.assertFalse(export_res.is_error)
-                content = export_res.structured_content
+                content = json.loads(export_res.content[0].text)
                 self.assertEqual(content["status"], "png exported")
                 self.assertTrue(os.path.exists(content["path"]))
 

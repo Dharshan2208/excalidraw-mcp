@@ -205,7 +205,7 @@ class SkillsMCPTests(unittest.IsolatedAsyncioTestCase):
         f = await self.server.call_tool(
             "add_frame", {"name": "Test Frame", "x": 100.0, "y": 100.0, "w": 400.0, "h": 200.0}
         )
-        frame_id = f.structured_content["frame_id"]
+        frame_id = json.loads(f.content[0].text)["frame_id"]
 
         r1 = await self.server.call_tool(
             "add_rectangle",
@@ -215,16 +215,18 @@ class SkillsMCPTests(unittest.IsolatedAsyncioTestCase):
             "add_rectangle",
             {"x": 320.0, "y": 140.0, "w": 140.0, "h": 50.0, "label": "Box B", "frame_id": frame_id},
         )
-        id1 = r1.structured_content["rectangle_id"]
-        id2 = r2.structured_content["rectangle_id"]
+        id1 = json.loads(r1.content[0].text)["rectangle_id"]
+        id2 = json.loads(r2.content[0].text)["rectangle_id"]
 
         conn = await self.server.call_tool(
             "connect", {"source_id": id1, "target_id": id2, "label": "Link", "elbowed": True}
         )
-        self.assertIn("arrow_id", conn.structured_content)
+        conn_data = json.loads(conn.content[0].text)
+        self.assertIn("arrow_id", conn_data)
 
         diag = await self.server.call_tool("auto_fix_layout", {"dry_run": True})
-        self.assertEqual(diag.structured_content["status"], "no_changes_needed")
+        diag_data = json.loads(diag.content[0].text)
+        self.assertEqual(diag_data["status"], "no_changes_needed")
 
 
 if __name__ == "__main__":

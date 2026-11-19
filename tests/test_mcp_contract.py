@@ -18,8 +18,8 @@ class MCPContractTests(unittest.TestCase):
 
     def test_tools_have_constraints_outputs_and_behavior_annotations(self):
         tools = self.metadata(create_server(toolset="full"))
-        structured = set(tools) - {"export_scene", "preview"}
-        self.assertTrue(all(tools[name].output_schema for name in structured))
+        # Output schemas stripped from tools/list to reduce client schema footprint
+        self.assertTrue(all(tool.output_schema is None for tool in tools.values()))
         width = tools["add_rectangle"].parameters["properties"]["w"]
         self.assertEqual((width["exclusiveMinimum"], width["maximum"]), (0, 100000))
         self.assertEqual(
@@ -124,10 +124,10 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
                 },
             )
         self.assertFalse(created.is_error)
-        self.assertEqual(inspected.structured_content["total"], 2)
+        self.assertEqual(json.loads(inspected.content[0].text)["total"], 2)
         self.assertTrue(invalid.is_error)
         self.assertTrue(missing.is_error)
-        self.assertEqual(graph.structured_content["node_map"].keys(), {"a", "b"})
+        self.assertEqual(json.loads(graph.content[0].text)["node_map"].keys(), {"a", "b"})
 
 
 if __name__ == "__main__":
