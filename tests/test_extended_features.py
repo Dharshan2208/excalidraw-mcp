@@ -135,6 +135,30 @@ class SceneDescriptionTests(unittest.TestCase):
         self.assertEqual(desc["connections"][0]["label"], "HTTPS")
         self.assertIsNotNone(desc["bounds"])
 
+    def test_describe_scene_mcp_adapter_defaults(self):
+        import asyncio
+        from excalidraw_mcp.server import create_server
+        from fastmcp import Client
+        import json
+
+        async def _run():
+            server = create_server()
+            async with Client(server) as client:
+                await client.call_tool("add_rectangle", {"x": 0, "y": 0, "w": 100, "h": 50, "label": "Box"})
+                # Default: only summary returned
+                res_default = await client.call_tool("describe_scene", {})
+                data_default = json.loads(res_default.content[0].text)
+                self.assertIn("summary", data_default)
+                self.assertNotIn("elements", data_default)
+                # include_raw=True: full dictionary returned
+                res_raw = await client.call_tool("describe_scene", {"include_raw": True})
+                data_raw = json.loads(res_raw.content[0].text)
+                self.assertIn("summary", data_raw)
+                self.assertIn("elements", data_raw)
+                self.assertIn("connections", data_raw)
+
+        asyncio.run(_run())
+
 
 class ExportToExcalidrawUrlTests(unittest.TestCase):
     def setUp(self):

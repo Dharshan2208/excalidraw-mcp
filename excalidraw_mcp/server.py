@@ -546,9 +546,10 @@ def create_server(
         repair_scope: RepairScope = "all",
         aggressiveness: Aggressiveness = "balanced",
         min_gap: float = 30.0,
-    ) -> AutoFixLayoutResult:
+        verbose: Boolean = False,
+    ) -> dict[str, Any]:
         """Diagnose, plan, and automatically repair layout defects (overlaps, text clipping, containment, routing, spacing) with rollback safety."""
-        return invoke(
+        result = invoke(
             service.auto_fix_layout,
             name=name,
             dry_run=dry_run,
@@ -556,6 +557,24 @@ def create_server(
             aggressiveness=aggressiveness,
             min_gap=min_gap,
         )
+        if verbose:
+            return result
+        res = dict(result)
+        init_issues = res.get("initial_issues", [])
+        unres_issues = res.get("unresolved_issues", [])
+        fin_issues = res.get("final_issues", [])
+        applied = res.pop("applied_changes", [])
+        res["initial_issue_count"] = len(init_issues)
+        res["unresolved_issue_count"] = len(unres_issues)
+        res["issues_truncated"] = len(init_issues) > 5 or len(unres_issues) > 5
+        res["initial_issues"] = init_issues[:5]
+        res["unresolved_issues"] = unres_issues[:5]
+        if "final_issues" in res:
+            res["final_issues"] = fin_issues[:5]
+        res["applied_change_count"] = len(applied)
+        if "changed_element_ids" not in res:
+            res["changed_element_ids"] = []
+        return res
 
     @mcp.tool(
         annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
@@ -854,9 +873,15 @@ def create_server(
             return invoke(service.export_to_excalidraw_url, name=name)
 
     @mcp.tool(annotations=READ_ONLY)
-    def describe_scene(detailed: Boolean = True) -> SceneDescriptionResult:
+    def describe_scene(
+        detailed: Boolean = True,
+        include_raw: Boolean = False,
+    ) -> dict[str, Any]:
         """Generate a human/agent-readable natural language prose description of the diagram's spatial layout, clusters, and connectivity for cognitive verification."""
-        return invoke(service.describe_scene, detailed=detailed)
+        result = invoke(service.describe_scene, detailed=detailed)
+        if not include_raw:
+            return {"summary": result["summary"]}
+        return result
 
     if is_full:
         @mcp.tool(annotations=READ_ONLY)
