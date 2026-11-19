@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-19
+
+### Changed
+- **BREAKING (Tool Rationalization)**: Consolidated 48 legacy tools into 12 tools in the default `core` profile and 20 tools in the `full` profile.
+  - Merged `add_rectangle`, `add_circle`, `add_diamond` into `create_shape`.
+  - Merged `add_arrow` and `connect` into `create_connector` with obstacle-avoiding orthogonal routing.
+  - Absorbed `move` and `resize` coordinates and dimensions into `update_element`.
+  - Merged 8 scene inspection and query tools into unified `inspect_scene` (`summary`, `describe`, `elements`, `element`, `find`, `viewport`, `live_server`, `resource`).
+  - Merged procedural diagram creators (`draw_mermaid`, `draw_architecture`, `draw_graph`) into `generate_diagram`.
+  - Consolidated file persistence (`save`, `load`, `list_saved_scenes`, `export_scene`, `import_scene`) into `scene_storage`.
+  - Consolidated element protection, grouping, and cloning (`set_element_locked`, `manage_groups`, `duplicate_elements`) into `manage_element_state`.
+  - Merged live canvas server management (`start_live_server`, `stop_live_server`) into `live_server`.
+- **Promoted `batch_mutate` to Core**: Multi-operation atomic diagram generation, updates, and styling are now available in the default `core` toolset with dynamic `$ref` client ID resolution.
+- **Slim Response Defaults**: `describe_scene` and `auto_fix_layout` now default to `detailed=False`, reducing per-call response tokens by 72.4% and 94.5% respectively. Complete defect reports and element lists remain accessible via `detailed=True`.
+- **Dynamic Version Detection**: Server reports package version dynamically via `importlib.metadata.version("exca-mcp")`.
+
+### Added
+- **Preview Optimization**: Added `max_dimension=1568` aspect-ratio downscaling (matching Claude's 1.6-megapixel vision threshold) and format selection (`format="png" | "jpeg"`) to `preview`.
+- **MCP Resources**:
+  - `excalidraw://fonts`: Static JSON resource for system fonts, Excalifont paths, and default font categories.
+  - `excalidraw://guide/{topic}`: Parameterized markdown resource for design rules (`layout`, `colors`, `typography`, `grouping`, `arrows`, `spacing`).
+- **Server Instructions**: Added concise system prompt instructions (35 words, 56 tokens) to FastMCP initialization for agent guidance.
+- **Migration Guide**: Added [docs/migration_v030.md](docs/migration_v030.md) detailing migration mapping for all 48 baseline tools.
+- **Capability Coverage Tests**: Added `tests/test_capability_coverage.py` asserting all 48 baseline features remain functional.
+- **Docs Sync Verification**: Added `tests/test_docs_sync.py` asserting registered tool sets match documentation.
+
+### Removed
+- Removed legacy wrapper tools: `lock_elements`, `unlock_elements`, `group_elements`, `ungroup_elements`, and `focus_elements`.
+- Removed standalone `add_code_block` tool (syntax-highlighted code blocks are authored directly via `batch_mutate`).
+- Removed `list_fonts` tool in favor of the `excalidraw://fonts` MCP resource.
+
+### Performance
+- **50.4% Full Schema Token Reduction**: `tools/list` on the `full` profile reduced from 16,010 to 7,937 tokens (compact) and 29,555 to 14,486 tokens (pretty).
+- **46.7% Core Schema Token Reduction**: `tools/list` on the default `core` profile reduced from 9,472 to 5,048 tokens (compact) and 17,184 to 9,335 tokens (pretty).
+- **Wire Duplication Eliminated**: Stripped redundant `outputSchema` definitions and eliminated duplicate `structuredContent` blocks on tool responses, saving 50% of response payload bytes across the wire.
+
 ## [0.2.1] - 2026-11-07
 
 ### Added
