@@ -20,10 +20,10 @@ class MCPContractTests(unittest.TestCase):
         tools = self.metadata(create_server(toolset="full"))
         # Output schemas stripped from tools/list to reduce client schema footprint
         self.assertTrue(all(tool.output_schema is None for tool in tools.values()))
-        width = tools["add_rectangle"].parameters["properties"]["w"]
+        width = tools["create_shape"].parameters["properties"]["w"]
         self.assertEqual((width["exclusiveMinimum"], width["maximum"]), (0, 100000))
         self.assertEqual(
-            tools["add_rectangle"].parameters["properties"]["fillStyle"]["anyOf"][0][
+            tools["create_shape"].parameters["properties"]["fillStyle"]["anyOf"][0][
                 "enum"
             ],
             ["solid", "hachure", "cross-hatch", "zigzag"],
@@ -89,8 +89,9 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_calls_return_structured_success_and_errors(self):
         async with Client(create_server(toolset="full"), timeout=5) as client:
             created = await client.call_tool(
-                "add_rectangle",
+                "create_shape",
                 {
+                    "type": "rectangle",
                     "x": 0,
                     "y": 0,
                     "w": 100,
@@ -100,8 +101,9 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
             )
             inspected = await client.call_tool("get_scene", {})
             invalid = await client.call_tool(
-                "add_rectangle",
+                "create_shape",
                 {
+                    "type": "rectangle",
                     "x": 0,
                     "y": 0,
                     "w": -1,

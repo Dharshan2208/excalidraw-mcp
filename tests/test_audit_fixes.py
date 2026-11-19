@@ -199,22 +199,22 @@ class AuditFixesMCPContractTests(unittest.IsolatedAsyncioTestCase):
         server = create_server(service)
         async with Client(server, timeout=5) as client:
             arrow_res = await client.call_tool(
-                "add_arrow",
+                "create_connector",
                 {"x": 0, "y": 0, "x2": 100, "y2": 100, "roughness": 2},
             )
             arrow_id = json.loads(arrow_res.content[0].text)["arrow_id"]
             self.assertEqual(service.state.get(arrow_id)["roughness"], 2)
 
             rect_a = await client.call_tool(
-                "add_rectangle", {"x": 0, "y": 0, "w": 50, "h": 50}
+                "create_shape", {"type": "rectangle", "x": 0, "y": 0, "w": 50, "h": 50}
             )
             rect_b = await client.call_tool(
-                "add_rectangle", {"x": 200, "y": 0, "w": 50, "h": 50}
+                "create_shape", {"type": "rectangle", "x": 200, "y": 0, "w": 50, "h": 50}
             )
             rect_a_id = json.loads(rect_a.content[0].text)["rectangle_id"]
             rect_b_id = json.loads(rect_b.content[0].text)["rectangle_id"]
             connect_res = await client.call_tool(
-                "connect",
+                "create_connector",
                 {
                     "source_id": rect_a_id,
                     "target_id": rect_b_id,

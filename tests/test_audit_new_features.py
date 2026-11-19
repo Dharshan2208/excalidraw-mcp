@@ -324,8 +324,8 @@ class MCPProtocolIntegrationTests(unittest.IsolatedAsyncioTestCase):
         tools = {t.name: t.fn for t in await server.list_tools()}
 
         # 1. Add rectangles
-        r1 = tools["add_rectangle"](x=10, y=10, w=100, h=50, label="Service 1")
-        r2 = tools["add_rectangle"](x=200, y=10, w=100, h=50, label="Service 2")
+        r1 = tools["create_shape"](type="rectangle", x=10, y=10, w=100, h=50, label="Service 1")
+        r2 = tools["create_shape"](type="rectangle", x=200, y=10, w=100, h=50, label="Service 2")
         r1_id = r1["rectangle_id"]
         r2_id = r2["rectangle_id"]
 

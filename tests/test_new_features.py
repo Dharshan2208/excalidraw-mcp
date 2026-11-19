@@ -454,10 +454,11 @@ class MCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(f_res.is_error)
             frame_id = json.loads(f_res.content[0].text)["frame_id"]
 
-            # 2. Test add_rectangle with adaptive roundness inside frame
+            # 2. Test create_shape with adaptive roundness inside frame
             r_res = await client.call_tool(
-                "add_rectangle",
+                "create_shape",
                 {
+                    "type": "rectangle",
                     "x": 20,
                     "y": 20,
                     "w": 100,

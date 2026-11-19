@@ -60,6 +60,7 @@ from excalidraw_mcp.contracts import (
     ConnectResult,
     Coordinate,
     CreateResult,
+    CreateShapeType,
     DeleteResult,
     DiagramGuideResult,
     Dimension,
@@ -162,16 +163,15 @@ def create_server(
             raise ToolError(str(exc)) from exc
 
     @mcp.tool(annotations=MUTATING)
-    def add_rectangle(
+    def create_shape(
+        type: CreateShapeType,
         x: Coordinate,
         y: Coordinate,
         w: Dimension,
-        h: Dimension,
+        h: Dimension | None = None,
         label: Label = "",
-        roundness: Roundness | None = None,
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
         frame_id: ElementId | None = None,
+        roundness: Roundness | None = None,
         strokeColor: Color | None = None,
         backgroundColor: Color | None = None,
         fillStyle: FillStyle | None = None,
@@ -179,11 +179,12 @@ def create_server(
         strokeStyle: StrokeStyle | None = None,
         opacity: Opacity | None = None,
         roughness: Roughness | None = None,
-    ) -> CreateResult:
-        """Add a rectangle to the scene.
-
-        Style parameters are optional — when omitted, Excalidraw defaults are used.
-        """
+        font_family: FontFamily | None = None,
+        font_size: FontSize | None = None,
+    ) -> dict[str, Any]:
+        """Create a geometric shape (rectangle, ellipse, diamond) with optional label, frame containment, and visual styling."""
+        shape_type = "ellipse" if type == "circle" else type
+        height = h if h is not None else w
         style = _style_kwargs(
             strokeColor=strokeColor,
             backgroundColor=backgroundColor,
@@ -196,109 +197,61 @@ def create_server(
             font_family=font_family,
             font_size=font_size,
         )
-        return invoke(
-            service.add_shape, "rectangle", x, y, w, h, label, frame_id=frame_id, **style
+        res = invoke(
+            service.add_shape, shape_type, x, y, w, height, label, frame_id=frame_id, **style
         )
+        res_dict = dict(res)
+        primary_id = res_dict.get("rectangle_id") or res_dict.get("circle_id") or res_dict.get("diamond_id")
+        if primary_id:
+            res_dict["id"] = primary_id
+            res_dict["element_id"] = primary_id
+        return res_dict
 
     @mcp.tool(annotations=MUTATING)
-    def add_circle(
-        x: Coordinate,
-        y: Coordinate,
-        size: Dimension,
-        label: Label = "",
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
-        frame_id: ElementId | None = None,
-        strokeColor: Color | None = None,
-        backgroundColor: Color | None = None,
-        fillStyle: FillStyle | None = None,
-        strokeWidth: StrokeWidth | None = None,
-        strokeStyle: StrokeStyle | None = None,
-        opacity: Opacity | None = None,
-        roughness: Roughness | None = None,
-    ) -> CreateResult:
-        """Add a circle (ellipse) to the scene."""
-        style = _style_kwargs(
-            strokeColor=strokeColor,
-            backgroundColor=backgroundColor,
-            fillStyle=fillStyle,
-            strokeWidth=strokeWidth,
-            strokeStyle=strokeStyle,
-            opacity=opacity,
-            roughness=roughness,
-            font_family=font_family,
-            font_size=font_size,
-        )
-        return invoke(
-            service.add_shape, "ellipse", x, y, size, size, label, frame_id=frame_id, **style
-        )
-
-    @mcp.tool(annotations=MUTATING)
-    def add_diamond(
-        x: Coordinate,
-        y: Coordinate,
-        w: Dimension,
-        h: Dimension,
-        label: Label = "",
-        roundness: Roundness | None = None,
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
-        frame_id: ElementId | None = None,
-        strokeColor: Color | None = None,
-        backgroundColor: Color | None = None,
-        fillStyle: FillStyle | None = None,
-        strokeWidth: StrokeWidth | None = None,
-        strokeStyle: StrokeStyle | None = None,
-        opacity: Opacity | None = None,
-        roughness: Roughness | None = None,
-    ) -> CreateResult:
-        """Add a diamond to the scene."""
-        style = _style_kwargs(
-            strokeColor=strokeColor,
-            backgroundColor=backgroundColor,
-            fillStyle=fillStyle,
-            strokeWidth=strokeWidth,
-            strokeStyle=strokeStyle,
-            opacity=opacity,
-            roughness=roughness,
-            roundness=roundness,
-            font_family=font_family,
-            font_size=font_size,
-        )
-        return invoke(
-            service.add_shape, "diamond", x, y, w, h, label, frame_id=frame_id, **style
-        )
-
-    @mcp.tool(annotations=MUTATING)
-    def add_arrow(
-        x: Coordinate,
-        y: Coordinate,
-        x2: Coordinate,
-        y2: Coordinate,
+    def create_connector(
+        source_id: ElementId | None = None,
+        target_id: ElementId | None = None,
+        x: Coordinate | None = None,
+        y: Coordinate | None = None,
+        x2: Coordinate | None = None,
+        y2: Coordinate | None = None,
         label: Label = "",
         elbowed: Boolean = False,
+        strokeColor: Color | None = None,
+        backgroundColor: Color | None = None,
+        strokeStyle: StrokeStyle | None = None,
+        strokeWidth: StrokeWidth | None = None,
+        roughness: Roughness | None = None,
+        opacity: Opacity | None = None,
+        roundness: Roundness | None = None,
         font_family: FontFamily | None = None,
         font_size: FontSize | None = None,
-        strokeColor: Color | None = None,
-        strokeWidth: StrokeWidth | None = None,
-        strokeStyle: StrokeStyle | None = None,
-        opacity: Opacity | None = None,
-        roughness: Roughness | None = None,
-    ) -> CreateResult:
-        """Add an arrow between two points.
-
-        Optionally add bound text near the arrow midpoint.
-        """
+    ) -> dict[str, Any]:
+        """Create a directional arrow connector either between coordinate endpoints (x,y -> x2,y2) or bound between two shape elements (source_id -> target_id)."""
         style = _style_kwargs(
             strokeColor=strokeColor,
+            backgroundColor=backgroundColor,
             strokeWidth=strokeWidth,
             strokeStyle=strokeStyle,
             opacity=opacity,
             roughness=roughness,
+            roundness=roundness,
             font_family=font_family,
             font_size=font_size,
         )
-        return invoke(service.add_arrow, x, y, x2, y2, label, elbowed=elbowed, **style)
+        if source_id and target_id:
+            res = invoke(service.connect, source_id, target_id, label, elbowed=elbowed, **style)
+        elif x is not None and y is not None and x2 is not None and y2 is not None:
+            res = invoke(service.add_arrow, x, y, x2, y2, label, elbowed=elbowed, **style)
+        else:
+            raise ToolError(
+                "create_connector requires either both source_id and target_id, or coordinate points (x, y, x2, y2)."
+            )
+        res_dict = dict(res)
+        if "arrow_id" in res_dict:
+            res_dict["id"] = res_dict["arrow_id"]
+            res_dict["element_id"] = res_dict["arrow_id"]
+        return res_dict
 
     @mcp.tool(annotations=MUTATING)
     def add_frame(
@@ -459,38 +412,6 @@ def create_server(
     ) -> ResizeResult:
         """Resize a shape and recenter its label."""
         return invoke(service.resize, element_id, width, height)
-
-    @mcp.tool(annotations=MUTATING)
-    def connect(
-        source_id: ElementId,
-        target_id: ElementId,
-        label: Label = "",
-        elbowed: Boolean = False,
-        font_family: FontFamily | None = None,
-        font_size: FontSize | None = None,
-        strokeColor: Color | None = None,
-        strokeWidth: StrokeWidth | None = None,
-        strokeStyle: StrokeStyle | None = None,
-        opacity: Opacity | None = None,
-        roughness: Roughness | None = None,
-    ) -> ConnectResult:
-        """Connect two existing shapes by ID with a bound arrow."""
-        return invoke(
-            service.connect,
-            source_id,
-            target_id,
-            label,
-            elbowed=elbowed,
-            **_style_kwargs(
-                strokeColor=strokeColor,
-                strokeWidth=strokeWidth,
-                strokeStyle=strokeStyle,
-                opacity=opacity,
-                roughness=roughness,
-                font_family=font_family,
-                font_size=font_size,
-            ),
-        )
 
     @mcp.tool(annotations=READ_ONLY)
     def find_elements(
@@ -914,7 +835,7 @@ def create_server(
             "available_toolsets": ["core", "full"],
             "server_version": "0.2.0",
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 43 if is_full else 27,
+            "tool_count": 40 if is_full else 24,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),

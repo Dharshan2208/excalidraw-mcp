@@ -159,17 +159,14 @@ class StateTests(unittest.TestCase):
         self.assertEqual(
             set(first),
             {
-                "add_rectangle",
-                "add_circle",
-                "add_diamond",
-                "add_arrow",
+                "create_shape",
+                "create_connector",
                 "add_text",
                 "clear",
                 "delete",
                 "move",
                 "resize",
                 "update_element",
-                "connect",
                 "undo",
                 "save",
                 "load",
@@ -204,7 +201,7 @@ class StateTests(unittest.TestCase):
                 "manage_groups",
             },
         )
-        result = first["add_rectangle"](0, 0, 10, 10, label="A")
+        result = first["create_shape"](type="rectangle", x=0, y=0, w=10, h=10, label="A")
         with self.assertRaisesRegex(ToolError, "not found"):
             second["move"](result["rectangle_id"], 20, 20)
         first["move"](result["rectangle_id"], 20, 20)

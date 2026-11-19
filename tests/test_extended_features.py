@@ -144,7 +144,7 @@ class SceneDescriptionTests(unittest.TestCase):
         async def _run():
             server = create_server()
             async with Client(server) as client:
-                await client.call_tool("add_rectangle", {"x": 0, "y": 0, "w": 100, "h": 50, "label": "Box"})
+                await client.call_tool("create_shape", {"type": "rectangle", "x": 0, "y": 0, "w": 100, "h": 50, "label": "Box"})
                 # Default: only summary returned
                 res_default = await client.call_tool("describe_scene", {})
                 data_default = json.loads(res_default.content[0].text)

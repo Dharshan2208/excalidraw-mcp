@@ -33,18 +33,15 @@ class ToolsetConfigurationTests(unittest.TestCase):
 
 
 class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_core_toolset_registers_exactly_27_tools(self):
+    async def test_core_toolset_registers_exactly_24_tools(self):
         server = create_server(toolset="core")
         tools = await server.list_tools()
         tool_names = {t.name for t in tools}
 
-        self.assertEqual(len(tools), 27)
+        self.assertEqual(len(tools), 24)
         # Verify essential core tools are present
-        self.assertIn("add_rectangle", tool_names)
-        self.assertIn("add_circle", tool_names)
-        self.assertIn("add_diamond", tool_names)
-        self.assertIn("add_arrow", tool_names)
-        self.assertIn("connect", tool_names)
+        self.assertIn("create_shape", tool_names)
+        self.assertIn("create_connector", tool_names)
         self.assertIn("add_frame", tool_names)
         self.assertIn("add_text", tool_names)
         self.assertIn("move", tool_names)
@@ -85,7 +82,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 43)
+        self.assertEqual(len(tools), 40)
         tool_names = {t.name for t in tools}
         self.assertIn("draw_graph", tool_names)
         self.assertIn("batch_mutate", tool_names)
@@ -109,7 +106,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["server_version"], "0.2.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 43 if mode == "full" else 27)
+            self.assertEqual(data["tool_count"], 40 if mode == "full" else 24)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 
@@ -118,7 +115,7 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
     async def test_set_element_locked_and_wrappers(self):
         server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
-        rect = tools["add_rectangle"](x=0, y=0, w=100, h=50, label="Box")
+        rect = tools["create_shape"](type="rectangle", x=0, y=0, w=100, h=50, label="Box")
         rid = rect["rectangle_id"]
 
         # Lock via unified tool
@@ -136,8 +133,8 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
     async def test_manage_groups_and_wrappers(self):
         server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
-        r1 = tools["add_rectangle"](x=0, y=0, w=100, h=50, label="A")
-        r2 = tools["add_rectangle"](x=120, y=0, w=100, h=50, label="B")
+        r1 = tools["create_shape"](type="rectangle", x=0, y=0, w=100, h=50, label="A")
+        r2 = tools["create_shape"](type="rectangle", x=120, y=0, w=100, h=50, label="B")
         ids = [r1["rectangle_id"], r2["rectangle_id"]]
 
         # Group via unified tool
@@ -156,8 +153,8 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
     async def test_set_viewport_with_focus_elements(self):
         server = create_server(toolset="full")
         tools = {t.name: t.fn for t in await server.list_tools()}
-        r1 = tools["add_rectangle"](x=50, y=50, w=100, h=50, label="A")
-        r2 = tools["add_rectangle"](x=200, y=100, w=100, h=50, label="B")
+        r1 = tools["create_shape"](type="rectangle", x=50, y=50, w=100, h=50, label="A")
+        r2 = tools["create_shape"](type="rectangle", x=200, y=100, w=100, h=50, label="B")
         ids = [r1["rectangle_id"], r2["rectangle_id"]]
 
         # Set viewport with focus_element_ids

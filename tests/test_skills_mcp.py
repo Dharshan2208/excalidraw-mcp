@@ -208,18 +208,18 @@ class SkillsMCPTests(unittest.IsolatedAsyncioTestCase):
         frame_id = json.loads(f.content[0].text)["frame_id"]
 
         r1 = await self.server.call_tool(
-            "add_rectangle",
-            {"x": 120.0, "y": 140.0, "w": 140.0, "h": 50.0, "label": "Box A", "frame_id": frame_id},
+            "create_shape",
+            {"type": "rectangle", "x": 120.0, "y": 140.0, "w": 140.0, "h": 50.0, "label": "Box A", "frame_id": frame_id},
         )
         r2 = await self.server.call_tool(
-            "add_rectangle",
-            {"x": 320.0, "y": 140.0, "w": 140.0, "h": 50.0, "label": "Box B", "frame_id": frame_id},
+            "create_shape",
+            {"type": "rectangle", "x": 320.0, "y": 140.0, "w": 140.0, "h": 50.0, "label": "Box B", "frame_id": frame_id},
         )
         id1 = json.loads(r1.content[0].text)["rectangle_id"]
         id2 = json.loads(r2.content[0].text)["rectangle_id"]
 
         conn = await self.server.call_tool(
-            "connect", {"source_id": id1, "target_id": id2, "label": "Link", "elbowed": True}
+            "create_connector", {"source_id": id1, "target_id": id2, "label": "Link", "elbowed": True}
         )
         conn_data = json.loads(conn.content[0].text)
         self.assertIn("arrow_id", conn_data)

@@ -670,8 +670,8 @@ class AutoFixMCPProtocolContractTests(unittest.IsolatedAsyncioTestCase):
         server = create_server()
         async with Client(server, timeout=5) as client:
             # Add two colliding rectangles
-            await client.call_tool("add_rectangle", {"x": 100, "y": 100, "w": 100, "h": 100, "label": "Service 1"})
-            await client.call_tool("add_rectangle", {"x": 120, "y": 100, "w": 100, "h": 100, "label": "Service 2"})
+            await client.call_tool("create_shape", {"type": "rectangle", "x": 100, "y": 100, "w": 100, "h": 100, "label": "Service 1"})
+            await client.call_tool("create_shape", {"type": "rectangle", "x": 120, "y": 100, "w": 100, "h": 100, "label": "Service 2"})
 
             # Call auto_fix_layout
             call_res = await client.call_tool(
