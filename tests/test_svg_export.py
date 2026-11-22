@@ -66,6 +66,38 @@ class SvgRendererTests(unittest.TestCase):
         self.assertIn("def", svg_str)
         self.assertIn("return", svg_str)
 
+    def test_render_svg_sanitizes_injected_color_attributes(self):
+        """render_scene_svg sanitizes malicious color attributes to prevent XML breakout / XSS."""
+        malicious_doc = {
+            "type": "excalidraw",
+            "version": 2,
+            "source": "https://excalidraw.com",
+            "elements": [
+                {
+                    "id": "exploit-1",
+                    "type": "rectangle",
+                    "x": 10,
+                    "y": 10,
+                    "width": 100,
+                    "height": 50,
+                    "strokeColor": 'red"><script xmlns="http://www.w3.org/1999/xhtml">alert(1)</script><rect a="',
+                    "backgroundColor": 'blue" onclick="alert(2)" data="',
+                    "strokeWidth": 1,
+                    "roughness": 0,
+                    "opacity": 100,
+                }
+            ],
+            "appState": {
+                "viewBackgroundColor": 'white"><script>alert(3)</script><g a="',
+            },
+        }
+        svg_str, _, _ = render_scene_svg(malicious_doc)
+        self.assertNotIn("<script", svg_str)
+        self.assertNotIn('onclick="', svg_str)
+        # Must parse as clean XML
+        root = ET.fromstring(svg_str)
+        self.assertEqual(root.tag, "{http://www.w3.org/2000/svg}svg")
+
 
 class SvgExportServiceTests(unittest.TestCase):
     def test_export_svg_creates_file_and_protects_overwrite(self):

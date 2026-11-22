@@ -8,9 +8,14 @@ orthogonal elbowed connectors, modern arrowheads, and multi-line typography.
 
 import html
 import math
+import re
 from typing import Any
 
 from excalidraw_mcp.renderer import _compute_bounds
+
+SAFE_COLOR_PATTERN = re.compile(
+    r"^(?:none|transparent|currentColor|#[0-9a-fA-F]{3,8}|(?:rgb|hsl)a?\([^)]+\)|[a-zA-Z]+)$"
+)
 
 
 def _css_font_family(family: int | str | None) -> str:
@@ -30,10 +35,13 @@ def _css_font_family(family: int | str | None) -> str:
 
 
 def _svg_color(color_str: str | None) -> str:
-    """Normalize color string to valid SVG color or 'none'."""
+    """Normalize color string to safe valid SVG color or 'none'."""
     if not color_str or color_str.strip().lower() == "transparent":
         return "none"
-    return color_str.strip()
+    val = color_str.strip()
+    if not SAFE_COLOR_PATTERN.match(val):
+        return "none"
+    return html.escape(val, quote=True)
 
 
 def _svg_dash_attr(stroke_style: str | None) -> str:
@@ -193,8 +201,8 @@ def render_scene_svg(
     padding = max(0, min(200, int(padding)))
     elements = [el for el in document.get("elements", []) if not el.get("isDeleted")]
     app_state = document.get("appState") or {}
-    canvas_bg = app_state.get("viewBackgroundColor", "#ffffff")
-    if not canvas_bg or canvas_bg.lower() == "transparent":
+    canvas_bg = _svg_color(app_state.get("viewBackgroundColor", "#ffffff"))
+    if canvas_bg == "none":
         canvas_bg = "#ffffff"
 
     min_x, min_y, max_x, max_y = _compute_bounds(elements)

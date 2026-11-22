@@ -527,11 +527,15 @@ def create_server(
         def sync_progress(phase: int, total: int, msg: str):
             if ctx:
                 try:
-                    import asyncio
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(ctx.report_progress(phase, total, msg))
+                    import anyio.from_thread
+                    anyio.from_thread.run(ctx.report_progress, phase, total, msg)
                 except Exception:
-                    pass
+                    try:
+                        import asyncio
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(ctx.report_progress(phase, total, msg))
+                    except Exception:
+                        pass
 
         result = invoke(
             service.auto_fix_layout,

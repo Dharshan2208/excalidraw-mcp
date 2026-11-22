@@ -487,11 +487,13 @@ class LiveCanvasServer:
         """Verify authentication token on incoming HTTP requests (M-026)."""
         if not self.auth_token:
             return True
+        import hmac
+
         token = request.headers.get("x-auth-token") or request.query_params.get("token")
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:].strip()
-        return token == self.auth_token
+        return bool(token and hmac.compare_digest(token, self.auth_token))
 
     async def _handle_index(self, request):
         # Never inject cleartext auth_token into HTML client JavaScript (M-025)
@@ -557,8 +559,10 @@ class LiveCanvasServer:
                 return
 
         if self.auth_token:
+            import hmac
+
             token = websocket.query_params.get("token") or websocket.headers.get("x-auth-token")
-            if token != self.auth_token:
+            if not token or not hmac.compare_digest(token, self.auth_token):
                 logger.warning("Rejected WebSocket connection: invalid or missing auth token")
                 await websocket.close(code=1008)
                 return

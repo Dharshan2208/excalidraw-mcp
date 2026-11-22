@@ -163,6 +163,21 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
         service.add_shape("rectangle", 20, 20, 100, 100, label="Box 2")  # Overlapping
         server = create_server(service)
 
+        progress_calls = []
+
+        class MockContext:
+            async def report_progress(self, progress: float, total: float | None = None, message: str | None = None):
+                progress_calls.append((progress, total, message))
+
+        # Test tool handler with MockContext directly inside AnyIO worker thread
+        import anyio
+        tool = await server.get_tool("auto_fix_layout")
+        tool_fn = tool.fn
+        await anyio.to_thread.run_sync(lambda: tool_fn(dry_run=False, repair_scope="all", ctx=MockContext()))
+        self.assertGreaterEqual(len(progress_calls), 5)
+        self.assertEqual(progress_calls[0][0], 1)
+        self.assertEqual(progress_calls[-1][0], 5)
+
         async with Client(server) as client:
             res = await client.call_tool("auto_fix_layout", {"dry_run": False, "repair_scope": "all"})
             self.assertFalse(res.is_error)
