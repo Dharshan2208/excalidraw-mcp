@@ -202,9 +202,56 @@ def _move_arrow_endpoints(el, dx, dy, start, end):
 
 
 class SceneService:
-    def __init__(self, state: SceneState | None = None):
-        self.state = state if state is not None else SceneState()
+    def __init__(
+        self,
+        state: SceneState | None = None,
+        session_id: str | None = None,
+        sessions: dict[str, SceneState] | None = None,
+    ):
+        from .config import configured_session_id
+
+        self._sessions: dict[str, SceneState] = sessions if sessions is not None else {}
+        self._session_id = session_id or configured_session_id()
+        if self._session_id not in self._sessions:
+            self._sessions[self._session_id] = state if state is not None else SceneState()
+        elif state is not None:
+            self._sessions[self._session_id] = state
         self._live_server = None
+
+    @property
+    def state(self) -> SceneState:
+        return self._sessions[self._session_id]
+
+    @state.setter
+    def state(self, value: SceneState) -> None:
+        self._sessions[self._session_id] = value
+
+    @property
+    def session_id(self) -> str:
+        return self._session_id
+
+    def for_session(self, session_id: str) -> "SceneService":
+        """Return a SceneService instance bound to the specified session ID, sharing the session registry."""
+        srv = SceneService(session_id=session_id, sessions=self._sessions)
+        srv._live_server = self._live_server
+        return srv
+
+    def list_sessions(self) -> list[str]:
+        """Return a list of all active session identifiers."""
+        return sorted(self._sessions.keys())
+
+    def switch_session(self, session_id: str) -> None:
+        """Switch the active session identifier for this service."""
+        if not session_id or not isinstance(session_id, str):
+            raise SceneError("Session ID must be a non-empty string")
+        if session_id not in self._sessions:
+            self._sessions[session_id] = SceneState()
+        self._session_id = session_id
+
+    def reset_session(self, session_id: str | None = None) -> None:
+        """Reset the canvas state for a specific session."""
+        sid = session_id or self._session_id
+        self._sessions[sid] = SceneState()
 
     def add_shape(self, shape, x, y, w, h, label="", frame_id=None, **style):
         if shape not in SHAPES:
@@ -3361,6 +3408,7 @@ class SceneService:
             )
 
         return {
+            "session_id": self._session_id,
             "element_count": len(elements),
             "type_counts": type_counts,
             "frames": frames,

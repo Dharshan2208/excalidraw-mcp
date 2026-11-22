@@ -169,8 +169,12 @@ def get_server_version() -> str:
 def create_server(
     service: SceneService | None = None,
     toolset: str | None = None,
+    session_id: str | None = None,
 ) -> FastMCP:
-    service = service if service is not None else SceneService()
+    if service is None:
+        service = SceneService(session_id=session_id)
+    elif session_id is not None:
+        service = service.for_session(session_id)
     active_toolset = (
         toolset if toolset is not None else configured_toolset()
     ).strip().lower()
@@ -913,6 +917,8 @@ def create_server(
 
         info = {
             "active_toolset": active_toolset,
+            "session_id": service.session_id,
+            "active_sessions": service.list_sessions(),
             "available_toolsets": ["core", "full"],
             "server_version": get_server_version(),
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings

@@ -96,6 +96,12 @@ def configured_toolset() -> str:
     return raw if raw in ("core", "full") else "core"
 
 
+def configured_session_id() -> str:
+    """Return the active session or workspace identifier, defaulting to 'default'."""
+    raw = os.environ.get("EXCALIDRAW_SESSION_ID") or os.environ.get("EXCALIDRAW_WORKSPACE")
+    return raw.strip() if raw and raw.strip() else "default"
+
+
 def _bounded_integer(name, default, minimum, maximum):
     raw = os.environ.get(name, str(default))
     try:
