@@ -24,6 +24,20 @@ FontSize = Annotated[int, Field(strict=True, ge=8, le=200)]
 Roughness = Annotated[int, Field(strict=True, ge=0, le=3)]
 FillStyle = Literal["solid", "hachure", "cross-hatch", "zigzag"]
 StrokeStyle = Literal["solid", "dashed", "dotted"]
+Arrowhead = Literal[
+    "arrow",
+    "bar",
+    "dot",
+    "circle",
+    "circle_outline",
+    "triangle",
+    "triangle_outline",
+    "diamond",
+    "diamond_outline",
+    "crowfoot_one",
+    "crowfoot_many",
+    "crowfoot_one_or_more",
+]
 ShapeType = Literal["rectangle", "ellipse", "diamond"]
 CreateShapeType = Literal["rectangle", "ellipse", "diamond", "circle"]
 InspectMode = Literal[
@@ -87,6 +101,8 @@ class GraphEdge(BaseModel):
     target: ElementId
     label: Label = ""
     elbowed: Boolean = False
+    startArrowhead: Arrowhead | None = None
+    endArrowhead: Arrowhead | None = None
     strokeColor: Color | None = None
     strokeWidth: StrokeWidth | None = None
     strokeStyle: StrokeStyle | None = None

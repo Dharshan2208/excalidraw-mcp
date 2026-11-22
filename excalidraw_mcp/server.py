@@ -50,6 +50,7 @@ def _configure_tool_registration(mcp: FastMCP) -> None:
 from excalidraw_mcp.contracts import (
     Aggressiveness,
     ArchitectureResult,
+    Arrowhead,
     AutoFixLayoutResult,
     BatchOperation,
     BatchResult,
@@ -148,6 +149,8 @@ def _style_kwargs(
     roundness: str | None = None,
     font_family: Any = None,
     font_size: int | None = None,
+    startArrowhead: str | None = None,
+    endArrowhead: str | None = None,
 ) -> dict:
     """Collect non-None style keyword arguments into a dict."""
     return {k: v for k, v in locals().items() if v is not None}
@@ -240,6 +243,8 @@ def create_server(
         y2: Coordinate | None = None,
         label: Label = "",
         elbowed: Boolean = False,
+        startArrowhead: Arrowhead | None = None,
+        endArrowhead: Arrowhead | None = None,
         strokeColor: Color | None = None,
         backgroundColor: Color | None = None,
         strokeStyle: StrokeStyle | None = None,
@@ -261,6 +266,8 @@ def create_server(
             roundness=roundness,
             font_family=font_family,
             font_size=font_size,
+            startArrowhead=startArrowhead,
+            endArrowhead=endArrowhead,
         )
         if source_id and target_id:
             res = invoke(service.connect, source_id, target_id, label, elbowed=elbowed, **style)

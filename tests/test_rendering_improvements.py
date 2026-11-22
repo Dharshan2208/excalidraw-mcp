@@ -108,6 +108,42 @@ class RenderingImprovementsTests(unittest.TestCase):
         self.assertAlmostEqual(min_y, 20.0, delta=1.0)
         self.assertAlmostEqual(max_y, 220.0, delta=1.0)
 
+    def test_modern_arrowheads_rendering(self):
+        """Renderer renders all modern Excalidraw arrowhead types without error."""
+        arrowhead_types = [
+            "arrow",
+            "triangle",
+            "triangle_outline",
+            "dot",
+            "circle",
+            "circle_outline",
+            "bar",
+            "diamond",
+            "diamond_outline",
+            "crowfoot_one",
+            "crowfoot_many",
+            "crowfoot_one_or_more",
+        ]
+        service = SceneService()
+        for idx, head in enumerate(arrowhead_types):
+            y_pos = idx * 60
+            service.add_arrow(
+                50,
+                y_pos,
+                250,
+                y_pos,
+                label=head,
+                start_arrowhead="bar",
+                end_arrowhead=head,
+            )
+
+        doc, _ = service.state.snapshot()
+        png_bytes, w, h = render_scene_image(doc, scale=1.0, padding=20)
+        self.assertGreater(len(png_bytes), 0)
+        img = Image.open(io.BytesIO(png_bytes))
+        self.assertEqual(img.size, (w, h))
+        self.assertEqual(img.format, "PNG")
+
 
 if __name__ == "__main__":
     unittest.main()

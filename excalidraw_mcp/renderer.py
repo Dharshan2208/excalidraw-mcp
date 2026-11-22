@@ -199,10 +199,13 @@ def _draw_arrowhead(
     tip: tuple[float, float],
     prev_pt: tuple[float, float],
     fill: tuple[int, int, int, int],
+    arrowhead_type: str = "arrow",
+    stroke_w: int = 1,
     size: float = 14.0,
     angle_deg: float = 26.0,
+    bg_color: tuple[int, int, int, int] | None = None,
 ):
-    """Draw a classic filled arrowhead pointing at tip."""
+    """Draw an arrowhead or line termination marker pointing at tip."""
     tx, ty = tip
     px, py = prev_pt
     dx = tx - px
@@ -213,17 +216,112 @@ def _draw_arrowhead(
 
     ux = dx / length
     uy = dy / length
+    nx = -uy
+    ny = ux
 
-    angle_rad = math.radians(angle_deg)
-    cos_a = math.cos(angle_rad)
-    sin_a = math.sin(angle_rad)
+    if bg_color is None:
+        bg_color = (255, 255, 255, 255)
 
-    lx = tx - size * (ux * cos_a - uy * sin_a)
-    ly = ty - size * (uy * cos_a + ux * sin_a)
-    rx = tx - size * (ux * cos_a + uy * sin_a)
-    ry = ty - size * (uy * cos_a - ux * sin_a)
+    head = (arrowhead_type or "arrow").lower()
 
-    draw.polygon([(tx, ty), (lx, ly), (rx, ry)], fill=fill)
+    if head in ("arrow", "triangle"):
+        angle_rad = math.radians(angle_deg if head == "arrow" else 30.0)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        lx = tx - size * (ux * cos_a - uy * sin_a)
+        ly = ty - size * (uy * cos_a + ux * sin_a)
+        rx = tx - size * (ux * cos_a + uy * sin_a)
+        ry = ty - size * (uy * cos_a - ux * sin_a)
+        draw.polygon([(tx, ty), (lx, ly), (rx, ry)], fill=fill)
+
+    elif head == "triangle_outline":
+        angle_rad = math.radians(30.0)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        lx = tx - size * (ux * cos_a - uy * sin_a)
+        ly = ty - size * (uy * cos_a + ux * sin_a)
+        rx = tx - size * (ux * cos_a + uy * sin_a)
+        ry = ty - size * (uy * cos_a - ux * sin_a)
+        draw.polygon([(tx, ty), (lx, ly), (rx, ry)], fill=bg_color, outline=fill, width=stroke_w)
+
+    elif head in ("dot", "circle"):
+        r = size * 0.35
+        cx = tx - ux * r
+        cy = ty - uy * r
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fill)
+
+    elif head in ("circle_outline", "dot_outline"):
+        r = size * 0.35
+        cx = tx - ux * r
+        cy = ty - uy * r
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=bg_color, outline=fill, width=stroke_w)
+
+    elif head == "bar":
+        half_w = size * 0.6
+        p1 = (tx + nx * half_w, ty + ny * half_w)
+        p2 = (tx - nx * half_w, ty - ny * half_w)
+        draw.line([p1, p2], fill=fill, width=max(2, stroke_w))
+
+    elif head == "diamond":
+        d_len = size * 1.1
+        d_hw = size * 0.45
+        mid_x = tx - ux * (d_len * 0.5)
+        mid_y = ty - uy * (d_len * 0.5)
+        back_x = tx - ux * d_len
+        back_y = ty - uy * d_len
+        p1 = (tx, ty)
+        p2 = (mid_x + nx * d_hw, mid_y + ny * d_hw)
+        p3 = (back_x, back_y)
+        p4 = (mid_x - nx * d_hw, mid_y - ny * d_hw)
+        draw.polygon([p1, p2, p3, p4], fill=fill)
+
+    elif head == "diamond_outline":
+        d_len = size * 1.1
+        d_hw = size * 0.45
+        mid_x = tx - ux * (d_len * 0.5)
+        mid_y = ty - uy * (d_len * 0.5)
+        back_x = tx - ux * d_len
+        back_y = ty - uy * d_len
+        p1 = (tx, ty)
+        p2 = (mid_x + nx * d_hw, mid_y + ny * d_hw)
+        p3 = (back_x, back_y)
+        p4 = (mid_x - nx * d_hw, mid_y - ny * d_hw)
+        draw.polygon([p1, p2, p3, p4], fill=bg_color, outline=fill, width=stroke_w)
+
+    elif head in ("crowfoot_many", "crowfoot_one_or_more"):
+        branch_len = size * 0.9
+        base_x = tx - ux * branch_len
+        base_y = ty - uy * branch_len
+        hw = size * 0.5
+        top = (tx + nx * hw, ty + ny * hw)
+        bot = (tx - nx * hw, ty - ny * hw)
+        base = (base_x, base_y)
+        draw.line([base, top], fill=fill, width=stroke_w)
+        draw.line([base, bot], fill=fill, width=stroke_w)
+        draw.line([base, (tx, ty)], fill=fill, width=stroke_w)
+        if head == "crowfoot_one_or_more":
+            bar_x = base_x - ux * (size * 0.3)
+            bar_y = base_y - uy * (size * 0.3)
+            p1 = (bar_x + nx * hw, bar_y + ny * hw)
+            p2 = (bar_x - nx * hw, bar_y - ny * hw)
+            draw.line([p1, p2], fill=fill, width=max(2, stroke_w))
+
+    elif head == "crowfoot_one":
+        half_w = size * 0.5
+        bar_x = tx - ux * (size * 0.2)
+        bar_y = ty - uy * (size * 0.2)
+        p1 = (bar_x + nx * half_w, bar_y + ny * half_w)
+        p2 = (bar_x - nx * half_w, bar_y - ny * half_w)
+        draw.line([p1, p2], fill=fill, width=max(2, stroke_w))
+    else:
+        angle_rad = math.radians(angle_deg)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        lx = tx - size * (ux * cos_a - uy * sin_a)
+        ly = ty - size * (uy * cos_a + ux * sin_a)
+        rx = tx - size * (ux * cos_a + uy * sin_a)
+        ry = ty - size * (uy * cos_a - ux * sin_a)
+        draw.polygon([(tx, ty), (lx, ly), (rx, ry)], fill=fill)
 
 
 def render_scene_image(
@@ -502,22 +600,30 @@ def render_scene_image(
 
             # Arrowhead at end
             default_end = "arrow" if a.get("type") == "arrow" else None
-            if a.get("endArrowhead", default_end) == "arrow":
+            end_head = a.get("endArrowhead", default_end)
+            if end_head:
                 _draw_arrowhead(
                     draw,
                     screen_pts[-1],
                     screen_pts[-2],
                     stroke_color,
+                    arrowhead_type=end_head,
+                    stroke_w=stroke_w,
                     size=max(10.0, 14.0 * effective_scale),
+                    bg_color=canvas_bg,
                 )
             # Arrowhead at start
-            if a.get("startArrowhead") == "arrow":
+            start_head = a.get("startArrowhead")
+            if start_head:
                 _draw_arrowhead(
                     draw,
                     screen_pts[0],
                     screen_pts[1],
                     stroke_color,
+                    arrowhead_type=start_head,
+                    stroke_w=stroke_w,
                     size=max(10.0, 14.0 * effective_scale),
+                    bg_color=canvas_bg,
                 )
 
     # 4. Render Text & Labels
