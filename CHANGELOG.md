@@ -36,11 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed standalone `add_code_block` tool (syntax-highlighted code blocks are authored directly via `batch_mutate`).
 - Removed `list_fonts` tool in favor of the `excalidraw://fonts` MCP resource.
 
-### Performance
-- **50.4% Full Schema Token Reduction**: `tools/list` on the `full` profile reduced from 16,010 to 7,937 tokens (compact) and 29,555 to 14,486 tokens (pretty).
-- **46.7% Core Schema Token Reduction**: `tools/list` on the default `core` profile reduced from 9,472 to 5,048 tokens (compact) and 17,184 to 9,335 tokens (pretty).
-- **Wire Duplication Eliminated**: Stripped redundant `outputSchema` definitions and eliminated duplicate `structuredContent` blocks on tool responses, saving 50% of response payload bytes across the wire.
-
 ## [0.2.1] - 2026-11-07
 
 ### Added

@@ -183,7 +183,7 @@ For comprehensive end-to-end multi-tier cloud and flowchart workflows, see [docs
 | [docs/skills.md](docs/skills.md) | Packaged agent skills catalog, design guides, and CLI installer (`exca-mcp install-skills`). |
 | [docs/graph-generation.md](docs/graph-generation.md) | Structured Sugiyama layered graph generation, ranking, and geometry rules. |
 | [docs/migration_v030.md](docs/migration_v030.md) | Migration guide mapping all 48 legacy v0.2.x tools to v0.3.0 equivalents. |
-| [CHANGELOG.md](CHANGELOG.md) | Version release history, migration notes, and token benchmarks. |
+| [CHANGELOG.md](CHANGELOG.md) | Version release history and migration notes. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Developer guide, test suite execution, and pull request guidelines. |
 | [SECURITY.md](SECURITY.md) | Vulnerability disclosure procedures and policy. |
 

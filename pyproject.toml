@@ -38,8 +38,6 @@ exclude = [
     "/audit_tests",
     "/.coverage",
     "/dist",
-    "/benchmarks",
-    "/plan.md",
 ]
 
 [tool.pytest.ini_options]
