@@ -106,8 +106,9 @@ def plan_installation(
             # Symlink safety check: ensure destination path does not escape dest_root
             try:
                 resolved_dest = dest_file.resolve()
-                # Check whether destination resolves outside dest_root
-                if not str(resolved_dest).startswith(str(dest_root)):
+                resolved_root = dest_root.resolve()
+                # Check whether destination resolves outside dest_root (M-027)
+                if not (resolved_dest == resolved_root or resolved_dest.is_relative_to(resolved_root)):
                     plans.append(
                         FilePlan(
                             skill_name=skill_name,

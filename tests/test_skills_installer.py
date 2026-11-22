@@ -158,6 +158,25 @@ class SkillsInstallerTests(unittest.TestCase):
                 self.assertEqual(p.action, InstallAction.SKIP)
                 self.assertIn("symlink", p.reason.lower())
 
+    def test_symlink_sibling_prefix_safety(self):
+        """Verify that symlinks to a sibling directory starting with identical string prefix are rejected (M-027)."""
+        with tempfile.TemporaryDirectory() as td:
+            # Sibling directory starts with same prefix "safe_target"
+            sibling_escaped = Path(td) / "safe_target-escaped"
+            sibling_escaped.mkdir()
+            target = Path(td) / "safe_target"
+            target.mkdir()
+
+            # Point skill to sibling that would fool a simple string startswith check
+            malicious_link = target / "architecture-diagrams"
+            malicious_link.symlink_to(sibling_escaped, target_is_directory=True)
+
+            _, plans = plan_installation(target, force=False)
+            arch_plans = [p for p in plans if p.skill_name == "architecture-diagrams"]
+            for p in arch_plans:
+                self.assertEqual(p.action, InstallAction.SKIP)
+                self.assertIn("escaping", p.reason.lower())
+
     def test_permission_error_handling(self):
         """Verify graceful handling when destination cannot be written."""
         with tempfile.TemporaryDirectory() as td:
