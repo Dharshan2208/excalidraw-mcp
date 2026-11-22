@@ -123,6 +123,29 @@ Add to `~/.config/zed/settings.json`:
 }
 ```
 
+### Remote Daemon / Streamable HTTP (Docker & Kubernetes)
+
+Excalidraw MCP natively supports the MCP `streamable-http` transport for remote deployments in containers, Kubernetes clusters, or standalone daemons:
+
+```bash
+# Local development daemon (binds to 127.0.0.1:8000/mcp)
+exca-mcp --transport streamable-http --port 8000
+
+# Container / Kubernetes daemon (binds to 0.0.0.0:8000/mcp)
+exca-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+Minimal Dockerfile for remote deployments:
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install --no-cache-dir exca-mcp
+EXPOSE 8000
+CMD ["exca-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+> **Security Note**: When binding to non-loopback addresses (`0.0.0.0`), the server prints a warning to `stderr` because MCP does not provide built-in client authentication. Always protect network-exposed instances behind an authenticated reverse proxy (e.g., Envoy, Traefik, NGINX) or private cluster VPC.
+
 > For configuration in OpenCode, Claude Code CLI, Gemini/Antigravity CLI, or Docker environments, see [docs/operations.md](docs/operations.md#extended-client-configurations).
 
 ---

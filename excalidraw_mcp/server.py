@@ -979,18 +979,99 @@ def create_server(
 mcp = create_server()
 
 
+def _is_loopback_host(host: str) -> bool:
+    """Determine whether a host address is a local loopback interface."""
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    try:
+        import ipaddress
+
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _build_argument_parser() -> Any:
+    """Build the command-line argument parser for exca-mcp."""
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(
+        prog="exca-mcp",
+        description="Excalidraw MCP Server: programmatic diagram generation, inspection, and repair.",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default=os.getenv("EXCALIDRAW_TRANSPORT", "stdio"),
+        help="Transport protocol to use: 'stdio' (default) or 'streamable-http'",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("EXCALIDRAW_HOST", "127.0.0.1"),
+        help="Host address to bind HTTP transport (default: 127.0.0.1; never binds to 0.0.0.0 by default)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("EXCALIDRAW_PORT", "8000")),
+        help="Port to bind HTTP transport (default: 8000)",
+    )
+    parser.add_argument(
+        "--path",
+        default=os.getenv("EXCALIDRAW_HTTP_PATH", None),
+        help="Custom HTTP endpoint path (optional, defaults to '/mcp')",
+    )
+    return parser
+
+
+def parse_cli_args(args: list[str]) -> Any:
+    """Parse and validate command-line arguments."""
+    parser = _build_argument_parser()
+    parsed = parser.parse_args(args)
+    if parsed.port < 1 or parsed.port > 65535:
+        parser.error(f"Invalid port: {parsed.port}. Port must be between 1 and 65535.")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Run the installed stdio MCP server or CLI subcommands."""
+    """Run the MCP server (stdio or streamable-http) or CLI subcommands."""
     import sys
 
-    args = sys.argv[1:] if argv is None else argv
+    if argv is None:
+        if any(arg.startswith(("-W", "--import-mode", "--capture")) for arg in sys.argv[1:]) or "pytest" in sys.argv[0]:
+            args = []
+        else:
+            args = sys.argv[1:]
+    else:
+        args = argv
 
     if args and args[0] == "install-skills":
         from .installer import run_install_skills_cli
 
         sys.exit(run_install_skills_cli(args[1:]))
 
-    mcp.run()
+    opts = parse_cli_args(args)
+
+    if opts.transport == "streamable-http":
+        if not _is_loopback_host(opts.host):
+            sys.stderr.write(
+                f"WARNING: Excalidraw MCP server is binding to non-loopback address '{opts.host}'. "
+                "The server does not enforce authentication. Ensure it is protected by a network firewall, "
+                "reverse proxy, or VPC boundary.\n"
+            )
+            sys.stderr.flush()
+
+        run_kwargs: dict[str, Any] = {
+            "transport": "streamable-http",
+            "host": opts.host,
+            "port": opts.port,
+        }
+        if opts.path:
+            run_kwargs["path"] = opts.path
+        mcp.run(**run_kwargs)
+    else:
+        mcp.run()
 
 
 def run():
