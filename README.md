@@ -40,7 +40,7 @@ Operating directly on scene graphs and element trees in memory with FreeType fon
 - **High-Resolution Headless Export**: Headless Pillow rasterization generating PNG exports up to 8192 px and inline vision previews (`preview`) capped to optimal model envelopes (`max_dimension=1568`).
 - **Interactive Live Canvas (`live_server`)**: Real-time Starlette/Uvicorn WebSocket visualizer streaming agent mutations live into an open browser tab.
 - **Encrypted Web Sharing (`export_to_excalidraw_url`)**: Publishes scenes directly to excalidraw.com using 128-bit AES-GCM client-side encryption.
-- **Bundled Agent Skills**: Packages 6 prompt and pattern guides covering architecture design, flowcharts, 60-30-10 color palettes, and quality gates, installable via `exca-mcp install-skills`.
+- **Bundled Agent Skills**: Packages 6 prompt and pattern guides covering architecture design, flowcharts, 60-30-10 color palettes, and quality gates, installable via `exca-mcp install-skills` (including automatic discovery for Claude Code via `exca-mcp install-skills --claude`).
 
 ---
 

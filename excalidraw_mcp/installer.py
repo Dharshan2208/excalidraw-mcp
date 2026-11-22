@@ -178,10 +178,146 @@ def plan_installation(
     return dest_root, plans
 
 
+def get_claude_skill_dir() -> Path:
+    """Return default Claude Code skills directory (~/.claude/skills/ or $CLAUDE_CONFIG_DIR/skills/)."""
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    if config_dir and config_dir.strip():
+        return Path(config_dir.strip()).expanduser() / "skills"
+    return Path.home() / ".claude" / "skills"
+
+
+def _build_claude_skill_content() -> str:
+    """Construct unified Claude Code SKILL.md reusing excalidraw-workflow instructions with Claude frontmatter."""
+    from excalidraw_mcp.skills import read_skill_content
+
+    raw_workflow = read_skill_content("excalidraw-workflow")
+    # Strip existing frontmatter if present
+    body = raw_workflow
+    if raw_workflow.startswith("---"):
+        parts = raw_workflow.split("---", 2)
+        if len(parts) >= 3:
+            body = parts[2].lstrip()
+
+    frontmatter = (
+        "---\n"
+        "name: excalidraw\n"
+        "description: Create, edit, validate, and export professional Excalidraw diagrams using the exca-mcp MCP server. "
+        "Use whenever an agent needs to create or modify architecture diagrams, flowcharts, or visual documentation.\n"
+        "---\n\n"
+    )
+    return frontmatter + body
+
+
+def plan_claude_installation(
+    target_dir: str | Path | None = None,
+    force: bool = False,
+) -> tuple[Path, list[FilePlan]]:
+    """Generate the file-by-file plan for installing the Claude Code skill into target/excalidraw/.
+
+    Args:
+        target_dir: Path to directory where skills reside (default: ~/.claude/skills/ or $CLAUDE_CONFIG_DIR/skills/).
+        force: If True, permit overwriting existing different files.
+
+    Returns:
+        Tuple of (validated_target_path, list_of_file_plans).
+    """
+    dest_root = validate_target_dir(target_dir if target_dir else get_claude_skill_dir())
+    plans: list[FilePlan] = []
+    skill_dir = dest_root / "excalidraw"
+
+    # Main SKILL.md
+    main_skill_content = _build_claude_skill_content()
+    files_to_install: list[tuple[str, str]] = [("SKILL.md", main_skill_content)]
+
+    # Collect reference files across all packaged skills
+    seen_refs = set()
+    for s_name in list_skills():
+        for rel_path, content in iter_skill_files(s_name):
+            if rel_path.startswith("references/") and rel_path not in seen_refs:
+                seen_refs.add(rel_path)
+                files_to_install.append((rel_path, content))
+
+    for rel_path, content in files_to_install:
+        dest_file = skill_dir / rel_path
+
+        # Symlink safety check: ensure destination path does not escape dest_root
+        try:
+            resolved_dest = dest_file.resolve()
+            resolved_root = dest_root.resolve()
+            if not (resolved_dest == resolved_root or resolved_dest.is_relative_to(resolved_root)):
+                plans.append(
+                    FilePlan(
+                        skill_name="excalidraw",
+                        rel_path=rel_path,
+                        dest_path=dest_file,
+                        action=InstallAction.SKIP,
+                        content=content,
+                        reason="Unsafe path or symlink escaping target directory.",
+                    )
+                )
+                continue
+        except Exception:
+            pass
+
+        if not dest_file.exists():
+            plans.append(
+                FilePlan(
+                    skill_name="excalidraw",
+                    rel_path=rel_path,
+                    dest_path=dest_file,
+                    action=InstallAction.INSTALL,
+                    content=content,
+                    reason="New file",
+                )
+            )
+        else:
+            try:
+                existing_content = dest_file.read_text(encoding="utf-8")
+            except Exception:
+                existing_content = None
+
+            if existing_content == content:
+                plans.append(
+                    FilePlan(
+                        skill_name="excalidraw",
+                        rel_path=rel_path,
+                        dest_path=dest_file,
+                        action=InstallAction.SKIP,
+                        content=content,
+                        reason="Identical content already present",
+                    )
+                )
+            elif force:
+                plans.append(
+                    FilePlan(
+                        skill_name="excalidraw",
+                        rel_path=rel_path,
+                        dest_path=dest_file,
+                        action=InstallAction.OVERWRITE,
+                        content=content,
+                        reason="Overwritten via --force",
+                    )
+                )
+            else:
+                plans.append(
+                    FilePlan(
+                        skill_name="excalidraw",
+                        rel_path=rel_path,
+                        dest_path=dest_file,
+                        action=InstallAction.SKIP,
+                        content=content,
+                        reason="Existing user content preserved (use --force to overwrite)",
+                    )
+                )
+
+    return dest_root, plans
+
+
 def execute_installation(
-    target_dir: str | Path,
+    target_dir: str | Path | None = None,
     force: bool = False,
     dry_run: bool = False,
+    is_claude: bool = False,
 ) -> InstallResult:
     """Execute installation plan with safety guards against partial failure.
 
@@ -189,12 +325,18 @@ def execute_installation(
         target_dir: Target destination path.
         force: Overwrite existing files if True.
         dry_run: Preview only without modifying filesystem if True.
+        is_claude: If True, install unified Claude Code CLI skill.
 
     Returns:
         InstallResult detailing all actions taken.
     """
     try:
-        dest_root, plans = plan_installation(target_dir, force=force)
+        if is_claude:
+            dest_root, plans = plan_claude_installation(target_dir, force=force)
+        else:
+            if not target_dir:
+                raise ValueError("Target directory path cannot be empty.")
+            dest_root, plans = plan_installation(target_dir, force=force)
     except Exception as e:
         return InstallResult(
             success=False,
@@ -273,6 +415,18 @@ def run_install_skills_cli(argv: Sequence[str] | None = None) -> int:
         help="Target directory (e.g. ~/.skills/, ~/.agents/skills/, or project .skills/)",
     )
     parser.add_argument(
+        "--dir",
+        "-d",
+        type=str,
+        dest="target_dir_alias",
+        help="Alias for --target directory",
+    )
+    parser.add_argument(
+        "--claude",
+        action="store_true",
+        help="Install Claude Code CLI skill into ~/.claude/skills/excalidraw/ (or $CLAUDE_CONFIG_DIR/skills/excalidraw/)",
+    )
+    parser.add_argument(
         "--force",
         "-f",
         action="store_true",
@@ -297,20 +451,23 @@ def run_install_skills_cli(argv: Sequence[str] | None = None) -> int:
         print(format_list_output())
         return 0
 
-    if not args.target:
-        print("Error: --target directory is required for installation.", file=sys.stderr)
+    target = args.target or args.target_dir_alias
+    if not args.claude and not target:
+        print("Error: --target directory is required for installation (or specify --claude).", file=sys.stderr)
+        print("Example: exca-mcp install-skills --claude", file=sys.stderr)
         print("Example: exca-mcp install-skills --target ~/.skills/", file=sys.stderr)
         print("Run 'exca-mcp install-skills --help' for details.", file=sys.stderr)
         return 1
 
-    prefix = "[DRY-RUN] " if args.dry_run else ""
-    print(f"{prefix}Planning installation to: {Path(args.target).expanduser().resolve()}")
-
+    planner = plan_claude_installation if args.claude else plan_installation
     try:
-        dest_root, plans = plan_installation(args.target, force=args.force)
+        dest_root, plans = planner(target_dir=target, force=args.force)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+
+    prefix = "[DRY-RUN] " if args.dry_run else ""
+    print(f"{prefix}Planning installation to: {dest_root}")
 
     # Display actions
     for plan in plans:
@@ -322,7 +479,7 @@ def run_install_skills_cli(argv: Sequence[str] | None = None) -> int:
         else:
             print(f"  {prefix}[SKIP]      {rel_to_target} ({plan.reason})")
 
-    result = execute_installation(args.target, force=args.force, dry_run=args.dry_run)
+    result = execute_installation(target, force=args.force, dry_run=args.dry_run, is_claude=args.claude)
 
     print("\n" + "=" * 50)
     if result.dry_run:
