@@ -35,14 +35,15 @@ The default `core` toolset contains all capabilities required to construct, conn
 
 ---
 
-## 2. Full Profile Tools (8 Additional Tools — 20 Total)
+## 2. Full Profile Tools (9 Additional Tools — 21 Total)
 
-The `full` profile includes all 12 core tools plus 8 advanced management, generation, and persistence tools.
+The `full` profile includes all 12 core tools plus 9 advanced management, generation, and persistence tools.
 
 | Tool | Profile | Safety Annotations | Inputs Summary | Description |
 |---|---|---|---|---|
 | `scene_storage` | FULL | Destructive | `action: "save" \| "load" \| "list" \| "export" \| "import" \| "share_url"`<br>`name: str = None, overwrite: bool = False`<br>`data: str = None, mode: "replace" \| "merge" = "replace"` | Consolidated scene persistence: atomically saves, loads, lists, exports, or imports native `.excalidraw` JSON documents, or generates an encrypted shareable link. |
 | `export_png` | FULL | Read-Only, Idempotent | `name: str`<br>`directory: str = None`<br>`scale: float = 1.0, padding: int = 40`<br>`background: bool = True, overwrite: bool = False` | Headless rasterization exporting the active scene to a high-resolution PNG file on server disk. |
+| `export_svg` | FULL | Read-Only, Idempotent | `name: str`<br>`directory: str = None`<br>`padding: int = 40`<br>`background: bool = True, overwrite: bool = False` | Headless vector export rendering the active scene to a clean, scalable SVG file on server disk. |
 | `generate_diagram` | FULL | Destructive | `format: "mermaid" \| "architecture" \| "graph"`<br>`mermaid_code: str = None`<br>`prompt: str = None`<br>`nodes: list[GraphNode] = None, edges: list[GraphEdge] = None`<br>Layout controls (`direction`, `elbowed`, `roundness`, etc.) | Unified generator: builds diagrams from Mermaid syntax, rapid shorthand architecture strings, or structured Sugiyama node/edge graphs with automatic frame clustering. |
 | `manage_element_state` | FULL | Mutating, Idempotent | `action: "lock" \| "unlock" \| "group" \| "ungroup" \| "duplicate"`<br>`element_ids: list[str] = None`<br>`group_id: str = None`<br>`offset_x: float = 20.0, offset_y: float = 20.0` | Unified management of element lock protection, logical grouping/ungrouping, and spatial duplication with relationship remapping. |
 | `set_viewport` | FULL | Mutating, Idempotent | `scroll_x: float = None, scroll_y: float = None`<br>`zoom: float = None, background_color: str = None`<br>`focus_element_ids: list[str] = None, padding: int = 50` | Sets camera scroll coordinates, zoom level, background canvas color, or automatically calculates bounding box framing on specified elements. |

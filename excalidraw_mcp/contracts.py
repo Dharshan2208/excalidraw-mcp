@@ -344,6 +344,16 @@ class PngExportResult(TypedDict):
     revision: int
 
 
+class SvgExportResult(TypedDict):
+    status: str
+    name: str
+    path: str
+    bytes: int
+    width: float
+    height: float
+    revision: int
+
+
 class CodeBlockResult(TypedDict):
     status: str
     container_id: str

@@ -100,6 +100,7 @@ from excalidraw_mcp.contracts import (
     Opacity,
     PageLimit,
     PngExportResult,
+    SvgExportResult,
     PreviewFormat,
     PreviewMaxDimension,
     PreviewPadding,
@@ -710,6 +711,26 @@ def create_server(
             )
 
         @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
+        )
+        def export_svg(
+            name: SceneName,
+            directory: str | None = None,
+            padding: PreviewPadding = 40,
+            background: Boolean = True,
+            overwrite: Boolean = False,
+        ) -> SvgExportResult:
+            """Export the active scene to a standalone vector SVG file in a project or configured directory."""
+            return invoke(
+                service.export_svg,
+                name=name,
+                directory=directory,
+                padding=padding,
+                background=background,
+                overwrite=overwrite,
+            )
+
+        @mcp.tool(
             annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
         )
         def generate_diagram(
@@ -874,15 +895,16 @@ def create_server(
             "available_toolsets": ["core", "full"],
             "server_version": get_server_version(),
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 20 if is_full else 12,
+            "tool_count": 21 if is_full else 12,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
-                "export": ["png", "excalidraw_json"],
+                "export": ["png", "svg", "excalidraw_json"],
                 "repair": "5-phase topological auto_fix_layout with rollback",
                 "full_only_features": [
                     "scene_storage",
                     "export_png",
+                    "export_svg",
                     "generate_diagram",
                     "manage_element_state",
                     "set_viewport",

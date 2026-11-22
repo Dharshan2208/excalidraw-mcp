@@ -1039,6 +1039,115 @@ class SceneService:
             "revision": revision,
         }
 
+    def export_svg(
+        self,
+        name,
+        directory=None,
+        padding=40,
+        background=True,
+        overwrite=False,
+    ):
+        if not isinstance(name, str) or not name.strip():
+            raise SceneError("SVG export name cannot be empty")
+
+        clean_name = name.strip()
+        if clean_name.lower().endswith(".svg"):
+            clean_name = clean_name[:-4].strip()
+
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", clean_name):
+            raise SceneError(
+                "Export name must be 1–128 letters, digits, underscores, dots or hyphens, "
+                "starting with a letter or digit"
+            )
+
+        if (
+            not isinstance(padding, int)
+            or isinstance(padding, bool)
+            or padding < 0
+            or padding > 200
+        ):
+            raise SceneError("padding must be an integer between 0 and 200")
+
+        import tempfile
+        from .config import export_directory, scene_directory
+        from .svg_renderer import render_scene_svg
+
+        if directory is not None:
+            if not isinstance(directory, (str, Path)) or not str(directory).strip():
+                raise SceneError("directory must be a non-empty string or path")
+            target_dir = Path(directory).expanduser()
+            if not target_dir.is_absolute():
+                target_dir = (Path.cwd() / target_dir).resolve()
+            else:
+                target_dir = target_dir.resolve()
+            allowed_export_roots = [
+                export_directory().resolve(),
+                Path(scene_directory()).resolve(),
+                Path.cwd().resolve(),
+                Path(tempfile.gettempdir()).resolve(),
+            ]
+            if not any(
+                target_dir == r or target_dir.is_relative_to(r)
+                for r in allowed_export_roots
+            ):
+                raise SceneError(
+                    f"Export directory '{directory}' is outside permitted project, export, and temporary locations"
+                )
+        else:
+            target_dir = export_directory().resolve()
+
+        try:
+            target_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        except OSError as exc:
+            raise SceneError(f"Could not create export directory: {exc.strerror}") from exc
+
+        target_file = target_dir / f"{clean_name}.svg"
+
+        if target_file.exists():
+            if target_file.is_dir() or target_file.is_symlink():
+                raise SceneError(
+                    "Export destination exists and is not a regular file"
+                )
+            if not overwrite:
+                raise SceneError(
+                    f"Export file '{target_file.name}' already exists; use overwrite=true to replace it"
+                )
+
+        document, revision = self.state.snapshot()
+        svg_content, width, height = render_scene_svg(
+            document, padding=padding, background=bool(background)
+        )
+        svg_bytes = svg_content.encode("utf-8")
+
+        temp_name = f".export-{uuid.uuid4().hex}.tmp"
+        temp_file = target_dir / temp_name
+
+        try:
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(svg_bytes)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+            os.replace(temp_file, target_file)
+        except OSError as exc:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise SceneError(f"Failed to write SVG export file: {exc.strerror}") from exc
+
+        return {
+            "status": "svg exported",
+            "name": f"{clean_name}.svg",
+            "path": str(target_file.resolve()),
+            "bytes": len(svg_bytes),
+            "width": width,
+            "height": height,
+            "revision": revision,
+        }
+
     def add_code_block(
         self,
         code,

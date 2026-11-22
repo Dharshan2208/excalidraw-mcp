@@ -57,6 +57,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("generate_diagram", tool_names)
         self.assertNotIn("scene_storage", tool_names)
         self.assertNotIn("export_png", tool_names)
+        self.assertNotIn("export_svg", tool_names)
         self.assertNotIn("lock_elements", tool_names)
         self.assertNotIn("unlock_elements", tool_names)
         self.assertNotIn("group_elements", tool_names)
@@ -73,10 +74,12 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_full_toolset_registers_all_tools(self):
         server = create_server(toolset="full")
         tools = await server.list_tools()
-        self.assertEqual(len(tools), 20)
+        self.assertEqual(len(tools), 21)
         tool_names = {t.name for t in tools}
         self.assertIn("generate_diagram", tool_names)
         self.assertIn("scene_storage", tool_names)
+        self.assertIn("export_png", tool_names)
+        self.assertIn("export_svg", tool_names)
         self.assertIn("batch_mutate", tool_names)
         self.assertIn("inspect_scene", tool_names)
         self.assertIn("live_server", tool_names)
@@ -129,7 +132,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["server_version"], "0.3.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
-            self.assertEqual(data["tool_count"], 20 if mode == "full" else 12)
+            self.assertEqual(data["tool_count"], 21 if mode == "full" else 12)
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 

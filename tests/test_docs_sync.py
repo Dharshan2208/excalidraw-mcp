@@ -40,7 +40,7 @@ class DocumentationSyncTests(unittest.IsolatedAsyncioTestCase):
             reg_full,
             f"Full tool mismatch between docs/tools.md and server: {doc_all ^ reg_full}",
         )
-        self.assertEqual(len(reg_full), 20)
+        self.assertEqual(len(reg_full), 21)
 
     def test_package_version_and_security_policy_sync(self):
         """Verify __version__, pyproject.toml, SECURITY.md, and docs/tools.md are synchronized (M-029, M-030)."""
