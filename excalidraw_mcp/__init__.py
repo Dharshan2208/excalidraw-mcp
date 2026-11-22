@@ -1,6 +1,6 @@
 """Excalidraw MCP server package."""
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 from excalidraw_mcp.server import create_server, main, mcp, run
 
