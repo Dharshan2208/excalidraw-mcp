@@ -1349,6 +1349,7 @@ class SceneService:
         repair_scope: str = "all",
         aggressiveness: str = "balanced",
         min_gap: float = 30.0,
+        progress_callback: Any = None,
     ) -> dict[str, Any]:
         """Diagnose, plan, and automatically repair layout defects with transactional rollback safety.
 
@@ -1374,6 +1375,7 @@ class SceneService:
                     repair_scope=repair_scope,
                     aggressiveness=aggressiveness,
                     min_gap=float(min_gap),
+                    progress_callback=progress_callback,
                 )
                 fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
                 return {**fix_res_clean, "revision": self.state.revision}
@@ -1385,6 +1387,7 @@ class SceneService:
                 repair_scope=repair_scope,
                 aggressiveness=aggressiveness,
                 min_gap=float(min_gap),
+                progress_callback=progress_callback,
             )
             if (
                 not fix_res.get("rolled_back")
@@ -1402,6 +1405,7 @@ class SceneService:
                 repair_scope=repair_scope,
                 aggressiveness=aggressiveness,
                 min_gap=float(min_gap),
+                progress_callback=progress_callback,
             )
             fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
             return {**fix_res_clean, "revision": rev}
@@ -1413,6 +1417,7 @@ class SceneService:
                 repair_scope=repair_scope,
                 aggressiveness=aggressiveness,
                 min_gap=float(min_gap),
+                progress_callback=progress_callback,
             )
             if (
                 not fix_res.get("rolled_back")

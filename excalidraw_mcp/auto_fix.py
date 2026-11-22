@@ -1573,6 +1573,7 @@ def auto_fix_scene_layout(
     repair_scope: str = "all",
     aggressiveness: str = "balanced",
     min_gap: float = 30.0,
+    progress_callback: Any = None,
 ) -> dict[str, Any]:
     """Analyze and systematically repair layout defects in an Excalidraw scene with transactional validation.
 
@@ -1584,11 +1585,22 @@ def auto_fix_scene_layout(
     active, is_doc = _extract_active_elements(document_or_elements)
     warnings: list[str] = []
 
+    if progress_callback:
+        try:
+            progress_callback(1, 5, "Phase 1: Initial scene diagnostics")
+        except Exception:
+            pass
+
     # Step 1: Snapshot original scene for clean diffs and guaranteed rollback
     snapshot_original = deepcopy(document_or_elements)
 
     # Step 2: Empty or trivial scene handling
     if not active:
+        if progress_callback:
+            try:
+                progress_callback(5, 5, "Layout repair complete")
+            except Exception:
+                pass
         return {
             "status": "no_changes_needed",
             "dry_run": dry_run,
@@ -1610,6 +1622,11 @@ def auto_fix_scene_layout(
 
     # Step 4: If scene is already valid and has no defects
     if not initial_issues:
+        if progress_callback:
+            try:
+                progress_callback(5, 5, "Layout repair complete")
+            except Exception:
+                pass
         return {
             "status": "no_changes_needed",
             "dry_run": dry_run,
@@ -1626,6 +1643,12 @@ def auto_fix_scene_layout(
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": snapshot_original},
         }
 
+    if progress_callback:
+        try:
+            progress_callback(2, 5, "Phase 2: Building repair plan")
+        except Exception:
+            pass
+
     # Step 5: Build deterministic repair plan
     planned_changes = summarize_planned_repairs(
         snapshot_original,
@@ -1634,6 +1657,12 @@ def auto_fix_scene_layout(
         aggressiveness=aggr,
         min_gap=m_gap,
     )
+
+    if progress_callback:
+        try:
+            progress_callback(3, 5, "Phase 3: Applying geometric layout repairs")
+        except Exception:
+            pass
 
     # Step 6: Create draft and apply repairs
     draft = deepcopy(snapshot_original)
@@ -1644,8 +1673,20 @@ def auto_fix_scene_layout(
         min_gap=m_gap,
     )
 
+    if progress_callback:
+        try:
+            progress_callback(4, 5, "Phase 4: Validating post-repair topology")
+        except Exception:
+            pass
+
     # Step 7: Re-run diagnostics on post-repair geometry
     final_issues = diagnose_layout_issues(draft, min_gap=m_gap, aggressiveness=aggr, warnings=warnings)
+
+    if progress_callback:
+        try:
+            progress_callback(5, 5, "Phase 5: Layout repair complete")
+        except Exception:
+            pass
 
     initial_severe_ids = _severe_ids(initial_issues)
     final_severe_ids = _severe_ids(final_issues)

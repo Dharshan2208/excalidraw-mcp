@@ -135,5 +135,41 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(graph.content[0].text)["node_map"].keys(), {"a", "b"})
 
 
+    async def test_active_scene_resource(self):
+        """Active scene can be read directly via excalidraw://active/scene.json and excalidraw://active."""
+        service = SceneService()
+        service.add_shape("rectangle", 10, 20, 100, 50, label="Resource Box")
+        server = create_server(service)
+
+        # 1. Read excalidraw://active/scene.json
+        res_json = await server.read_resource("excalidraw://active/scene.json")
+        self.assertTrue(len(res_json.contents) > 0)
+        data_json = json.loads(res_json.contents[0].content)
+        self.assertEqual(data_json["type"], "excalidraw")
+        self.assertEqual(data_json["version"], 2)
+        texts = [el for el in data_json["elements"] if el["type"] == "text"]
+        self.assertEqual(texts[0]["text"], "Resource Box")
+
+        # 2. Read excalidraw://active alias
+        res_alias = await server.read_resource("excalidraw://active")
+        self.assertTrue(len(res_alias.contents) > 0)
+        data_alias = json.loads(res_alias.contents[0].content)
+        self.assertEqual(data_alias["type"], "excalidraw")
+
+    async def test_auto_fix_layout_progress_reporting(self):
+        """auto_fix_layout executes cleanly with FastMCP Context progress reporting."""
+        service = SceneService()
+        service.add_shape("rectangle", 0, 0, 100, 100, label="Box 1")
+        service.add_shape("rectangle", 20, 20, 100, 100, label="Box 2")  # Overlapping
+        server = create_server(service)
+
+        async with Client(server) as client:
+            res = await client.call_tool("auto_fix_layout", {"dry_run": False, "repair_scope": "all"})
+            self.assertFalse(res.is_error)
+            data = json.loads(res.content[0].text)
+            self.assertIn("status", data)
+            self.assertIn("applied_change_count", data)
+
+
 if __name__ == "__main__":
     unittest.main()

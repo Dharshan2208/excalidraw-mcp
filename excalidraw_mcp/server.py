@@ -6,7 +6,7 @@ import inspect
 import json
 from typing import Any, Literal
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.base import Tool, ToolResult
 from fastmcp.utilities.types import Image
@@ -520,8 +520,18 @@ def create_server(
         aggressiveness: Aggressiveness = "balanced",
         min_gap: float = 30.0,
         verbose: Boolean = False,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
         """Diagnose, plan, and automatically repair layout defects (overlaps, text clipping, containment, routing, spacing) with rollback safety."""
+        def sync_progress(phase: int, total: int, msg: str):
+            if ctx:
+                try:
+                    import asyncio
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(ctx.report_progress(phase, total, msg))
+                except Exception:
+                    pass
+
         result = invoke(
             service.auto_fix_layout,
             name=name,
@@ -529,6 +539,7 @@ def create_server(
             repair_scope=repair_scope,
             aggressiveness=aggressiveness,
             min_gap=min_gap,
+            progress_callback=sync_progress,
         )
         if verbose:
             return result
@@ -555,6 +566,20 @@ def create_server(
     def undo() -> UndoResult:
         """Restore the scene before the most recent successful mutation."""
         return invoke(service.undo)
+
+    @mcp.resource("excalidraw://active/scene.json", mime_type=MIME_TYPE)
+    def active_scene_json_resource() -> str:
+        """Read the current in-memory active canvas scene as native Excalidraw JSON."""
+        doc, _ = service.state.snapshot()
+        import json
+        return json.dumps(doc, separators=(",", ":"))
+
+    @mcp.resource("excalidraw://active", mime_type=MIME_TYPE)
+    def active_scene_resource() -> str:
+        """Read the current in-memory active canvas scene."""
+        doc, _ = service.state.snapshot()
+        import json
+        return json.dumps(doc, separators=(",", ":"))
 
     @mcp.resource("excalidraw://scenes/{name}.excalidraw", mime_type=MIME_TYPE)
     def saved_scene_resource(name: SceneName) -> str:

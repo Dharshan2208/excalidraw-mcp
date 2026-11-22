@@ -59,6 +59,8 @@ Resources allow clients and models to discover metadata, documentation, and save
 
 | Resource URI | MIME Type | Description |
 |---|---|---|
+| `excalidraw://active/scene.json` | `application/vnd.excalidraw+json` | In-memory JSON snapshot of the active canvas document, readable without consuming tool execution turns. |
+| `excalidraw://active` | `application/vnd.excalidraw+json` | Canonical alias URI for the active canvas scene state. |
 | `excalidraw://fonts` | `application/json` | Discovers available system fonts, Excalifont paths, and semantic font family categories (`sans-serif`, `monospace`, `handwriting`). |
 | `excalidraw://guide/{topic}` | `text/markdown` | Parameterized design guide returning markdown principles and recommendations for `layout`, `colors`, `typography`, `grouping`, `arrows`, and `spacing`. |
 | `excalidraw://capabilities` | `application/json` | Active server metadata, toolset configuration (`core` vs `full`), tool counts, and storage paths. |
