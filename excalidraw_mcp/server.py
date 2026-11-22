@@ -120,6 +120,7 @@ from excalidraw_mcp.contracts import (
     ShareUrlResult,
     StatusResult,
     StorageAction,
+    StorageFormat,
     StorageResult,
     StrokeStyle,
     StrokeWidth,
@@ -680,11 +681,15 @@ def create_server(
             mode: Literal["replace", "merge"] = "replace",
             offset_x: Coordinate = 0.0,
             offset_y: Coordinate = 0.0,
+            format: StorageFormat = "excalidraw",
+            directory: str | None = None,
         ) -> Any:
             """Save, load, list, export, or import diagram scenes."""
             if action == "save":
                 if not name:
                     raise ToolError("scene_storage(action='save') requires name parameter.")
+                if format == "obsidian":
+                    return invoke(service.export_obsidian, name, directory=directory, overwrite=overwrite)
                 return invoke(service.save, name, overwrite=overwrite)
             elif action == "load":
                 if not name:
@@ -693,6 +698,17 @@ def create_server(
             elif action == "list":
                 return invoke(service.list_saved_scenes)
             elif action == "export":
+                if format == "obsidian":
+                    payload = invoke(service.export_scene, format="obsidian")
+                    snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
+                    return EmbeddedResource(
+                        type="resource",
+                        resource=TextResourceContents(
+                            uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw.md"),
+                            mimeType="text/markdown",
+                            text=payload,
+                        ),
+                    )
                 payload = invoke(service.export_scene)
                 snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
                 return EmbeddedResource(
@@ -930,7 +946,7 @@ def create_server(
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
-                "export": ["png", "svg", "excalidraw_json"],
+                "export": ["png", "svg", "excalidraw_json", "obsidian_markdown"],
                 "repair": "5-phase topological auto_fix_layout with rollback",
                 "full_only_features": [
                     "scene_storage",

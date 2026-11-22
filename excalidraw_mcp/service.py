@@ -933,15 +933,22 @@ class SceneService:
 
         return self.state.apply(add_connection)
 
-    def save(self, name, overwrite=False):
+    def save(self, name, overwrite=False, format="excalidraw", directory=None):
+        if format == "obsidian":
+            return self.export_obsidian(name=name, directory=directory, overwrite=overwrite)
         document = self.state.document()
         path = save_scene(name, document, overwrite=overwrite)
         active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
         return {"path": path, "elements": active_count, "status": "saved"}
 
-    def export_scene(self):
+    def export_scene(self, format="excalidraw"):
         """Export a detached snapshot without filesystem access."""
-        return _serialize_for_export(self.state.document())
+        doc = self.state.document()
+        if format == "obsidian":
+            from .obsidian import serialize_obsidian_markdown
+
+            return serialize_obsidian_markdown(doc)
+        return _serialize_for_export(doc)
 
     def read_saved_scene(self, name):
         return _serialize_for_export(load_scene(name))
@@ -1192,6 +1199,102 @@ class SceneService:
             "bytes": len(svg_bytes),
             "width": width,
             "height": height,
+            "revision": revision,
+        }
+
+    def export_obsidian(
+        self,
+        name: str,
+        directory: str | Path | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Export active scene to an Obsidian Excalidraw plugin Markdown file (.excalidraw.md)."""
+        if not isinstance(name, str) or not name.strip():
+            raise SceneError("Obsidian export name cannot be empty")
+
+        clean_name = name.strip()
+        if clean_name.lower().endswith(".excalidraw.md"):
+            clean_name = clean_name[:-14].strip()
+        elif clean_name.lower().endswith(".md"):
+            clean_name = clean_name[:-3].strip()
+
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", clean_name):
+            raise SceneError(
+                "Export name must be 1–128 letters, digits, underscores, dots or hyphens, "
+                "starting with a letter or digit"
+            )
+
+        import tempfile
+        import uuid
+        from .config import export_directory, scene_directory
+        from .obsidian import serialize_obsidian_markdown
+
+        if directory is not None:
+            if not isinstance(directory, (str, Path)) or not str(directory).strip():
+                raise SceneError("directory must be a non-empty string or path")
+            target_dir = Path(directory).expanduser()
+            if not target_dir.is_absolute():
+                target_dir = (Path.cwd() / target_dir).resolve()
+            else:
+                target_dir = target_dir.resolve()
+            allowed_export_roots = [
+                export_directory().resolve(),
+                Path(scene_directory()).resolve(),
+                Path.cwd().resolve(),
+                Path(tempfile.gettempdir()).resolve(),
+            ]
+            if not any(
+                target_dir == r or target_dir.is_relative_to(r)
+                for r in allowed_export_roots
+            ):
+                raise SceneError(
+                    f"Export directory '{directory}' is outside permitted project, export, and temporary locations"
+                )
+        else:
+            target_dir = export_directory().resolve()
+
+        try:
+            target_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        except OSError as exc:
+            raise SceneError(f"Could not create export directory: {exc.strerror}") from exc
+
+        target_file = target_dir / f"{clean_name}.excalidraw.md"
+        if target_file.exists() and not overwrite:
+            raise SceneError(
+                f"File '{target_file.name}' already exists in target directory (use overwrite=True to replace)"
+            )
+
+        document, revision = self.state.snapshot()
+        md_content = serialize_obsidian_markdown(document)
+        md_bytes = md_content.encode("utf-8")
+
+        temp_name = f".export-{uuid.uuid4().hex}.tmp"
+        temp_file = target_dir / temp_name
+
+        try:
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(md_bytes)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+            os.replace(temp_file, target_file)
+        except OSError as exc:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise SceneError(f"Failed to write Obsidian export file: {exc.strerror}") from exc
+
+        active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
+        return {
+            "status": "obsidian exported",
+            "name": f"{clean_name}.excalidraw.md",
+            "path": str(target_file.resolve()),
+            "format": "obsidian",
+            "bytes": len(md_bytes),
+            "elements": active_count,
             "revision": revision,
         }
 

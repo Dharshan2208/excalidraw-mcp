@@ -37,7 +37,7 @@ Operating directly on scene graphs and element trees in memory with FreeType fon
 - **Automated Layout Repair (`auto_fix_layout`)**: Detects bounding box collisions, text clipping, and frame escapes, executing 5-phase de-collision and spacing with transactional regression rollback.
 - **Atomic Batch Authoring (`batch_mutate`)**: Enables agents to create, move, style, connect, lock, group, and repair up to 500 operations in a single roundtrip with dynamic `client_id` resolution.
 - **Halved Schema Context Footprint**: Minimalist tool contracts and compact minified JSON responses strip `outputSchema` overhead, reducing turn context usage by up to 50.4%.
-- **High-Resolution Headless Export**: Headless Pillow rasterization generating PNG exports up to 8192 px and inline vision previews (`preview`) capped to optimal model envelopes (`max_dimension=1568`).
+- **High-Resolution Headless Export**: Headless Pillow rasterization generating PNG exports up to 8192 px, vector SVG exports, Obsidian Excalidraw plugin Markdown files (`.excalidraw.md`), and inline vision previews (`preview`) capped to optimal model envelopes (`max_dimension=1568`).
 - **Interactive Live Canvas (`live_server`)**: Real-time Starlette/Uvicorn WebSocket visualizer streaming agent mutations live into an open browser tab.
 - **Encrypted Web Sharing (`export_to_excalidraw_url`)**: Publishes scenes directly to excalidraw.com using 128-bit AES-GCM client-side encryption.
 - **Bundled Agent Skills**: Packages 6 prompt and pattern guides covering architecture design, flowcharts, 60-30-10 color palettes, and quality gates, installable via `exca-mcp install-skills` (including automatic discovery for Claude Code via `exca-mcp install-skills --claude`).

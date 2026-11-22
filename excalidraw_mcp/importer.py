@@ -58,6 +58,13 @@ def _extract_from_png_bytes(png_bytes: bytes) -> dict[str, Any]:
 
 def _extract_from_obsidian_markdown(text: str) -> dict[str, Any]:
     """Extract Excalidraw scene JSON from Obsidian .excalidraw.md format."""
+    from .obsidian import parse_obsidian_markdown
+
+    try:
+        return parse_obsidian_markdown(text)
+    except Exception:
+        pass
+
     # Pattern 1: Fenced code block under ## Drawing or # Excalidraw Data
     fenced_match = re.search(
         r"```(?:json|json:excalidraw|excalidraw)\s*(\{.*?\})\s*```",
