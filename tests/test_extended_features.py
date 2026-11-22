@@ -367,6 +367,43 @@ class SceneImportTests(unittest.TestCase):
             if os.path.exists(tf_path):
                 os.remove(tf_path)
 
+    def test_import_clipboard_payload_replace_mode(self):
+        """Verify importing raw JSON from excalidraw.com clipboard envelope in replace mode (M-014)."""
+        clipboard_json = json.dumps({
+            "type": "excalidraw/clipboard",
+            "elements": [
+                {"id": "clip-1", "type": "rectangle", "x": 100, "y": 150, "width": 120, "height": 80}
+            ],
+            "files": {}
+        })
+        res = self.service.import_scene(data=clipboard_json, mode="replace")
+        self.assertEqual(res["status"], "imported")
+        self.assertEqual(res["mode"], "replace")
+        self.assertEqual(res["elements_imported"], 1)
+        self.assertEqual(self.service.state.all()[0]["id"], "clip-1")
+        doc = self.service.state.document()
+        self.assertEqual(doc["type"], "excalidraw")
+        self.assertEqual(doc["version"], 2)
+
+    def test_import_clipboard_payload_merge_mode(self):
+        """Verify importing excalidraw/clipboard JSON in merge mode with offset and ID preservation (M-014)."""
+        self.service.clear()
+        self.service.add_shape("ellipse", 0, 0, 50, 50, label="Pre-existing")
+
+        clipboard_json = json.dumps({
+            "type": "excalidraw/clipboard",
+            "elements": [
+                {"id": "clip-node", "type": "diamond", "x": 20, "y": 30, "width": 60, "height": 60}
+            ]
+        })
+        res = self.service.import_scene(data=clipboard_json, mode="merge", offset_x=50, offset_y=50)
+        self.assertEqual(res["status"], "imported")
+        self.assertEqual(res["elements_imported"], 1)
+        imported_diamond = self.service.state.get("clip-node")
+        self.assertIsNotNone(imported_diamond)
+        self.assertEqual(imported_diamond["x"], 70)
+        self.assertEqual(imported_diamond["y"], 80)
+
     def test_import_obsidian_markdown(self):
         obsidian_content = """# Diagram Document
 Some notes before diagram.
