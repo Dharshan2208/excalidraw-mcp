@@ -209,7 +209,7 @@ def create_server(
         font_family: FontFamily | None = None,
         font_size: FontSize | None = None,
     ) -> dict[str, Any]:
-        """Create a geometric shape (rectangle, ellipse, diamond) with optional label, frame containment, and visual styling."""
+        """Create a shape (rectangle, ellipse, diamond) with optional label and styling."""
         shape_type = "ellipse" if type == "circle" else type
         height = h if h is not None else w
         style = _style_kwargs(
@@ -256,7 +256,7 @@ def create_server(
         font_family: FontFamily | None = None,
         font_size: FontSize | None = None,
     ) -> dict[str, Any]:
-        """Create a directional arrow connector either between coordinate endpoints (x,y -> x2,y2) or bound between two shape elements (source_id -> target_id)."""
+        """Create a connector arrow between coordinates or bound shape elements."""
         style = _style_kwargs(
             strokeColor=strokeColor,
             backgroundColor=backgroundColor,
@@ -300,10 +300,7 @@ def create_server(
         opacity: Opacity | None = None,
         roughness: Roughness | None = None,
     ) -> CreateResult:
-        """Add a frame (boundary container) to the scene.
-
-        Optionally assign existing elements to this frame using `element_ids`.
-        """
+        """Create a frame container, optionally enclosing existing elements."""
         style = _style_kwargs(
             strokeColor=strokeColor,
             backgroundColor=backgroundColor,
@@ -330,7 +327,7 @@ def create_server(
         ),
     )
     def clear() -> StatusResult:
-        """Remove all elements, app state and files from the scene."""
+        """Clear all elements and state from the active scene."""
         return invoke(service.clear)
 
     @mcp.tool(
@@ -339,7 +336,7 @@ def create_server(
         ),
     )
     def delete(element_id: ElementId) -> DeleteResult:
-        """Delete an element and its owned label; detach surviving connectors."""
+        """Delete an element and detach surviving connectors."""
         return invoke(service.delete, element_id)
 
     @mcp.tool(annotations=READ_ONLY)
@@ -357,7 +354,7 @@ def create_server(
         include_raw: Boolean = False,
         resource_uri: str | None = None,
     ) -> dict[str, Any]:
-        """Inspect canvas state, metrics, elements, spatial descriptions, camera viewport, or server status (readOnlyHint=True)."""
+        """Query scene metrics, spatial descriptions, elements, viewport, or server status."""
         if mode == "summary":
             return invoke(service.get_scene_summary)
         elif mode == "describe":
@@ -409,7 +406,7 @@ def create_server(
         strokeColor: Color | None = None,
         opacity: Opacity | None = None,
     ) -> CreateResult:
-        """Add standalone text and return its element ID. font_family can be 'excalifont', 'sans-serif', 'monospace', 'comic-shanns', or an Excalidraw font number (1=Excalifont, 2=sans-serif, 3=monospace, 4=comic-shanns)."""
+        """Add standalone text element to the scene."""
         return invoke(
             service.add_text,
             x,
@@ -444,7 +441,7 @@ def create_server(
         width: Dimension | None = None,
         height: Dimension | None = None,
     ) -> dict[str, Any]:
-        """Update an element's position (x, y), dimensions (width, height), label, typography, or visual styling."""
+        """Update element position, size, label, or visual styling."""
         res: dict[str, Any] = {"status": "updated", "element_id": element_id}
         if width is not None or height is not None:
             if width is None or height is None:
@@ -504,9 +501,9 @@ def create_server(
 
     @mcp.tool(annotations=MUTATING)
     def batch_mutate(
-        operations: list[BatchOperation],
+        operations: list[dict[str, Any]],
     ) -> BatchResult:
-        """Atomically execute a batch of creation, editing, and deletion operations."""
+        """Atomically execute a batch of canvas mutations in a single revision step."""
         return invoke(
             service.batch_mutate,
             [op.model_dump(exclude_none=True) if hasattr(op, "model_dump") else op for op in operations],
@@ -522,7 +519,7 @@ def create_server(
         verbose: Boolean = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
-        """Diagnose, plan, and automatically repair layout defects (overlaps, text clipping, containment, routing, spacing) with rollback safety."""
+        """Diagnose and automatically repair layout defects with rollback safety."""
         def sync_progress(phase: int, total: int, msg: str):
             if ctx:
                 try:
@@ -676,7 +673,7 @@ def create_server(
             offset_x: Coordinate = 0.0,
             offset_y: Coordinate = 0.0,
         ) -> Any:
-            """Manage diagram storage: save snapshots to disk, load scenes, list saved files, export document JSON, or import files (destructiveHint=True)."""
+            """Save, load, list, export, or import diagram scenes."""
             if action == "save":
                 if not name:
                     raise ToolError("scene_storage(action='save') requires name parameter.")
@@ -724,7 +721,7 @@ def create_server(
             background: Boolean = True,
             overwrite: Boolean = False,
         ) -> PngExportResult:
-            """Export the active scene to a PNG image file in a project or configured directory."""
+            """Export active scene to a PNG image file."""
             return invoke(
                 service.export_png,
                 name=name,
@@ -745,7 +742,7 @@ def create_server(
             background: Boolean = True,
             overwrite: Boolean = False,
         ) -> SvgExportResult:
-            """Export the active scene to a standalone vector SVG file in a project or configured directory."""
+            """Export active scene to a standalone vector SVG file."""
             return invoke(
                 service.export_svg,
                 name=name,
@@ -781,7 +778,7 @@ def create_server(
             opacity: Opacity | None = None,
             roughness: Roughness | None = None,
         ) -> DiagramResult:
-            """Generate high-level diagrams from Mermaid syntax, quick text architecture prompts, or structured graphs (destructiveHint=True)."""
+            """Generate diagrams from Mermaid syntax, architecture text prompts, or graphs."""
             if format == "mermaid":
                 if not mermaid_code or not mermaid_code.strip():
                     raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
@@ -841,7 +838,7 @@ def create_server(
             offset_x: Coordinate = 20.0,
             offset_y: Coordinate = 20.0,
         ) -> Any:
-            """Lock or unlock elements, manage groupings, or duplicate elements with relationship remapping."""
+            """Lock, unlock, group, ungroup, or duplicate canvas elements."""
             if action == "lock":
                 return invoke(service.set_element_locked, element_ids or [], locked=True)
             elif action == "unlock":
@@ -867,7 +864,7 @@ def create_server(
             focus_element_ids: list[ElementId] | None = None,
             padding: PreviewPadding = 50,
         ) -> ViewportResult | FocusResult:
-            """Set canvas camera viewport scroll offsets, zoom level, background color, or focus on elements."""
+            """Configure viewport scroll, zoom, background color, or focus on elements."""
             return invoke(
                 service.set_viewport,
                 scroll_x=scroll_x,
@@ -883,14 +880,13 @@ def create_server(
             annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
         )
         def export_to_excalidraw_url(name: SceneName | None = None) -> ShareUrlResult:
-            """Publish the scene to excalidraw.com with client-side encryption and return a shareable URL."""
+            """Publish scene to excalidraw.com and return a shareable URL."""
             return invoke(service.export_to_excalidraw_url, name=name)
 
     if is_full:
         @mcp.tool(annotations=READ_ONLY)
         def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
-            """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability.
-            Prefer reading the 'excalidraw://guide/{topic}' resource if your client supports MCP resources."""
+            """Read design guidelines for layout, typography, colors, and readability."""
             return invoke(service.read_diagram_guide, topic=topic)
 
         @mcp.tool(
@@ -901,7 +897,7 @@ def create_server(
             host: str = "127.0.0.1",
             port: int = 8080,
         ) -> LiveServerResult:
-            """Start or stop the background browser-connected Excalidraw live canvas server with real-time synchronization."""
+            """Start or stop the background browser live canvas synchronization server."""
             if action == "start":
                 return invoke(service.start_live_server, host=host, port=port)
             elif action == "stop":

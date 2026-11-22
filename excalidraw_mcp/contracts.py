@@ -9,10 +9,8 @@ from excalidraw_mcp.validation import COLOR_PATTERN
 Coordinate = Annotated[float, Field(strict=True, ge=-100_000, le=100_000)]
 Dimension = Annotated[float, Field(strict=True, gt=0, le=100_000)]
 Label = Annotated[str, Field(strict=True, max_length=2_000)]
-ElementId = Annotated[
-    str, Field(strict=True, min_length=1, max_length=200, pattern=r".*\S.*")
-]
-Color = Annotated[str, Field(strict=True, pattern=f"^{COLOR_PATTERN}$")]
+ElementId = Annotated[str, Field(strict=True, min_length=1, max_length=200)]
+Color = Annotated[str, Field(strict=True, pattern=r"^(?:transparent|#[0-9A-Fa-f]{3,8})$")]
 Boolean = Annotated[bool, Field(strict=True)]
 SceneName = Annotated[
     str,
@@ -47,11 +45,7 @@ ElementType = Literal["rectangle", "ellipse", "diamond", "arrow", "text", "frame
 Roundness = Literal["adaptive", "round", "sharp"]
 CodeTheme = Literal["dark", "monokai", "github-dark", "light", "solarized-dark"]
 FontCategory = Literal["sans-serif", "monospace", "serif", "handwriting"]
-FontFamily = (
-    Literal["excalifont", "sans-serif", "monospace", "comic-shanns", "handwriting"]
-    | str
-    | int
-)
+FontFamily = str | int
 LayoutType = Literal["layered", "horizontal", "vertical"]
 Direction = Literal["horizontal", "vertical"]
 Offset = Annotated[int, Field(strict=True, ge=0)]
@@ -70,9 +64,7 @@ Aggressiveness = Literal["gentle", "balanced", "aggressive"]
 class GraphNode(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     id: ElementId
-    label: Annotated[
-        str, Field(strict=True, min_length=1, max_length=2_000, pattern=r".*\S.*")
-    ]
+    label: Label
     shape: ShapeType = "rectangle"
     cluster: ElementId | None = None
     strokeColor: Color | None = None
@@ -89,9 +81,7 @@ class GraphNode(BaseModel):
 class GraphCluster(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     id: ElementId
-    label: Annotated[
-        str, Field(strict=True, min_length=1, max_length=2_000, pattern=r".*\S.*")
-    ]
+    label: Label
 
 
 class GraphEdge(BaseModel):
