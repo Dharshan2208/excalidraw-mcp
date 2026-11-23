@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from fastmcp import Client
+import httpx
 import uvicorn
 
 from excalidraw_mcp.server import (
@@ -173,6 +174,14 @@ class TestStreamableHttpIntegration(unittest.IsolatedAsyncioTestCase):
 
         url = f"http://127.0.0.1:{port}/mcp"
         try:
+            # Verify /health endpoint
+            async with httpx.AsyncClient() as http_client:
+                health_resp = await http_client.get(f"http://127.0.0.1:{port}/health", timeout=2.0)
+                self.assertEqual(health_resp.status_code, 200)
+                health_data = health_resp.json()
+                self.assertEqual(health_data["status"], "healthy")
+                self.assertEqual(health_data["version"], "0.3.0")
+
             async with Client(url, timeout=5) as client:
                 tools = await client.list_tools()
                 tool_names = [t.name for t in tools]

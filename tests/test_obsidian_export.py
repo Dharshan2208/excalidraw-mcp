@@ -28,6 +28,35 @@ class TestObsidianSerialization(unittest.TestCase):
         self.assertEqual(parsed["type"], "excalidraw")
         self.assertEqual(parsed["elements"], [])
 
+    def test_serialize_escapes_percent_percent(self):
+        doc = {
+            "type": "excalidraw",
+            "version": 2,
+            "elements": [
+                {
+                    "id": "t1",
+                    "type": "text",
+                    "x": 0,
+                    "y": 0,
+                    "text": "Discount %% Special",
+                }
+            ],
+            "appState": {},
+        }
+        md = serialize_obsidian_markdown(doc)
+        # Verify that %% was sanitized in the # Text Elements comment block
+        text_section = md.split("# Drawing")[0]
+        self.assertNotIn("Discount %% Special", text_section)
+        self.assertIn("Discount % % Special", text_section)
+
+    def test_export_obsidian_rejects_dir_destination(self):
+        service = SceneService()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dir_target = Path(tmp_dir) / "dir_conflict.excalidraw.md"
+            dir_target.mkdir()
+            with self.assertRaisesRegex(SceneError, "not a regular file"):
+                service.export_obsidian("dir_conflict", directory=tmp_dir, overwrite=True)
+
     def test_serialize_text_elements_and_block_references(self):
         doc = {
             "type": "excalidraw",

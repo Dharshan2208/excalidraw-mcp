@@ -1259,10 +1259,15 @@ class SceneService:
             raise SceneError(f"Could not create export directory: {exc.strerror}") from exc
 
         target_file = target_dir / f"{clean_name}.excalidraw.md"
-        if target_file.exists() and not overwrite:
-            raise SceneError(
-                f"File '{target_file.name}' already exists in target directory (use overwrite=True to replace)"
-            )
+        if target_file.exists():
+            if target_file.is_dir() or target_file.is_symlink():
+                raise SceneError(
+                    "Export destination exists and is not a regular file"
+                )
+            if not overwrite:
+                raise SceneError(
+                    f"File '{target_file.name}' already exists in target directory (use overwrite=True to replace)"
+                )
 
         document, revision = self.state.snapshot()
         md_content = serialize_obsidian_markdown(document)

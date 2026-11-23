@@ -40,8 +40,10 @@ def serialize_obsidian_markdown(document: dict[str, Any]) -> str:
             raw_text = str(el["text"]).strip()
             eid = el.get("id", "")
             if raw_text and eid:
+                # Sanitize %% delimiters to prevent breaking out of Obsidian comment blocks
+                safe_text = raw_text.replace("%%", "% %")
                 # Sanitize newlines for block reference format
-                single_line = " ".join(raw_text.splitlines())
+                single_line = " ".join(safe_text.splitlines())
                 text_lines.append(f"{single_line} ^{eid}")
 
     # Canonical Excalidraw JSON payload

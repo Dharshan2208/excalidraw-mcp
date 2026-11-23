@@ -385,6 +385,26 @@ while True:
             # X-Auth-Token header -> 200
             resp_xauth = httpx.get(url, headers={"X-Auth-Token": "super_secret_token_123"}, timeout=2.0)
             self.assertEqual(resp_xauth.status_code, 200)
+
+            # Test Origin header security (P-031 / SEC-01)
+            unauth_post = httpx.post(
+                f"{url}?token=super_secret_token_123",
+                json={"type": "excalidraw", "elements": []},
+                headers={"origin": "http://malicious-website.com"},
+                timeout=2.0,
+            )
+            self.assertEqual(unauth_post.status_code, 403)
+            self.assertIn("Forbidden", unauth_post.json()["error"])
+
+            # Test Content-Type enforcement
+            text_post = httpx.post(
+                f"{url}?token=super_secret_token_123",
+                content=b'{"type": "excalidraw"}',
+                headers={"content-type": "text/plain"},
+                timeout=2.0,
+            )
+            self.assertEqual(text_post.status_code, 415)
+            self.assertIn("Content-Type must be application/json", text_post.json()["error"])
         finally:
             auth_server.stop()
 

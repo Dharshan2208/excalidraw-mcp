@@ -973,6 +973,13 @@ def create_server(
 
     register_skills_mcp(mcp)
 
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health_check(request: Any) -> Any:
+        """Health check endpoint for container probes and uptime monitors."""
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"status": "healthy", "version": get_server_version()})
+
     return mcp
 
 

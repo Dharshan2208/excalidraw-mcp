@@ -509,6 +509,20 @@ class LiveCanvasServer:
         if not self._verify_auth(request):
             return JSONResponse({"error": "Unauthorized: invalid or missing token"}, status_code=401)
 
+        origin = request.headers.get("origin")
+        if origin:
+            import urllib.parse
+
+            parsed = urllib.parse.urlparse(origin)
+            allowed = {"localhost", "127.0.0.1", "::1", self.host.lower()}
+            if parsed.hostname and parsed.hostname.lower() not in allowed:
+                logger.warning("Rejected POST /api/scene from unauthorized origin: %s", origin)
+                return JSONResponse({"error": "Forbidden: unauthorized origin"}, status_code=403)
+
+        content_type = request.headers.get("content-type", "")
+        if not content_type.lower().startswith("application/json"):
+            return JSONResponse({"error": "Content-Type must be application/json"}, status_code=415)
+
         try:
             payload = await request.json()
         except Exception as err:
