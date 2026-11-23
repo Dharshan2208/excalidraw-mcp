@@ -470,9 +470,11 @@ def run_install_skills_cli(argv: Sequence[str] | None = None) -> int:
 
     target = args.target or args.target_dir_alias
     if not args.claude and not target:
-        print("Error: --target directory is required for installation (or specify --claude).", file=sys.stderr)
-        print("Example: exca-mcp install-skills --claude", file=sys.stderr)
-        print("Example: exca-mcp install-skills --target ~/.skills/", file=sys.stderr)
+        print("Error: --target directory is required for installation (or specify --claude).\n", file=sys.stderr)
+        print("Quick options:", file=sys.stderr)
+        print("  • Claude Code CLI:   exca-mcp install-skills --claude", file=sys.stderr)
+        print("  • Custom Directory:  exca-mcp install-skills --target <path>", file=sys.stderr)
+        print("  • List Skills:       exca-mcp install-skills --list\n", file=sys.stderr)
         print("Run 'exca-mcp install-skills --help' for details.", file=sys.stderr)
         return 1
 

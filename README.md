@@ -23,8 +23,8 @@ Operating directly on scene graphs and element trees in memory with FreeType fon
 
 ## Visual Showcase
 
-![Excalidraw MCP System Architecture](docs/architecture.png)
-*System architecture diagram generated programmatically by Excalidraw MCP itself. Editable source: [docs/architecture.excalidraw](docs/architecture.excalidraw).*
+![Excalidraw MCP System Architecture](https://raw.githubusercontent.com/Dharshan2208/excalidraw-mcp/main/docs/architecture.png)
+*System architecture diagram generated programmatically by Excalidraw MCP itself. Editable source: [docs/architecture.excalidraw](https://raw.githubusercontent.com/Dharshan2208/excalidraw-mcp/main/docs/architecture.excalidraw).*
 
 ---
 
@@ -166,7 +166,7 @@ To enable the complete 20-tool profile:
 export EXCALIDRAW_TOOLSET=full
 ```
 
-See [docs/tools.md](docs/tools.md) for the complete reference of all 20 tools, safety annotations, parameter schemas, and MCP resources.
+See [docs/tools.md](docs/tools.md) for the complete reference of all 21 tools, safety annotations, parameter schemas, and MCP resources.
 
 ---
 

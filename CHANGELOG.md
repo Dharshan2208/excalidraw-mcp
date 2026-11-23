@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Streamable HTTP Transport**: Added `--transport streamable-http` with `--host`, `--port`, and `--path` options for remote and containerized deployments.
+- **Obsidian Export**: Added native export to `.excalidraw.md` format (`scene_storage(format="obsidian")`) compatible with Obsidian Excalidraw plugin.
+- **Claude Code CLI Skill Support**: Added `exca-mcp install-skills --claude` installing unified skill metadata into `~/.claude/skills/excalidraw/` with linked references.
+- **Developer Experience Subcommands**:
+  - `exca-mcp print-config [client]`: Prints copy-pasteable configuration for Claude Desktop, Cursor, Zed, Windsurf, OpenCode, and Antigravity.
+  - `exca-mcp doctor`: Non-destructive sub-second diagnostic verification of Python runtime, TrueType fonts, storage directory, and skills.
+- **Container Readiness Probe**: Added `/health` endpoint returning `{"status": "healthy"}` for container readiness probes.
+- **MCP Registry Manifest**: Added `server.json` manifest conforming to `2025-12-11` schema and ownership marker to `README.md`.
+
+### Security
+- Added Origin and Content-Type validation to live canvas server `POST /api/scene` to protect against cross-origin canvas overwrites (CSRF).
+- Escaped `%%` delimiters in Obsidian export serializer to prevent comment block breakout.
+- Added symlink rejection to `export_obsidian` destination paths matching `export_png` and `export_svg`.
+- Bumped Starlette dependency requirement to `>=0.40.0` to guard against multipart parsing DoS.
+
+### Fixed
+- Fixed Docker container build failure by bundling `.skills/` into the Docker build context.
+- Fixed `EntrypointTests` failure on `python -m unittest discover` by filtering runner arguments in `server.py`.
+- Mocked cloud sharing web calls during font integration tests to guarantee air-gapped test execution.
+- Synchronized all 6 packaged agent skills and MCP task prompts to use canonical v0.3.0 tool signatures.
+- Corrected safety annotations (`idempotentHint`, `destructiveHint`, `openWorldHint`) across tools.
+- Handshake `serverInfo.version` now advertises package version rather than FastMCP library version.
+- Silenced FastMCP stderr banner output on CLI `main()` invocations.
+
 ## [0.3.0] - 2026-11-19
 
 ### Changed

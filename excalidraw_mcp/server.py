@@ -1007,6 +1007,14 @@ def _build_argument_parser() -> Any:
         "install-skills",
         help="Install agent skills into Claude Code, Cursor, Windsurf, or custom directory.",
     )
+    subparsers.add_parser(
+        "print-config",
+        help="Print copy-pasteable MCP client configuration snippets (Claude, Cursor, Zed, Windsurf, OpenCode).",
+    )
+    subparsers.add_parser(
+        "doctor",
+        help="Run non-destructive diagnostics on Python runtime, TrueType fonts, scene storage, and skills.",
+    )
     return parser
 
 
@@ -1040,6 +1048,16 @@ def main(argv: list[str] | None = None) -> None:
         from .installer import run_install_skills_cli
 
         sys.exit(run_install_skills_cli(args[1:]))
+
+    if args and args[0] == "print-config":
+        from .config_printer import run_config_printer_cli
+
+        sys.exit(run_config_printer_cli(args[1:]))
+
+    if args and args[0] == "doctor":
+        from .doctor import run_doctor_cli
+
+        sys.exit(run_doctor_cli(args[1:]))
 
     opts = parse_cli_args(args)
 

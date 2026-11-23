@@ -1,3 +1,5 @@
+import io
+import json
 import os
 import tempfile
 import unittest
@@ -88,6 +90,61 @@ class EntrypointTests(unittest.TestCase):
         with patch.object(main.mcp, "run") as run:
             main.run()
         run.assert_called_once_with(show_banner=False)
+
+    def test_doctor_diagnostics(self):
+        from excalidraw_mcp.doctor import run_diagnostics, run_doctor_cli
+
+        diag = run_diagnostics()
+        self.assertTrue(diag["all_passed"])
+        self.assertGreaterEqual(len(diag["checks"]), 5)
+
+        stdout = io.StringIO()
+        with patch("sys.stdout", stdout):
+            code = run_doctor_cli(["--json"])
+        self.assertEqual(code, 0)
+        parsed = json.loads(stdout.getvalue())
+        self.assertTrue(parsed["all_passed"])
+
+    def test_print_config(self):
+        from excalidraw_mcp.config_printer import (
+            get_client_config,
+            list_supported_clients,
+            run_config_printer_cli,
+        )
+
+        clients = list_supported_clients()
+        self.assertIn("claude-desktop", clients)
+        self.assertIn("cursor", clients)
+        self.assertIn("zed", clients)
+        self.assertIn("claude-code", clients)
+
+        cfg_claude = get_client_config("claude-desktop")
+        self.assertIn("mcpServers", cfg_claude)
+        self.assertIn("exca-mcp", cfg_claude)
+
+        cfg_zed = get_client_config("zed", full=True)
+        self.assertIn("context_servers", cfg_zed)
+        self.assertIn("EXCALIDRAW_TOOLSET", cfg_zed)
+
+        stdout = io.StringIO()
+        with patch("sys.stdout", stdout):
+            code = run_config_printer_cli(["cursor", "--json"])
+        self.assertEqual(code, 0)
+        parsed = json.loads(stdout.getvalue())
+        self.assertIn("mcpServers", parsed)
+
+    def test_main_delegates_to_subcommands(self):
+        with patch("excalidraw_mcp.doctor.run_doctor_cli", return_value=0) as mock_doc:
+            with self.assertRaises(SystemExit) as ctx:
+                main.main(["doctor", "--json"])
+            self.assertEqual(ctx.exception.code, 0)
+            mock_doc.assert_called_once_with(["--json"])
+
+        with patch("excalidraw_mcp.config_printer.run_config_printer_cli", return_value=0) as mock_cfg:
+            with self.assertRaises(SystemExit) as ctx:
+                main.main(["print-config", "cursor"])
+            self.assertEqual(ctx.exception.code, 0)
+            mock_cfg.assert_called_once_with(["cursor"])
 
 
 if __name__ == "__main__":

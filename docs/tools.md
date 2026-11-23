@@ -1,8 +1,8 @@
 # MCP Tools Reference
 
-> **BREAKING CHANGE (v0.3.0)**: Tool surface has been rationalized from 48 legacy tools to **12 tools in the default `core` profile** and **20 tools in the `full` profile**, reducing schema token overhead by over 50%.
+> **BREAKING CHANGE (v0.3.0)**: Tool surface has been rationalized from 48 legacy tools to **12 tools in the default `core` profile** and **21 tools in the `full` profile**, reducing schema token overhead by over 50%.
 > - **`CORE` Toolset (12 tools, Default)**: The essential generation, editing, inspection, validation, batch mutation, and preview surface for autonomous AI coding agents.
-> - **`FULL` Toolset (20 tools)**: Adds persistent diagram file storage (`scene_storage`), high-resolution disk export (`export_png`), advanced generators (`generate_diagram`), element locking and grouping (`manage_element_state`), camera viewport framing (`set_viewport`), background live WebSocket server (`live_server`), client-side encrypted sharing (`export_to_excalidraw_url`), and design guidelines (`read_diagram_guide`).
+> - **`FULL` Toolset (21 tools)**: Adds persistent diagram file storage (`scene_storage`), high-resolution disk export (`export_png`, `export_svg`), advanced generators (`generate_diagram`), element locking and grouping (`manage_element_state`), camera viewport framing (`set_viewport`), background live WebSocket server (`live_server`), client-side encrypted sharing (`export_to_excalidraw_url`), and design guidelines (`read_diagram_guide`).
 >
 > To enable the `FULL` toolset, configure the environment variable:
 > ```bash

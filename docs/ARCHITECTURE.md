@@ -64,7 +64,7 @@ flowchart TD
 - Registers tools with explicit input and output schemas, JSON Schema constraints, and safety annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`).
 - Controls tool schema exposure based on `EXCALIDRAW_TOOLSET`:
   - `core` (default): 12 curated tools (~5,048 compact tokens).
-  - `full`: 20 tools (~7,937 compact tokens).
+  - `full`: 21 tools (~7,937 compact tokens).
 - Strips redundant `outputSchema` definitions and serializes tool outputs to minified compact JSON, eliminating wire duplication.
 - Serves static and parameterized MCP resources (`excalidraw://capabilities`, `excalidraw://fonts`, `excalidraw://guide/{topic}`, `exca-mcp://skills/index`) and task prompts.
 
