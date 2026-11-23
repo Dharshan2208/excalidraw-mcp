@@ -1,6 +1,6 @@
 ---
 name: verify-and-editable-handoff
-description: Run layout diagnostics, fix overlaps and spacing defects with auto_fix_layout, visually inspect PNG preview, enforce human editability, and export dual .excalidraw and PNG formats.
+description: Run layout diagnostics, fix overlaps and spacing defects with auto_fix_layout, visually inspect PNG preview, enforce human editability, and export dual .excalidraw and PNG formats. Use when completing, validating, repairing, previewing, or exporting Excalidraw diagrams before handoff.
 ---
 
 # Verify and Editable Handoff
@@ -94,10 +94,10 @@ Do not assume a mathematically valid layout looks visually appealing. Always ins
 A diagram is only successful if a human engineer can open it in Excalidraw and make adjustments without breaking the structure. Ensure these 4 rules are satisfied:
 
 1. **Bound Connectors**:
-   - All arrows must be created using the `connect(source_id, target_id)` tool, which automatically establishes bound start and end anchor bindings.
+   - All arrows must be created using the `create_connector(source_id, target_id)` tool, which automatically establishes bound start and end anchor bindings.
    - When a user clicks and drags a service or database node in Excalidraw, the attached connectors must follow automatically.
 2. **Bound Labels**:
-   - Always supply text labels directly through shape properties (`label` in `add_rectangle`, `add_diamond`) rather than loose floating text boxes positioned on top.
+   - Always supply text labels directly through shape properties (`label` in `create_shape`) rather than loose floating text boxes positioned on top.
    - Bound labels center automatically when shapes resize.
 3. **No Permanently Locked Elements**:
    - Ensure elements are not left locked (`locked: true`), allowing the user immediate manipulation.
@@ -130,19 +130,16 @@ call_mcp_tool(
 ### 2. Native Editable Excalidraw File
 Save a native `.excalidraw` document snapshot:
 ```python
-# Option A: Save directly to the scenes repository directory
+# Save directly to the scenes repository directory
 call_mcp_tool(
     "excalidraw",
-    "save",
+    "scene_storage",
     {
+        "action": "save",
         "name": "system-architecture",
         "overwrite": True,
     },
 )
-
-# Option B: Export the raw JSON document to write to a project path
-scene_export = call_mcp_tool("excalidraw", "export_scene", {})
-# Returns EmbeddedResource containing scene JSON, which can be saved to docs/system-architecture.excalidraw
 ```
 
 ---
@@ -153,7 +150,7 @@ Run through the [delivery-checklist.md](file:///home/chifuyu/Coding/Self/Project
 
 - [ ] `auto_fix_layout(dry_run=True)` reports status `"no_changes_needed"` (0 initial issues).
 - [ ] Visual preview inspected and verified clean.
-- [ ] All arrows have bound endpoints via `connect(source_id, target_id)`.
+- [ ] All arrows have bound endpoints via `create_connector(source_id, target_id)`.
 - [ ] All shape labels bound directly to host shapes.
 - [ ] Dual export completed (`.png` and `.excalidraw`).
 

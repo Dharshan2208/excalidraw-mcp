@@ -24,7 +24,7 @@ from excalidraw_mcp.models import _finite_number, new_document
 from excalidraw_mcp.scene import list_scenes, load_scene, save_scene
 from excalidraw_mcp.state import SceneState
 from excalidraw_mcp.text_padding import required_container_size
-from excalidraw_mcp.layout import boundary_point, clustered_layout, layered_layout, linear_layout, wrap_label
+from excalidraw_mcp.layout import boundary_point, clustered_layout, layered_layout, linear_layout
 from excalidraw_mcp.parser import parse_architecture
 
 SHAPES = {"rectangle": rect, "ellipse": ellipse, "diamond": diamond}
@@ -202,9 +202,56 @@ def _move_arrow_endpoints(el, dx, dy, start, end):
 
 
 class SceneService:
-    def __init__(self, state: SceneState | None = None):
-        self.state = state if state is not None else SceneState()
+    def __init__(
+        self,
+        state: SceneState | None = None,
+        session_id: str | None = None,
+        sessions: dict[str, SceneState] | None = None,
+    ):
+        from .config import configured_session_id
+
+        self._sessions: dict[str, SceneState] = sessions if sessions is not None else {}
+        self._session_id = session_id or configured_session_id()
+        if self._session_id not in self._sessions:
+            self._sessions[self._session_id] = state if state is not None else SceneState()
+        elif state is not None:
+            self._sessions[self._session_id] = state
         self._live_server = None
+
+    @property
+    def state(self) -> SceneState:
+        return self._sessions[self._session_id]
+
+    @state.setter
+    def state(self, value: SceneState) -> None:
+        self._sessions[self._session_id] = value
+
+    @property
+    def session_id(self) -> str:
+        return self._session_id
+
+    def for_session(self, session_id: str) -> "SceneService":
+        """Return a SceneService instance bound to the specified session ID, sharing the session registry."""
+        srv = SceneService(session_id=session_id, sessions=self._sessions)
+        srv._live_server = self._live_server
+        return srv
+
+    def list_sessions(self) -> list[str]:
+        """Return a list of all active session identifiers."""
+        return sorted(self._sessions.keys())
+
+    def switch_session(self, session_id: str) -> None:
+        """Switch the active session identifier for this service."""
+        if not session_id or not isinstance(session_id, str):
+            raise SceneError("Session ID must be a non-empty string")
+        if session_id not in self._sessions:
+            self._sessions[session_id] = SceneState()
+        self._session_id = session_id
+
+    def reset_session(self, session_id: str | None = None) -> None:
+        """Reset the canvas state for a specific session."""
+        sid = session_id or self._session_id
+        self._sessions[sid] = SceneState()
 
     def add_shape(self, shape, x, y, w, h, label="", frame_id=None, **style):
         if shape not in SHAPES:
@@ -812,7 +859,7 @@ class SceneService:
                     for e in index.values()
                     if e["type"] in SHAPES
                     and not e.get("isDeleted")
-                    and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
+                    and (e.get("customData") or {}).get("type") not in ("code_block_header",)
                 ]
                 pair_arrows = [
                     e
@@ -886,15 +933,22 @@ class SceneService:
 
         return self.state.apply(add_connection)
 
-    def save(self, name, overwrite=False):
+    def save(self, name, overwrite=False, format="excalidraw", directory=None):
+        if format == "obsidian":
+            return self.export_obsidian(name=name, directory=directory, overwrite=overwrite)
         document = self.state.document()
         path = save_scene(name, document, overwrite=overwrite)
         active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
         return {"path": path, "elements": active_count, "status": "saved"}
 
-    def export_scene(self):
+    def export_scene(self, format="excalidraw"):
         """Export a detached snapshot without filesystem access."""
-        return _serialize_for_export(self.state.document())
+        doc = self.state.document()
+        if format == "obsidian":
+            from .obsidian import serialize_obsidian_markdown
+
+            return serialize_obsidian_markdown(doc)
+        return _serialize_for_export(doc)
 
     def read_saved_scene(self, name):
         return _serialize_for_export(load_scene(name))
@@ -1036,6 +1090,216 @@ class SceneService:
             "width": width,
             "height": height,
             "scale": scale,
+            "revision": revision,
+        }
+
+    def export_svg(
+        self,
+        name,
+        directory=None,
+        padding=40,
+        background=True,
+        overwrite=False,
+    ):
+        if not isinstance(name, str) or not name.strip():
+            raise SceneError("SVG export name cannot be empty")
+
+        clean_name = name.strip()
+        if clean_name.lower().endswith(".svg"):
+            clean_name = clean_name[:-4].strip()
+
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", clean_name):
+            raise SceneError(
+                "Export name must be 1–128 letters, digits, underscores, dots or hyphens, "
+                "starting with a letter or digit"
+            )
+
+        if (
+            not isinstance(padding, int)
+            or isinstance(padding, bool)
+            or padding < 0
+            or padding > 200
+        ):
+            raise SceneError("padding must be an integer between 0 and 200")
+
+        import tempfile
+        from .config import export_directory, scene_directory
+        from .svg_renderer import render_scene_svg
+
+        if directory is not None:
+            if not isinstance(directory, (str, Path)) or not str(directory).strip():
+                raise SceneError("directory must be a non-empty string or path")
+            target_dir = Path(directory).expanduser()
+            if not target_dir.is_absolute():
+                target_dir = (Path.cwd() / target_dir).resolve()
+            else:
+                target_dir = target_dir.resolve()
+            allowed_export_roots = [
+                export_directory().resolve(),
+                Path(scene_directory()).resolve(),
+                Path.cwd().resolve(),
+                Path(tempfile.gettempdir()).resolve(),
+            ]
+            if not any(
+                target_dir == r or target_dir.is_relative_to(r)
+                for r in allowed_export_roots
+            ):
+                raise SceneError(
+                    f"Export directory '{directory}' is outside permitted project, export, and temporary locations"
+                )
+        else:
+            target_dir = export_directory().resolve()
+
+        try:
+            target_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        except OSError as exc:
+            raise SceneError(f"Could not create export directory: {exc.strerror}") from exc
+
+        target_file = target_dir / f"{clean_name}.svg"
+
+        if target_file.exists():
+            if target_file.is_dir() or target_file.is_symlink():
+                raise SceneError(
+                    "Export destination exists and is not a regular file"
+                )
+            if not overwrite:
+                raise SceneError(
+                    f"Export file '{target_file.name}' already exists; use overwrite=true to replace it"
+                )
+
+        document, revision = self.state.snapshot()
+        svg_content, width, height = render_scene_svg(
+            document, padding=padding, background=bool(background)
+        )
+        svg_bytes = svg_content.encode("utf-8")
+
+        temp_name = f".export-{uuid.uuid4().hex}.tmp"
+        temp_file = target_dir / temp_name
+
+        try:
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(svg_bytes)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+            os.replace(temp_file, target_file)
+        except OSError as exc:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise SceneError(f"Failed to write SVG export file: {exc.strerror}") from exc
+
+        return {
+            "status": "svg exported",
+            "name": f"{clean_name}.svg",
+            "path": str(target_file.resolve()),
+            "bytes": len(svg_bytes),
+            "width": width,
+            "height": height,
+            "revision": revision,
+        }
+
+    def export_obsidian(
+        self,
+        name: str,
+        directory: str | Path | None = None,
+        overwrite: bool = False,
+    ) -> dict[str, Any]:
+        """Export active scene to an Obsidian Excalidraw plugin Markdown file (.excalidraw.md)."""
+        if not isinstance(name, str) or not name.strip():
+            raise SceneError("Obsidian export name cannot be empty")
+
+        clean_name = name.strip()
+        if clean_name.lower().endswith(".excalidraw.md"):
+            clean_name = clean_name[:-14].strip()
+        elif clean_name.lower().endswith(".md"):
+            clean_name = clean_name[:-3].strip()
+
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", clean_name):
+            raise SceneError(
+                "Export name must be 1–128 letters, digits, underscores, dots or hyphens, "
+                "starting with a letter or digit"
+            )
+
+        import tempfile
+        import uuid
+        from .config import export_directory, scene_directory
+        from .obsidian import serialize_obsidian_markdown
+
+        if directory is not None:
+            if not isinstance(directory, (str, Path)) or not str(directory).strip():
+                raise SceneError("directory must be a non-empty string or path")
+            target_dir = Path(directory).expanduser()
+            if not target_dir.is_absolute():
+                target_dir = (Path.cwd() / target_dir).resolve()
+            else:
+                target_dir = target_dir.resolve()
+            allowed_export_roots = [
+                export_directory().resolve(),
+                Path(scene_directory()).resolve(),
+                Path.cwd().resolve(),
+                Path(tempfile.gettempdir()).resolve(),
+            ]
+            if not any(
+                target_dir == r or target_dir.is_relative_to(r)
+                for r in allowed_export_roots
+            ):
+                raise SceneError(
+                    f"Export directory '{directory}' is outside permitted project, export, and temporary locations"
+                )
+        else:
+            target_dir = export_directory().resolve()
+
+        try:
+            target_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        except OSError as exc:
+            raise SceneError(f"Could not create export directory: {exc.strerror}") from exc
+
+        target_file = target_dir / f"{clean_name}.excalidraw.md"
+        if target_file.exists():
+            if target_file.is_dir() or target_file.is_symlink():
+                raise SceneError(
+                    "Export destination exists and is not a regular file"
+                )
+            if not overwrite:
+                raise SceneError(
+                    f"File '{target_file.name}' already exists in target directory (use overwrite=True to replace)"
+                )
+
+        document, revision = self.state.snapshot()
+        md_content = serialize_obsidian_markdown(document)
+        md_bytes = md_content.encode("utf-8")
+
+        temp_name = f".export-{uuid.uuid4().hex}.tmp"
+        temp_file = target_dir / temp_name
+
+        try:
+            fd = os.open(temp_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(md_bytes)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+            os.replace(temp_file, target_file)
+        except OSError as exc:
+            try:
+                if temp_file.exists():
+                    temp_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise SceneError(f"Failed to write Obsidian export file: {exc.strerror}") from exc
+
+        active_count = len([el for el in document.get("elements", []) if not el.get("isDeleted")])
+        return {
+            "status": "obsidian exported",
+            "name": f"{clean_name}.excalidraw.md",
+            "path": str(target_file.resolve()),
+            "format": "obsidian",
+            "bytes": len(md_bytes),
+            "elements": active_count,
             "revision": revision,
         }
 
@@ -1240,6 +1504,7 @@ class SceneService:
         repair_scope: str = "all",
         aggressiveness: str = "balanced",
         min_gap: float = 30.0,
+        progress_callback: Any = None,
     ) -> dict[str, Any]:
         """Diagnose, plan, and automatically repair layout defects with transactional rollback safety.
 
@@ -1265,30 +1530,25 @@ class SceneService:
                     repair_scope=repair_scope,
                     aggressiveness=aggressiveness,
                     min_gap=float(min_gap),
+                    progress_callback=progress_callback,
                 )
                 fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
                 return {**fix_res_clean, "revision": self.state.revision}
 
-            def apply_named_fix(active_draft):
-                doc = load_scene(name)
-                fix_res = auto_fix_scene_layout(
-                    doc,
-                    dry_run=False,
-                    repair_scope=repair_scope,
-                    aggressiveness=aggressiveness,
-                    min_gap=float(min_gap),
-                )
-                if (
-                    not fix_res.get("rolled_back")
-                    and fix_res.get("status") in ("repaired", "partially_repaired")
-                ):
-                    save_scene(name, fix_res["document"], overwrite=True)
-                    active_draft["elements"] = fix_res["document"]["elements"]
-                    if "appState" in fix_res.get("document", {}):
-                        active_draft["appState"] = fix_res["document"]["appState"]
-                return fix_res
-
-            fix_res = self.state.apply(apply_named_fix)
+            doc = load_scene(name)
+            fix_res = auto_fix_scene_layout(
+                doc,
+                dry_run=False,
+                repair_scope=repair_scope,
+                aggressiveness=aggressiveness,
+                min_gap=float(min_gap),
+                progress_callback=progress_callback,
+            )
+            if (
+                not fix_res.get("rolled_back")
+                and fix_res.get("status") in ("repaired", "partially_repaired")
+            ):
+                save_scene(name, fix_res["document"], overwrite=True)
             fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
             return {**fix_res_clean, "revision": self.state.revision}
 
@@ -1300,6 +1560,7 @@ class SceneService:
                 repair_scope=repair_scope,
                 aggressiveness=aggressiveness,
                 min_gap=float(min_gap),
+                progress_callback=progress_callback,
             )
             fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
             return {**fix_res_clean, "revision": rev}
@@ -1311,6 +1572,7 @@ class SceneService:
                 repair_scope=repair_scope,
                 aggressiveness=aggressiveness,
                 min_gap=float(min_gap),
+                progress_callback=progress_callback,
             )
             if (
                 not fix_res.get("rolled_back")
@@ -3254,6 +3516,7 @@ class SceneService:
             )
 
         return {
+            "session_id": self._session_id,
             "element_count": len(elements),
             "type_counts": type_counts,
             "frames": frames,

@@ -185,7 +185,7 @@ LIBRARIES: dict[str, dict[str, Any]] = {
                 "type": "frame",
                 "width": 500,
                 "height": 350,
-                "name": "VPC Network (10.0.0.0/16)",
+                "label": "VPC Network (10.0.0.0/16)",
             },
             {
                 "name": "Load Balancer",
@@ -211,10 +211,10 @@ LIBRARIES: dict[str, dict[str, Any]] = {
 
 
 def parse_resource_uri(uri: str) -> tuple[str, str]:
-    """Parse an excalidraw://resource_type/identifier URI."""
-    match = re.match(r"^excalidraw://([a-zA-Z0-9_-]+)/?(.*)$", uri.strip())
+    """Parse an excalidraw:// or exca-mcp:// resource_type/identifier URI."""
+    match = re.match(r"^(?:excalidraw|exca-mcp)://([a-zA-Z0-9_-]+)/?(.*)$", uri.strip())
     if not match:
-        raise SceneError(f"Invalid resource URI: '{uri}'. Expected 'excalidraw://<type>/<identifier>'")
+        raise SceneError(f"Invalid resource URI: '{uri}'. Expected 'excalidraw://<type>/<identifier>' or 'exca-mcp://<type>/<identifier>'")
     res_type = match.group(1).lower()
     # Normalize plural aliases: scenes -> scene, themes -> theme, etc.
     type_map = {
@@ -222,6 +222,7 @@ def parse_resource_uri(uri: str) -> tuple[str, str]:
         "themes": "theme",
         "libraries": "library",
         "elements": "element",
+        "skills": "skill",
     }
     res_type = type_map.get(res_type, res_type)
     ident = match.group(2).strip().strip("/")
@@ -362,15 +363,52 @@ def get_resource(
             "revision": rev,
         }
 
+    elif res_type == "skill":
+        from .skills import (
+            get_skills_index,
+            read_skill_content,
+            read_reference_content,
+            SkillError,
+        )
+        if not ident or ident == "index":
+            return {
+                "resource_type": "skill",
+                "identifier": "index",
+                "index": get_skills_index(),
+            }
+        parts = [p for p in ident.split("/") if p]
+        skill_name = parts[0]
+        try:
+            if len(parts) >= 3 and parts[1] == "references":
+                ref_name = parts[2]
+                content = read_reference_content(skill_name, ref_name)
+                return {
+                    "resource_type": "skill_reference",
+                    "identifier": f"{skill_name}/references/{ref_name}",
+                    "skill": skill_name,
+                    "reference": ref_name,
+                    "content": content,
+                }
+            else:
+                content = read_skill_content(skill_name)
+                return {
+                    "resource_type": "skill",
+                    "identifier": skill_name,
+                    "content": content,
+                }
+        except SkillError as exc:
+            raise SceneError(f"Skill error for '{ident}': {exc}") from exc
+
     elif res_type == "capabilities":
         toolset = configured_toolset()
         is_full = toolset == "full"
+        from .server import get_server_version
         return {
             "resource_type": "capabilities",
             "identifier": "capabilities",
             "active_toolset": toolset,
-            "server_version": "0.2.0",
-            "tool_count": 48 if is_full else 27,
+            "server_version": get_server_version(),
+            "tool_count": 21 if is_full else 12,
             "config": {
                 "scene_dir": str(scene_directory()),
                 "max_elements": max_elements(),
@@ -379,5 +417,5 @@ def get_resource(
 
     else:
         raise SceneError(
-            f"Unsupported resource type '{res_type}'. Supported types: scene, library, theme, element, capabilities"
+            f"Unsupported resource type '{res_type}'. Supported types: scene, library, theme, element, capabilities, skill"
         )

@@ -97,23 +97,29 @@ def frame(x: int, y: int, w: int, h: int, name: str = "", **style):
 def normalize_font_family(family: int | str | None) -> int:
     """Normalize font family name or number to Excalidraw integer code.
 
-    1: Excalifont / Virgil (Hand-drawn)
+    1: Virgil (Hand-drawn legacy)
     2: Sans-serif / Helvetica (Normal)
     3: Cascadia / Monospace (Code)
-    4: Comic Shanns
+    4: Comic Shanns (legacy)
+    5: Excalifont (Hand-drawn modern standard)
+    8: Comic Shanns (modern standard)
     """
     if family is None:
         return 2
     if isinstance(family, int):
         return family if family >= 1 else 2
     f_str = str(family).strip().lower()
-    if f_str in ("1", "excalifont", "virgil", "handwriting", "hand-drawn", "hand"):
+    if f_str in ("5", "excalifont", "handwriting", "hand-drawn", "hand"):
+        return 5
+    if f_str in ("1", "virgil"):
         return 1
     if f_str in ("2", "sans-serif", "sans", "helvetica", "normal"):
         return 2
     if f_str in ("3", "monospace", "mono", "code", "cascadia"):
         return 3
-    if f_str in ("4", "comic-shanns", "comic", "comic shanns"):
+    if f_str in ("8", "comic-shanns", "comic", "comic shanns"):
+        return 8
+    if f_str in ("4",):
         return 4
     if f_str.isdigit() and int(f_str) >= 1:
         return int(f_str)
@@ -138,6 +144,8 @@ def text(
         "2",
         "3",
         "4",
+        "5",
+        "8",
         "excalifont",
         "virgil",
         "sans-serif",
@@ -186,6 +194,8 @@ def text(
 
 def arrow(x, y, x2, y2, elbowed=False, **style):
     is_elbowed = bool(style.pop("elbowed", elbowed))
+    start_arrowhead = style.pop("startArrowhead", style.pop("start_arrowhead", None))
+    end_arrowhead = style.pop("endArrowhead", style.pop("end_arrowhead", "arrow"))
     el = {
         "id": str(uuid.uuid4()),
         "type": "arrow",
@@ -196,8 +206,8 @@ def arrow(x, y, x2, y2, elbowed=False, **style):
         "height": abs(y2 - y),
         "startBinding": None,
         "endBinding": None,
-        "startArrowhead": None,
-        "endArrowhead": "arrow",
+        "startArrowhead": start_arrowhead,
+        "endArrowhead": end_arrowhead,
         "lastCommittedPoint": None,
         "elbowed": is_elbowed,
     }

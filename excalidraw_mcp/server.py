@@ -1,12 +1,11 @@
 """MCP adapters; each server owns an explicit scene service."""
 
-import functools
 from hashlib import sha256
-import inspect
 import json
 from typing import Any, Literal
 
-from fastmcp import FastMCP
+import anyio
+from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.base import Tool, ToolResult
 from fastmcp.utilities.types import Image
@@ -34,7 +33,7 @@ def _custom_convert_result(self, raw_value: Any) -> ToolResult:
     )
 
 
-Tool.convert_result = _custom_convert_result
+Tool.convert_result = _custom_convert_result  # type: ignore[method-assign]
 
 
 def _configure_tool_registration(mcp: FastMCP) -> None:
@@ -45,19 +44,32 @@ def _configure_tool_registration(mcp: FastMCP) -> None:
         kwargs["output_schema"] = None
         return orig_tool(name_or_fn, **kwargs)
 
-    mcp.tool = custom_tool
+    mcp.tool = custom_tool  # type: ignore[method-assign]
+
+
+def _report_tool_progress(
+    ctx: Context | None,
+    progress: float,
+    total: float,
+    message: str | None = None,
+) -> None:
+    """Safely report progress and logging notifications when Context is provided."""
+    if ctx is None:
+        return
+    try:
+        if message:
+            anyio.from_thread.run(ctx.info, message)
+        anyio.from_thread.run(ctx.report_progress, progress, total)
+    except Exception:
+        pass
+
 
 from excalidraw_mcp.contracts import (
     Aggressiveness,
-    ArchitectureResult,
-    AutoFixLayoutResult,
-    BatchOperation,
+    Arrowhead,
     BatchResult,
     Boolean,
-    CodeBlockResult,
-    CodeTheme,
     Color,
-    ConnectResult,
     Coordinate,
     CreateResult,
     CreateShapeType,
@@ -67,64 +79,42 @@ from excalidraw_mcp.contracts import (
     DiagramResult,
     Dimension,
     Direction,
-    DuplicateResult,
     ElementId,
-    ElementResult,
     ElementStateAction,
-    ElementSummary,
     ElementType,
     FillStyle,
-    FindResult,
     FocusResult,
     FontSize,
-    FontCategory,
     FontFamily,
-    FontListResult,
     GraphCluster,
     GraphEdge,
     GraphNode,
-    GraphResult,
-    GroupResult,
-    ImportResult,
     InspectMode,
     Label,
     LayoutType,
     LiveServerAction,
     LiveServerResult,
-    LoadResult,
-    LockResult,
-    MoveResult,
     NonEmptyText,
     Offset,
     Opacity,
     PageLimit,
     PngExportResult,
+    SvgExportResult,
     PreviewFormat,
     PreviewMaxDimension,
     PreviewPadding,
     PreviewScale,
     RepairScope,
-    ResizeResult,
-    ResourceResult,
     Roughness,
     Roundness,
-    SaveResult,
-    SavedScenesResult,
-    SceneDescriptionResult,
     SceneName,
-    ScenePage,
-    SceneSummaryResult,
-    ShapeType,
     ShareUrlResult,
     StatusResult,
     StorageAction,
-    StorageResult,
+    StorageFormat,
     StrokeStyle,
     StrokeWidth,
     UndoResult,
-    UnlockResult,
-    UngroupResult,
-    UpdateResult,
     ViewportResult,
 )
 from excalidraw_mcp.config import configured_toolset
@@ -148,6 +138,8 @@ def _style_kwargs(
     roundness: str | None = None,
     font_family: Any = None,
     font_size: int | None = None,
+    startArrowhead: str | None = None,
+    endArrowhead: str | None = None,
 ) -> dict:
     """Collect non-None style keyword arguments into a dict."""
     return {k: v for k, v in locals().items() if v is not None}
@@ -165,8 +157,12 @@ def get_server_version() -> str:
 def create_server(
     service: SceneService | None = None,
     toolset: str | None = None,
+    session_id: str | None = None,
 ) -> FastMCP:
-    service = service if service is not None else SceneService()
+    if service is None:
+        service = SceneService(session_id=session_id)
+    elif session_id is not None:
+        service = service.for_session(session_id)
     active_toolset = (
         toolset if toolset is not None else configured_toolset()
     ).strip().lower()
@@ -176,7 +172,7 @@ def create_server(
         "and add_frame for primitives, or batch_mutate for atomic updates. Use inspect_scene to query "
         "elements and metrics. Use auto_fix_layout to repair defects, and preview to inspect visuals."
     )
-    mcp = FastMCP("Excalidraw MCP", instructions=instructions)
+    mcp = FastMCP("Excalidraw MCP", instructions=instructions, version=get_server_version())
     _configure_tool_registration(mcp)
 
     def invoke(operation, *args, **kwargs):
@@ -205,7 +201,7 @@ def create_server(
         font_family: FontFamily | None = None,
         font_size: FontSize | None = None,
     ) -> dict[str, Any]:
-        """Create a geometric shape (rectangle, ellipse, diamond) with optional label, frame containment, and visual styling."""
+        """Create a shape (rectangle, ellipse, diamond) with optional label and styling."""
         shape_type = "ellipse" if type == "circle" else type
         height = h if h is not None else w
         style = _style_kwargs(
@@ -240,6 +236,8 @@ def create_server(
         y2: Coordinate | None = None,
         label: Label = "",
         elbowed: Boolean = False,
+        startArrowhead: Arrowhead | None = None,
+        endArrowhead: Arrowhead | None = None,
         strokeColor: Color | None = None,
         backgroundColor: Color | None = None,
         strokeStyle: StrokeStyle | None = None,
@@ -250,7 +248,7 @@ def create_server(
         font_family: FontFamily | None = None,
         font_size: FontSize | None = None,
     ) -> dict[str, Any]:
-        """Create a directional arrow connector either between coordinate endpoints (x,y -> x2,y2) or bound between two shape elements (source_id -> target_id)."""
+        """Create a connector arrow between coordinates or bound shape elements."""
         style = _style_kwargs(
             strokeColor=strokeColor,
             backgroundColor=backgroundColor,
@@ -261,6 +259,8 @@ def create_server(
             roundness=roundness,
             font_family=font_family,
             font_size=font_size,
+            startArrowhead=startArrowhead,
+            endArrowhead=endArrowhead,
         )
         if source_id and target_id:
             res = invoke(service.connect, source_id, target_id, label, elbowed=elbowed, **style)
@@ -292,10 +292,7 @@ def create_server(
         opacity: Opacity | None = None,
         roughness: Roughness | None = None,
     ) -> CreateResult:
-        """Add a frame (boundary container) to the scene.
-
-        Optionally assign existing elements to this frame using `element_ids`.
-        """
+        """Create a frame container, optionally enclosing existing elements."""
         style = _style_kwargs(
             strokeColor=strokeColor,
             backgroundColor=backgroundColor,
@@ -322,7 +319,7 @@ def create_server(
         ),
     )
     def clear() -> StatusResult:
-        """Remove all elements, app state and files from the scene."""
+        """Clear all elements and state from the active scene."""
         return invoke(service.clear)
 
     @mcp.tool(
@@ -331,7 +328,7 @@ def create_server(
         ),
     )
     def delete(element_id: ElementId) -> DeleteResult:
-        """Delete an element and its owned label; detach surviving connectors."""
+        """Delete an element and detach surviving connectors."""
         return invoke(service.delete, element_id)
 
     @mcp.tool(annotations=READ_ONLY)
@@ -349,7 +346,7 @@ def create_server(
         include_raw: Boolean = False,
         resource_uri: str | None = None,
     ) -> dict[str, Any]:
-        """Inspect canvas state, metrics, elements, spatial descriptions, camera viewport, or server status (readOnlyHint=True)."""
+        """Query scene metrics, spatial descriptions, elements, viewport, or server status."""
         if mode == "summary":
             return invoke(service.get_scene_summary)
         elif mode == "describe":
@@ -401,7 +398,7 @@ def create_server(
         strokeColor: Color | None = None,
         opacity: Opacity | None = None,
     ) -> CreateResult:
-        """Add standalone text and return its element ID. font_family can be 'excalifont', 'sans-serif', 'monospace', 'comic-shanns', or an Excalidraw font number (1=Excalifont, 2=sans-serif, 3=monospace, 4=comic-shanns)."""
+        """Add standalone text element to the scene."""
         return invoke(
             service.add_text,
             x,
@@ -414,7 +411,7 @@ def create_server(
         )
 
     @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+        annotations=ToolAnnotations(destructiveHint=False, idempotentHint=True, openWorldHint=False),
     )
     def update_element(
         element_id: ElementId,
@@ -436,7 +433,7 @@ def create_server(
         width: Dimension | None = None,
         height: Dimension | None = None,
     ) -> dict[str, Any]:
-        """Update an element's position (x, y), dimensions (width, height), label, typography, or visual styling."""
+        """Update element position, size, label, or visual styling."""
         res: dict[str, Any] = {"status": "updated", "element_id": element_id}
         if width is not None or height is not None:
             if width is None or height is None:
@@ -496,9 +493,9 @@ def create_server(
 
     @mcp.tool(annotations=MUTATING)
     def batch_mutate(
-        operations: list[BatchOperation],
+        operations: list[dict[str, Any]],
     ) -> BatchResult:
-        """Atomically execute a batch of creation, editing, and deletion operations."""
+        """Atomically execute a batch of canvas mutations in a single revision step."""
         return invoke(
             service.batch_mutate,
             [op.model_dump(exclude_none=True) if hasattr(op, "model_dump") else op for op in operations],
@@ -512,8 +509,22 @@ def create_server(
         aggressiveness: Aggressiveness = "balanced",
         min_gap: float = 30.0,
         verbose: Boolean = False,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
-        """Diagnose, plan, and automatically repair layout defects (overlaps, text clipping, containment, routing, spacing) with rollback safety."""
+        """Diagnose and automatically repair layout defects with rollback safety."""
+        def sync_progress(phase: int, total: int, msg: str):
+            if ctx:
+                try:
+                    import anyio.from_thread
+                    anyio.from_thread.run(ctx.report_progress, phase, total, msg)
+                except Exception:
+                    try:
+                        import asyncio
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(ctx.report_progress(phase, total, msg))
+                    except Exception:
+                        pass
+
         result = invoke(
             service.auto_fix_layout,
             name=name,
@@ -521,6 +532,7 @@ def create_server(
             repair_scope=repair_scope,
             aggressiveness=aggressiveness,
             min_gap=min_gap,
+            progress_callback=sync_progress,
         )
         if verbose:
             return result
@@ -547,6 +559,20 @@ def create_server(
     def undo() -> UndoResult:
         """Restore the scene before the most recent successful mutation."""
         return invoke(service.undo)
+
+    @mcp.resource("excalidraw://active/scene.json", mime_type=MIME_TYPE)
+    def active_scene_json_resource() -> str:
+        """Read the current in-memory active canvas scene as native Excalidraw JSON."""
+        doc, _ = service.state.snapshot()
+        import json
+        return json.dumps(doc, separators=(",", ":"))
+
+    @mcp.resource("excalidraw://active", mime_type=MIME_TYPE)
+    def active_scene_resource() -> str:
+        """Read the current in-memory active canvas scene."""
+        doc, _ = service.state.snapshot()
+        import json
+        return json.dumps(doc, separators=(",", ":"))
 
     @mcp.resource("excalidraw://scenes/{name}.excalidraw", mime_type=MIME_TYPE)
     def saved_scene_resource(name: SceneName) -> str:
@@ -609,14 +635,14 @@ def create_server(
                         ratio = max_dimension / max(w, h)
                         new_w = max(1, int(round(w * ratio)))
                         new_h = max(1, int(round(h * ratio)))
-                        im = im.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
+                        im = im.resize((new_w, new_h), PILImage.Resampling.LANCZOS)  # type: ignore[assignment]
 
                     out_buf = io.BytesIO()
                     if fmt == "jpeg":
                         if im.mode in ("RGBA", "LA", "P"):
                             rgb_im = PILImage.new("RGB", im.size, (255, 255, 255))
                             if im.mode == "P":
-                                im = im.convert("RGBA")
+                                im = im.convert("RGBA")  # type: ignore[assignment]
                             rgb_im.paste(
                                 im, mask=im.split()[-1] if "A" in im.mode else None
                             )
@@ -632,7 +658,7 @@ def create_server(
 
     if is_full:
         @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
+            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
         )
         def scene_storage(
             action: StorageAction = "save",
@@ -642,11 +668,15 @@ def create_server(
             mode: Literal["replace", "merge"] = "replace",
             offset_x: Coordinate = 0.0,
             offset_y: Coordinate = 0.0,
+            format: StorageFormat = "excalidraw",
+            directory: str | None = None,
         ) -> Any:
-            """Manage diagram storage: save snapshots to disk, load scenes, list saved files, export document JSON, or import files (destructiveHint=True)."""
+            """Save, load, list, export, or import diagram scenes."""
             if action == "save":
                 if not name:
                     raise ToolError("scene_storage(action='save') requires name parameter.")
+                if format == "obsidian":
+                    return invoke(service.export_obsidian, name, directory=directory, overwrite=overwrite)
                 return invoke(service.save, name, overwrite=overwrite)
             elif action == "load":
                 if not name:
@@ -655,6 +685,17 @@ def create_server(
             elif action == "list":
                 return invoke(service.list_saved_scenes)
             elif action == "export":
+                if format == "obsidian":
+                    payload = invoke(service.export_scene, format="obsidian")
+                    snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
+                    return EmbeddedResource(
+                        type="resource",
+                        resource=TextResourceContents(
+                            uri=AnyUrl(f"excalidraw://export/{snapshot_id}/scene.excalidraw.md"),
+                            mimeType="text/markdown",
+                            text=payload,
+                        ),
+                    )
                 payload = invoke(service.export_scene)
                 snapshot_id = sha256(payload.encode("utf-8")).hexdigest()
                 return EmbeddedResource(
@@ -681,7 +722,7 @@ def create_server(
                 raise ToolError(f"Unsupported storage action: {action}")
 
         @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False),
         )
         def export_png(
             name: SceneName,
@@ -691,12 +732,32 @@ def create_server(
             background: Boolean = True,
             overwrite: Boolean = False,
         ) -> PngExportResult:
-            """Export the active scene to a PNG image file in a project or configured directory."""
+            """Export active scene to a PNG image file."""
             return invoke(
                 service.export_png,
                 name=name,
                 directory=directory,
                 scale=scale,
+                padding=padding,
+                background=background,
+                overwrite=overwrite,
+            )
+
+        @mcp.tool(
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False),
+        )
+        def export_svg(
+            name: SceneName,
+            directory: str | None = None,
+            padding: PreviewPadding = 40,
+            background: Boolean = True,
+            overwrite: Boolean = False,
+        ) -> SvgExportResult:
+            """Export active scene to a standalone vector SVG file."""
+            return invoke(
+                service.export_svg,
+                name=name,
+                directory=directory,
                 padding=padding,
                 background=background,
                 overwrite=overwrite,
@@ -727,12 +788,15 @@ def create_server(
             strokeStyle: StrokeStyle | None = None,
             opacity: Opacity | None = None,
             roughness: Roughness | None = None,
+            ctx: Context | None = None,
         ) -> DiagramResult:
-            """Generate high-level diagrams from Mermaid syntax, quick text architecture prompts, or structured graphs (destructiveHint=True)."""
+            """Generate diagrams from Mermaid syntax, architecture text prompts, or graphs."""
+            _report_tool_progress(ctx, 10, 100, f"Initializing diagram generation for format='{format}'")
             if format == "mermaid":
                 if not mermaid_code or not mermaid_code.strip():
                     raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
-                return invoke(
+                _report_tool_progress(ctx, 40, 100, "Parsing Mermaid syntax and computing layout")
+                res = invoke(
                     service.draw_mermaid,
                     mermaid_code=mermaid_code,
                     direction=direction,
@@ -740,9 +804,12 @@ def create_server(
                     elbowed=elbowed,
                     roundness=roundness,
                 )
+                _report_tool_progress(ctx, 100, 100, "Mermaid diagram generated successfully")
+                return res
             elif format == "architecture":
                 if not prompt or not prompt.strip():
                     raise ToolError("generate_diagram(format='architecture') requires non-empty prompt parameter.")
+                _report_tool_progress(ctx, 40, 100, "Synthesizing architecture layout from prompt")
                 style = _style_kwargs(
                     strokeColor=strokeColor,
                     backgroundColor=backgroundColor,
@@ -754,11 +821,14 @@ def create_server(
                     font_family=font_family,
                     font_size=font_size,
                 )
-                return invoke(service.draw_architecture, prompt, **style)
+                res = invoke(service.draw_architecture, prompt, **style)
+                _report_tool_progress(ctx, 100, 100, "Architecture diagram generated successfully")
+                return res
             elif format == "graph":
                 if nodes is None or edges is None:
                     raise ToolError("generate_diagram(format='graph') requires nodes and edges parameters.")
-                return invoke(
+                _report_tool_progress(ctx, 40, 100, "Routing nodes, edges, and clusters into scene graph")
+                res = invoke(
                     service.draw_graph,
                     [node.model_dump() if hasattr(node, "model_dump") else node for node in nodes],
                     [edge.model_dump() if hasattr(edge, "model_dump") else edge for edge in edges],
@@ -774,12 +844,14 @@ def create_server(
                     cycle_fallback=cycle_fallback,
                     expected_revision=expected_revision,
                 )
+                _report_tool_progress(ctx, 100, 100, "Graph diagram generated successfully")
+                return res
             else:
                 raise ToolError(f"Unsupported diagram format: {format}")
 
     if is_full:
         @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            annotations=ToolAnnotations(idempotentHint=False, openWorldHint=False),
         )
         def manage_element_state(
             element_ids: list[ElementId] | None = None,
@@ -788,7 +860,7 @@ def create_server(
             offset_x: Coordinate = 20.0,
             offset_y: Coordinate = 20.0,
         ) -> Any:
-            """Lock or unlock elements, manage groupings, or duplicate elements with relationship remapping."""
+            """Lock, unlock, group, ungroup, or duplicate canvas elements."""
             if action == "lock":
                 return invoke(service.set_element_locked, element_ids or [], locked=True)
             elif action == "unlock":
@@ -804,7 +876,7 @@ def create_server(
 
     if is_full:
         @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            annotations=ToolAnnotations(destructiveHint=False, idempotentHint=True, openWorldHint=False),
         )
         def set_viewport(
             scroll_x: Coordinate | None = None,
@@ -814,7 +886,7 @@ def create_server(
             focus_element_ids: list[ElementId] | None = None,
             padding: PreviewPadding = 50,
         ) -> ViewportResult | FocusResult:
-            """Set canvas camera viewport scroll offsets, zoom level, background color, or focus on elements."""
+            """Configure viewport scroll, zoom, background color, or focus on elements."""
             return invoke(
                 service.set_viewport,
                 scroll_x=scroll_x,
@@ -830,14 +902,13 @@ def create_server(
             annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
         )
         def export_to_excalidraw_url(name: SceneName | None = None) -> ShareUrlResult:
-            """Publish the scene to excalidraw.com with client-side encryption and return a shareable URL."""
+            """Publish scene to excalidraw.com and return a shareable URL."""
             return invoke(service.export_to_excalidraw_url, name=name)
 
     if is_full:
         @mcp.tool(annotations=READ_ONLY)
         def read_diagram_guide(topic: str | None = None) -> DiagramGuideResult:
-            """Read practical guidelines for layout, spacing, colors, typography, grouping, arrows, and readability.
-            Prefer reading the 'excalidraw://guide/{topic}' resource if your client supports MCP resources."""
+            """Read design guidelines for layout, typography, colors, and readability."""
             return invoke(service.read_diagram_guide, topic=topic)
 
         @mcp.tool(
@@ -848,7 +919,7 @@ def create_server(
             host: str = "127.0.0.1",
             port: int = 8080,
         ) -> LiveServerResult:
-            """Start or stop the background browser-connected Excalidraw live canvas server with real-time synchronization."""
+            """Start or stop the background browser live canvas synchronization server."""
             if action == "start":
                 return invoke(service.start_live_server, host=host, port=port)
             elif action == "stop":
@@ -864,18 +935,21 @@ def create_server(
 
         info = {
             "active_toolset": active_toolset,
+            "session_id": service.session_id,
+            "active_sessions": service.list_sessions(),
             "available_toolsets": ["core", "full"],
             "server_version": get_server_version(),
             # Measured schema savings: core (27 tools / ~7,940 tokens) vs full (43 tools / ~14,376 tokens) -> ~45.2% token savings
-            "tool_count": 20 if is_full else 12,
+            "tool_count": 21 if is_full else 12,
             "capabilities": {
                 "generators": ["mermaid", "architecture_dsl"]
                 + (["sugiyama_graph"] if is_full else []),
-                "export": ["png", "excalidraw_json"],
+                "export": ["png", "svg", "excalidraw_json", "obsidian_markdown"],
                 "repair": "5-phase topological auto_fix_layout with rollback",
                 "full_only_features": [
                     "scene_storage",
                     "export_png",
+                    "export_svg",
                     "generate_diagram",
                     "manage_element_state",
                     "set_viewport",
@@ -897,24 +971,145 @@ def create_server(
 
     register_skills_mcp(mcp)
 
+    @mcp.custom_route("/health", methods=["GET"])
+    async def health_check(request: Any) -> Any:
+        """Health check endpoint for container probes and uptime monitors."""
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"status": "healthy", "version": get_server_version()})
+
     return mcp
 
 
 mcp = create_server()
 
 
+def _is_loopback_host(host: str) -> bool:
+    """Determine whether a host address is a local loopback interface."""
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    try:
+        import ipaddress
+
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _build_argument_parser() -> Any:
+    """Build the command-line argument parser for exca-mcp."""
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(
+        prog="exca-mcp",
+        description="Excalidraw MCP Server: programmatic diagram generation, inspection, and repair.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {get_server_version()}",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default=os.getenv("EXCALIDRAW_TRANSPORT", "stdio"),
+        help="Transport protocol to use: 'stdio' (default) or 'streamable-http'",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("EXCALIDRAW_HOST", "127.0.0.1"),
+        help="Host address to bind HTTP transport (default: 127.0.0.1; never binds to 0.0.0.0 by default)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("EXCALIDRAW_PORT", "8000")),
+        help="Port to bind HTTP transport (default: 8000)",
+    )
+    parser.add_argument(
+        "--path",
+        default=os.getenv("EXCALIDRAW_HTTP_PATH", None),
+        help="Custom HTTP endpoint path (optional, defaults to '/mcp')",
+    )
+    subparsers = parser.add_subparsers(dest="subcommand", title="subcommands")
+    subparsers.add_parser(
+        "install-skills",
+        help="Install agent skills into Claude Code, Cursor, Windsurf, or custom directory.",
+    )
+    subparsers.add_parser(
+        "print-config",
+        help="Print copy-pasteable MCP client configuration snippets (Claude, Cursor, Zed, Windsurf, OpenCode).",
+    )
+    subparsers.add_parser(
+        "doctor",
+        help="Run non-destructive diagnostics on Python runtime, TrueType fonts, scene storage, and skills.",
+    )
+    return parser
+
+
+def parse_cli_args(args: list[str]) -> Any:
+    """Parse and validate command-line arguments."""
+    parser = _build_argument_parser()
+    parsed = parser.parse_args(args)
+    if parsed.port < 1 or parsed.port > 65535:
+        parser.error(f"Invalid port: {parsed.port}. Port must be between 1 and 65535.")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Run the installed stdio MCP server or CLI subcommands."""
+    """Run the MCP server (stdio or streamable-http) or CLI subcommands."""
     import sys
 
-    args = sys.argv[1:] if argv is None else argv
+    if argv is None:
+        if (
+            any(arg.startswith(("-W", "--import-mode", "--capture")) for arg in sys.argv[1:])
+            or "pytest" in sys.argv[0]
+            or "unittest" in sys.argv[0]
+            or (sys.argv[1:] and sys.argv[1] == "discover")
+        ):
+            args = []
+        else:
+            args = sys.argv[1:]
+    else:
+        args = argv
 
     if args and args[0] == "install-skills":
         from .installer import run_install_skills_cli
 
         sys.exit(run_install_skills_cli(args[1:]))
 
-    mcp.run()
+    if args and args[0] == "print-config":
+        from .config_printer import run_config_printer_cli
+
+        sys.exit(run_config_printer_cli(args[1:]))
+
+    if args and args[0] == "doctor":
+        from .doctor import run_doctor_cli
+
+        sys.exit(run_doctor_cli(args[1:]))
+
+    opts = parse_cli_args(args)
+
+    if opts.transport == "streamable-http":
+        if not _is_loopback_host(opts.host):
+            sys.stderr.write(
+                f"WARNING: Excalidraw MCP server is binding to non-loopback address '{opts.host}'. "
+                "The server does not enforce authentication. Ensure it is protected by a network firewall, "
+                "reverse proxy, or VPC boundary.\n"
+            )
+            sys.stderr.flush()
+
+        run_kwargs: dict[str, Any] = {
+            "transport": "streamable-http",
+            "host": opts.host,
+            "port": opts.port,
+        }
+        if opts.path:
+            run_kwargs["path"] = opts.path
+        mcp.run(show_banner=False, **run_kwargs)
+    else:
+        mcp.run(show_banner=False)
 
 
 def run():

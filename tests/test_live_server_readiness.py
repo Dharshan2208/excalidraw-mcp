@@ -99,7 +99,7 @@ class LiveServerReadinessTests(unittest.TestCase):
                 if self.service.state.all():
                     break
                 time.sleep(0.01)
-            
+
             elements = self.service.state.all()
             self.assertEqual(len(elements), 1)
             self.assertEqual(elements[0]["id"], "rect-ready")
@@ -345,6 +345,86 @@ while True:
                 proc.stdout.close()
             if proc.poll() is None:
                 proc.kill()
+
+
+    def test_auth_token_not_leaked_in_index_html(self):
+        """Live server must never leak auth_token into client-side index HTML (M-025)."""
+        auth_server = LiveCanvasServer(self.service, host="127.0.0.1", port=0, auth_token="super_secret_token_123")
+        try:
+            res = auth_server.start(port=0)
+            resp = httpx.get(f"{res['url']}/", timeout=2.0)
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotIn("super_secret_token_123", resp.text)
+        finally:
+            auth_server.stop()
+
+    def test_unauthenticated_api_scene_rejected_with_401(self):
+        """GET /api/scene and POST /api/scene require valid auth token when configured (M-026)."""
+        auth_server = LiveCanvasServer(self.service, host="127.0.0.1", port=0, auth_token="super_secret_token_123")
+        try:
+            res = auth_server.start(port=0)
+            url = f"{res['url']}/api/scene"
+
+            # No token -> 401
+            resp_none = httpx.get(url, timeout=2.0)
+            self.assertEqual(resp_none.status_code, 401)
+            self.assertIn("Unauthorized", resp_none.json()["error"])
+
+            # Wrong token -> 401
+            resp_wrong = httpx.get(f"{url}?token=bad_token", timeout=2.0)
+            self.assertEqual(resp_wrong.status_code, 401)
+
+            # Query param token -> 200
+            resp_query = httpx.get(f"{url}?token=super_secret_token_123", timeout=2.0)
+            self.assertEqual(resp_query.status_code, 200)
+
+            # Bearer header token -> 200
+            resp_bearer = httpx.get(url, headers={"Authorization": "Bearer super_secret_token_123"}, timeout=2.0)
+            self.assertEqual(resp_bearer.status_code, 200)
+
+            # X-Auth-Token header -> 200
+            resp_xauth = httpx.get(url, headers={"X-Auth-Token": "super_secret_token_123"}, timeout=2.0)
+            self.assertEqual(resp_xauth.status_code, 200)
+
+            # Test Origin header security (P-031 / SEC-01)
+            unauth_post = httpx.post(
+                f"{url}?token=super_secret_token_123",
+                json={"type": "excalidraw", "elements": []},
+                headers={"origin": "http://malicious-website.com"},
+                timeout=2.0,
+            )
+            self.assertEqual(unauth_post.status_code, 403)
+            self.assertIn("Forbidden", unauth_post.json()["error"])
+
+            # Test Content-Type enforcement
+            text_post = httpx.post(
+                f"{url}?token=super_secret_token_123",
+                content=b'{"type": "excalidraw"}',
+                headers={"content-type": "text/plain"},
+                timeout=2.0,
+            )
+            self.assertEqual(text_post.status_code, 415)
+            self.assertIn("Content-Type must be application/json", text_post.json()["error"])
+        finally:
+            auth_server.stop()
+
+    def test_unauthenticated_api_screenshot_rejected_with_401(self):
+        """GET /api/screenshot requires valid auth token when configured (M-026)."""
+        auth_server = LiveCanvasServer(self.service, host="127.0.0.1", port=0, auth_token="super_secret_token_123")
+        try:
+            res = auth_server.start(port=0)
+            url = f"{res['url']}/api/screenshot"
+
+            # No token -> 401
+            resp_none = httpx.get(url, timeout=2.0)
+            self.assertEqual(resp_none.status_code, 401)
+
+            # Valid query param token -> 200 image/png
+            resp_ok = httpx.get(f"{url}?token=super_secret_token_123", timeout=2.0)
+            self.assertEqual(resp_ok.status_code, 200)
+            self.assertEqual(resp_ok.headers.get("content-type"), "image/png")
+        finally:
+            auth_server.stop()
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ Thank you for your interest in contributing to Excalidraw MCP (`exca-mcp`).
 ## Development Setup
 
 ### Prerequisites
-- Python 3.10+
+- Python 3.12+
 - [`uv`](https://docs.astral.sh/uv/) (recommended) or `pip` / `virtualenv`
 
 ### Clone & Install

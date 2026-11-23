@@ -99,6 +99,15 @@ Users who prefer local skill files can install all six skills and reference docu
 
 #### Basic Usage
 
+Install Claude Code CLI skill with automatic discovery:
+```bash
+# Installs directly to ~/.claude/skills/excalidraw/ (or $CLAUDE_CONFIG_DIR/skills/excalidraw/)
+uvx exca-mcp install-skills --claude
+
+# Preview planned changes without filesystem writes
+uvx exca-mcp install-skills --claude --dry-run
+```
+
 Install all skills into a global agent skills directory:
 ```bash
 # Using uvx without installing exca-mcp globally

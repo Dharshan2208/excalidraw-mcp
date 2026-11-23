@@ -2,18 +2,40 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  test:
+  lint-and-typecheck:
+    name: Code Quality Gates
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Lint with Ruff
+        run: uvx ruff check excalidraw_mcp tests
+      - name: Type Check with Mypy
+        run: uv run --with mypy mypy excalidraw_mcp
+
+  test:
+    name: Test Suite (${{ matrix.os }} - Python ${{ matrix.python-version }})
+    needs: lint-and-typecheck
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
@@ -21,6 +43,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv sync --locked
-      - run: uv run --locked python -B -m unittest discover -s tests -v
+      - run: uv run --locked pytest tests/
       - run: uv run --locked python -B -m compileall -q -f main.py excalidraw_mcp tests
       - run: uv lock --check

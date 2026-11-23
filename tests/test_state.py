@@ -173,6 +173,7 @@ class StateTests(unittest.TestCase):
                 "add_frame",
                 "batch_mutate",
                 "export_png",
+                "export_svg",
                 "set_viewport",
                 "export_to_excalidraw_url",
                 "read_diagram_guide",

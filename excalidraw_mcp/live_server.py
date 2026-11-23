@@ -9,7 +9,6 @@ import signal
 import socket
 import sys
 import threading
-import time
 from typing import Any
 
 from starlette.applications import Starlette
@@ -54,7 +53,7 @@ HTML_PAGE = """<!DOCTYPE html>
     <div style="display: flex; align-items: center;">
       <span id="rev-text" style="color: #adb5bd; margin-right: 12px;">Rev: 0 | Elements: 0</span>
       <button class="btn" onclick="syncFromBackend()">Refresh</button>
-      <a class="btn" href="/api/screenshot" target="_blank">Screenshot PNG</a>
+      <a id="screenshot-link" class="btn" href="/api/screenshot" target="_blank">Screenshot PNG</a>
     </div>
   </div>
   <div id="canvas-container">
@@ -173,9 +172,21 @@ HTML_PAGE = """<!DOCTYPE html>
       ctx.restore();
     }
 
+    function getAuthToken() {
+      const urlParams = new URLSearchParams(window.location.search);
+      return urlParams.get("token") || sessionStorage.getItem("excalidraw_live_token") || "";
+    }
+
+    function setAuthToken(token) {
+      if (token) sessionStorage.setItem("excalidraw_live_token", token);
+    }
+
     function connectWebSocket() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const token = getAuthToken();
+      const wsUrl = token
+        ? `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
+        : `${protocol}//${window.location.host}/ws`;
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
@@ -208,7 +219,18 @@ HTML_PAGE = """<!DOCTYPE html>
 
     async function syncFromBackend() {
       try {
-        const res = await fetch("/api/scene");
+        const token = getAuthToken();
+        const headers = token ? { "Authorization": `Bearer ${token}` } : {};
+        const url = token ? `/api/scene?token=${encodeURIComponent(token)}` : "/api/scene";
+        const res = await fetch(url, { headers });
+        if (res.status === 401) {
+          const userToken = prompt("This Live Canvas is protected. Enter auth token:");
+          if (userToken) {
+            setAuthToken(userToken);
+            syncFromBackend();
+          }
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           currentScene = data;
@@ -219,6 +241,16 @@ HTML_PAGE = """<!DOCTYPE html>
       } catch (e) {
         console.error("Fetch failed", e);
       }
+    }
+
+    const screenshotBtn = document.getElementById("screenshot-link");
+    if (screenshotBtn) {
+      screenshotBtn.addEventListener("click", (e) => {
+        const token = getAuthToken();
+        if (token) {
+          screenshotBtn.href = `/api/screenshot?token=${encodeURIComponent(token)}`;
+        }
+      });
     }
 
     resizeCanvas();
@@ -450,24 +482,45 @@ class LiveCanvasServer:
         ]
         return Starlette(routes=routes)
 
+    def _verify_auth(self, request) -> bool:
+        """Verify authentication token on incoming HTTP requests (M-026)."""
+        if not self.auth_token:
+            return True
+        import hmac
+
+        token = request.headers.get("x-auth-token") or request.query_params.get("token")
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        return bool(token and hmac.compare_digest(token, self.auth_token))
+
     async def _handle_index(self, request):
-        page = HTML_PAGE
-        if self.auth_token:
-            page = page.replace('new WebSocket(`${protocol}//${window.location.host}/ws`)', f'new WebSocket(`${{protocol}}//${{window.location.host}}/ws?token={self.auth_token}`)')
-        return HTMLResponse(page)
+        # Never inject cleartext auth_token into HTML client JavaScript (M-025)
+        return HTMLResponse(HTML_PAGE)
 
     async def _handle_get_scene(self, request):
+        if not self._verify_auth(request):
+            return JSONResponse({"error": "Unauthorized: invalid or missing token"}, status_code=401)
         doc, rev = self.service.state.snapshot()
         return JSONResponse({**doc, "revision": rev})
 
     async def _handle_post_scene(self, request):
-        if self.auth_token:
-            token = request.headers.get("x-auth-token") or request.query_params.get("token")
-            auth_header = request.headers.get("authorization", "")
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:].strip()
-            if token != self.auth_token:
-                return JSONResponse({"error": "Unauthorized: invalid or missing token"}, status_code=401)
+        if not self._verify_auth(request):
+            return JSONResponse({"error": "Unauthorized: invalid or missing token"}, status_code=401)
+
+        origin = request.headers.get("origin")
+        if origin:
+            import urllib.parse
+
+            parsed = urllib.parse.urlparse(origin)
+            allowed = {"localhost", "127.0.0.1", "::1", self.host.lower()}
+            if parsed.hostname and parsed.hostname.lower() not in allowed:
+                logger.warning("Rejected POST /api/scene from unauthorized origin: %s", origin)
+                return JSONResponse({"error": "Forbidden: unauthorized origin"}, status_code=403)
+
+        content_type = request.headers.get("content-type", "")
+        if not content_type.lower().startswith("application/json"):
+            return JSONResponse({"error": "Content-Type must be application/json"}, status_code=415)
 
         try:
             payload = await request.json()
@@ -482,6 +535,8 @@ class LiveCanvasServer:
             return JSONResponse({"error": str(err)}, status_code=400)
 
     async def _handle_screenshot(self, request):
+        if not self._verify_auth(request):
+            return JSONResponse({"error": "Unauthorized: invalid or missing token"}, status_code=401)
         try:
             doc, _ = self.service.state.snapshot()
             scale = float(request.query_params.get("scale", 1.0))
@@ -517,8 +572,10 @@ class LiveCanvasServer:
                 return
 
         if self.auth_token:
+            import hmac
+
             token = websocket.query_params.get("token") or websocket.headers.get("x-auth-token")
-            if token != self.auth_token:
+            if not token or not hmac.compare_digest(token, self.auth_token):
                 logger.warning("Rejected WebSocket connection: invalid or missing auth token")
                 await websocket.close(code=1008)
                 return

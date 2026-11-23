@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from PIL import Image
 
 from fastmcp import Client
@@ -39,9 +39,13 @@ class TestFontRegistryAndExcalifontDiscovery(unittest.TestCase):
         self.assertEqual(records[0]["style"], "Regular")
 
     def test_get_font_by_int_and_family_name(self):
-        # By integer 1 (Excalidraw schema code for Excalifont/Virgil)
+        # By integer 1 (legacy Excalidraw code for Virgil)
         font_by_int = get_font(1, 24)
         self.assertEqual(font_by_int.getname(), ("Excalifont", "Regular"))
+
+        # By integer 5 (modern Excalidraw code for Excalifont)
+        font_by_5 = get_font(5, 24)
+        self.assertEqual(font_by_5.getname(), ("Excalifont", "Regular"))
 
         # By family name (case-insensitive)
         font_by_name = get_font("excalifont", 24)
@@ -94,18 +98,23 @@ class TestFontNormalizationAndElements(unittest.TestCase):
         self.assertEqual(normalize_font_family(2), 2)
         self.assertEqual(normalize_font_family(3), 3)
         self.assertEqual(normalize_font_family(4), 4)
+        self.assertEqual(normalize_font_family(5), 5)
+        self.assertEqual(normalize_font_family(8), 8)
         self.assertEqual(normalize_font_family("1"), 1)
-        self.assertEqual(normalize_font_family("excalifont"), 1)
-        self.assertEqual(normalize_font_family("Excalifont"), 1)
+        self.assertEqual(normalize_font_family("5"), 5)
+        self.assertEqual(normalize_font_family("excalifont"), 5)
+        self.assertEqual(normalize_font_family("Excalifont"), 5)
         self.assertEqual(normalize_font_family("virgil"), 1)
-        self.assertEqual(normalize_font_family("handwriting"), 1)
-        self.assertEqual(normalize_font_family("hand"), 1)
+        self.assertEqual(normalize_font_family("handwriting"), 5)
+        self.assertEqual(normalize_font_family("hand"), 5)
         self.assertEqual(normalize_font_family("sans-serif"), 2)
         self.assertEqual(normalize_font_family("helvetica"), 2)
         self.assertEqual(normalize_font_family("monospace"), 3)
         self.assertEqual(normalize_font_family("code"), 3)
         self.assertEqual(normalize_font_family("cascadia"), 3)
-        self.assertEqual(normalize_font_family("comic-shanns"), 4)
+        self.assertEqual(normalize_font_family("comic-shanns"), 8)
+        self.assertEqual(normalize_font_family("8"), 8)
+        self.assertEqual(normalize_font_family("4"), 4)
         self.assertEqual(normalize_font_family("unknown-random-font"), 2)
 
     def test_text_element_creation_with_font_family(self):
@@ -113,13 +122,16 @@ class TestFontNormalizationAndElements(unittest.TestCase):
         self.assertEqual(el_default["fontFamily"], 2)
 
         el_excalifont = text(0, 0, "Handwritten note", fontFamily="excalifont")
-        self.assertEqual(el_excalifont["fontFamily"], 1)
+        self.assertEqual(el_excalifont["fontFamily"], 5)
 
         el_int = text(0, 0, "Integer font", fontFamily=1)
         self.assertEqual(el_int["fontFamily"], 1)
 
+        el_int5 = text(0, 0, "Integer font 5", fontFamily=5)
+        self.assertEqual(el_int5["fontFamily"], 5)
+
         el_kwarg = text(0, 0, "Kwarg font", font_family="excalifont")
-        self.assertEqual(el_kwarg["fontFamily"], 1)
+        self.assertEqual(el_kwarg["fontFamily"], 5)
 
 
 class TestSceneServiceExcalifontOperations(unittest.TestCase):
@@ -129,7 +141,7 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
         txt_id = res["text_id"]
         el_info = service.get_element(txt_id)
         el = el_info["element"]
-        self.assertEqual(el["fontFamily"], 1)
+        self.assertEqual(el["fontFamily"], 5)
         self.assertEqual(el["fontSize"], 24)
         self.assertEqual(el["text"], "Architectural Draft")
 
@@ -141,7 +153,7 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
 
         service.update_element(txt_id, font_family="excalifont", font_size=28)
         updated = service.get_element(txt_id)["element"]
-        self.assertEqual(updated["fontFamily"], 1)
+        self.assertEqual(updated["fontFamily"], 5)
         self.assertEqual(updated["fontSize"], 28)
 
     def test_shape_label_with_excalifont(self):
@@ -151,7 +163,7 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
         lbl_id = res["label_id"]
         self.assertIsNotNone(lbl_id)
         lbl = service.get_element(lbl_id)["element"]
-        self.assertEqual(lbl["fontFamily"], 1)
+        self.assertEqual(lbl["fontFamily"], 5)
 
     def test_update_shape_label_font(self):
         service = SceneService()
@@ -162,7 +174,7 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
 
         service.update_element(rect_id, font_family="excalifont")
         lbl = service.get_element(lbl_id)["element"]
-        self.assertEqual(lbl["fontFamily"], 1)
+        self.assertEqual(lbl["fontFamily"], 5)
 
     def test_batch_mutate_with_excalifont(self):
         service = SceneService()
@@ -195,9 +207,9 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
         self.assertEqual(res["operations_executed"], 3)
         txt_id = res["ref_map"]["txt1"]
         box_id = res["ref_map"]["box1"]
-        self.assertEqual(service.get_element(txt_id)["element"]["fontFamily"], 1)
+        self.assertEqual(service.get_element(txt_id)["element"]["fontFamily"], 5)
         lbl = _label_for(_active_dict(service), box_id)
-        self.assertEqual(lbl["fontFamily"], 1)
+        self.assertEqual(lbl["fontFamily"], 5)
 
     def test_list_fonts_includes_excalifont(self):
         service = SceneService()
@@ -221,7 +233,7 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
         texts = [el for el in doc["elements"] if el["type"] == "text"]
         self.assertEqual(len(texts), 3)  # 2 node labels + 1 edge label
         for t in texts:
-            self.assertEqual(t["fontFamily"], 1)  # All configured with Excalifont
+            self.assertEqual(t["fontFamily"], 5)  # All configured with Excalifont
 
     def test_draw_architecture_with_excalifont(self):
         service = SceneService()
@@ -231,7 +243,7 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
         node_texts = [el for el in doc["elements"] if el["type"] == "text"]
         self.assertGreaterEqual(len(node_texts), 2)
         for t in node_texts:
-            self.assertEqual(t["fontFamily"], 1)
+            self.assertEqual(t["fontFamily"], 5)
 
     def test_add_shapes_and_connect_with_font_properties(self):
         service = SceneService()
@@ -240,15 +252,15 @@ class TestSceneServiceExcalifontOperations(unittest.TestCase):
         conn = service.connect(r["rectangle_id"], c["circle_id"], label="Links", font_family="excalifont", font_size=14)
 
         lbl_r = service.get_element(r["label_id"])["element"]
-        self.assertEqual(lbl_r["fontFamily"], 1)
+        self.assertEqual(lbl_r["fontFamily"], 5)
         self.assertEqual(lbl_r["fontSize"], 18)
 
         lbl_c = service.get_element(c["label_id"])["element"]
-        self.assertEqual(lbl_c["fontFamily"], 1)
+        self.assertEqual(lbl_c["fontFamily"], 5)
         self.assertEqual(lbl_c["fontSize"], 16)
 
         lbl_conn = service.get_element(conn["label_id"])["element"]
-        self.assertEqual(lbl_conn["fontFamily"], 1)
+        self.assertEqual(lbl_conn["fontFamily"], 5)
         self.assertEqual(lbl_conn["fontSize"], 14)
 
 
@@ -271,27 +283,40 @@ class TestRenderingAndExportCompatibility(unittest.TestCase):
         self.assertEqual(img.size, (width, height))
 
     def test_export_scene_and_url_preserves_font_family(self):
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = {"id": "mock-excalifont-scene"}
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch.dict(os.environ, {"EXCALIDRAW_SCENE_DIR": tmp_dir}):
-                service = SceneService()
-                service.add_text(100, 100, "Web URL Note", font_size=20, font_family="excalifont")
+                with patch("httpx.Client.post", return_value=mock_post_resp) as mock_post:
+                    def get_side_effect(*args, **kwargs):
+                        mock_get_resp.content = mock_post.call_args[1]["content"]
+                        return mock_get_resp
 
-                # Test export_to_excalidraw_url
-                url_res = service.export_to_excalidraw_url()
-                self.assertIn("url", url_res)
-                self.assertTrue(url_res["url"].startswith("https://excalidraw.com/#json="))
+                    with patch("httpx.Client.get", side_effect=get_side_effect):
+                        service = SceneService()
+                        service.add_text(100, 100, "Web URL Note", font_size=20, font_family="excalifont")
 
-                # Test save and load
-                service.save("excalifont_scene")
+                        # Test export_to_excalidraw_url
+                        url_res = service.export_to_excalidraw_url()
+                        self.assertIn("url", url_res)
+                        self.assertTrue(url_res["url"].startswith("https://excalidraw.com/#json="))
 
-                # Load into fresh service
-                new_service = SceneService()
-                new_service.load("excalifont_scene")
-                doc, _ = new_service.state.snapshot()
-                text_elements = [el for el in doc["elements"] if el["type"] == "text"]
-                self.assertEqual(len(text_elements), 1)
-                self.assertEqual(text_elements[0]["fontFamily"], 1)
-                self.assertEqual(text_elements[0]["text"], "Web URL Note")
+                        # Test save and load
+                        service.save("excalifont_scene")
+
+                        # Load into fresh service
+                        new_service = SceneService()
+                        new_service.load("excalifont_scene")
+                        doc, _ = new_service.state.snapshot()
+                        text_elements = [el for el in doc["elements"] if el["type"] == "text"]
+                        self.assertEqual(len(text_elements), 1)
+                        self.assertEqual(text_elements[0]["fontFamily"], 5)
+                        self.assertEqual(text_elements[0]["text"], "Web URL Note")
 
 
 class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):
@@ -343,7 +368,7 @@ class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):
             elem_res = await client.call_tool("inspect_scene", {"mode": "element", "element_id": txt_id})
             self.assertFalse(elem_res.is_error)
             element = json.loads(elem_res.content[0].text)["element"]
-            self.assertEqual(element["fontFamily"], 1)
+            self.assertEqual(element["fontFamily"], 5)
             self.assertEqual(element["fontSize"], 24)
             self.assertEqual(element["text"], "MCP Agent handwritten text")
 

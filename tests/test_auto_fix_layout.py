@@ -94,6 +94,27 @@ class AutoFixDiagnosticsAndDiscriminationTests(unittest.TestCase):
         self.assertEqual(post_el["width"], init_w)
         self.assertEqual(post_el["height"], init_h)
 
+    def test_max_diagnosed_issues_cap_prevents_runaway(self):
+        """Verify that diagnose_layout_issues caps detected defects at MAX_DIAGNOSED_ISSUES (P-037)."""
+        shapes = []
+        # Create 60 mutually overlapping rectangles. Number of pairs = 60 * 59 / 2 = 1,770 collisions
+        for i in range(60):
+            shapes.append(
+                rect(
+                    100.0,
+                    100.0,
+                    200.0,
+                    100.0,
+                    id=f"box-{i}",
+                )
+            )
+        doc = {"elements": shapes}
+        warnings: list[str] = []
+        issues = diagnose_layout_issues(doc, warnings=warnings)
+
+        self.assertEqual(len(issues), 1000)
+        self.assertTrue(any("safety cap of 1000 issues" in w for w in warnings))
+
     def test_all_shapes_agree_between_creation_and_repair_sizing(self):
         """All shapes agree between creation and repair sizing via required_container_size."""
         for shape_type in ("rectangle", "ellipse", "diamond"):
@@ -593,28 +614,36 @@ class AutoFixNamedScenesAndBatchMutateTests(unittest.TestCase):
         s1, s2 = shapes[0], shapes[1]
         self.assertGreaterEqual(abs(s1["x"] - s2["x"]), 100.0)
 
-    def test_named_file_repair_increments_revision_and_is_undoable(self):
-        """Named-file repair runs through self.state.apply, increments revision, updates live state, and is undoable."""
+    def test_named_file_repair_preserves_active_draft(self):
+        """Named-file repair on disk repairs the file while leaving in-memory active draft untouched (M-028)."""
+        # Create and save a named scene that has overlaps
         self.service.add_shape("rectangle", 100, 100, 100, 100, label="Box 1")
         self.service.add_shape("rectangle", 120, 100, 100, 100, label="Box 2")
-        self.service.save("scene_undo_test", overwrite=True)
+        self.service.save("scene_named_fix_test", overwrite=True)
 
+        # Now put distinct work into the active draft
+        self.service.clear()
+        self.service.add_shape("ellipse", 500, 500, 80, 80, label="Active Circle")
+        active_before = self.service.state.document()
         rev_before = self.service.state.revision
-        res = self.service.auto_fix_layout(name="scene_undo_test")
+
+        # Fix the saved scene on disk
+        res = self.service.auto_fix_layout(name="scene_named_fix_test")
 
         self.assertEqual(res["status"], "repaired")
-        self.assertGreater(self.service.state.revision, rev_before)
-        self.assertEqual(res["revision"], self.service.state.revision)
+        self.assertEqual(res["revision"], rev_before)
 
-        # In-memory state matches disk
-        disk_doc = load_scene("scene_undo_test")
-        active_doc = self.service.state.document()
-        self.assertEqual(len(active_doc["elements"]), len(disk_doc["elements"]))
+        # Active draft in memory must remain completely intact
+        active_after = self.service.state.document()
+        self.assertEqual(len(active_after["elements"]), len(active_before["elements"]))
+        self.assertEqual(active_after["elements"][0]["type"], "ellipse")
+        self.assertEqual(self.service.state.revision, rev_before)
 
-        # Can undo
-        undo_res = self.service.undo()
-        self.assertEqual(undo_res["status"], "undone")
-        self.assertGreater(self.service.state.revision, res["revision"])
+        # But the named file on disk must be repaired
+        disk_doc = load_scene("scene_named_fix_test")
+        rects = [e for e in disk_doc["elements"] if e.get("type") == "rectangle"]
+        self.assertEqual(len(rects), 2)
+        self.assertGreaterEqual(abs(rects[0]["x"] - rects[1]["x"]), 100.0)
 
     def test_named_scene_dry_run_does_not_modify_disk(self):
         """Named scene repair in dry_run mode does not modify disk file."""

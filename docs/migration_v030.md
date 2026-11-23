@@ -8,7 +8,7 @@ Version 0.3.0 introduces a major rationalization of the Excalidraw MCP tool surf
 
 1. **Token Footprint Halved**:
    - The default `core` profile drops from 27 legacy tools (~9,472 tokens compact) to **12 curated tools (5,048 tokens compact)** — a 46.7% reduction.
-   - The `full` profile drops from 48 tools (~16,010 tokens compact) to **20 tools (7,937 tokens compact)** — a 50.4% reduction.
+   - The `full` profile drops from 48 tools (~16,010 tokens compact) to **21 tools (7,937 tokens compact)** — a 50.4% reduction.
    - Wire duplication eliminated: tool responses return minified compact JSON in `TextContent` without redundant schema echoing.
 
 2. **`batch_mutate` Promoted to Core**:
@@ -55,9 +55,9 @@ Version 0.3.0 introduces a major rationalization of the Excalidraw MCP tool surf
 | `get_viewport` | `inspect_scene(mode="viewport")` | **core** | Camera viewport inspection. |
 | `get_live_server_status` | `inspect_scene(mode="live_server")` | **core** | Live server status lookup. |
 | `get_resource` | `inspect_scene(mode="resource", uri=...)` | **core** | Resource inspection lookup. |
-| `draw_mermaid` | `generate_diagram(generator="mermaid", mermaid_code=...)` | **full** | Unified diagram generation. |
-| `draw_architecture` | `generate_diagram(generator="architecture", prompt=...)` | **full** | Rapid shorthand architecture generator. |
-| `draw_graph` | `generate_diagram(generator="graph", nodes=..., edges=...)` | **full** | Structured Sugiyama layout generator. |
+| `draw_mermaid` | `generate_diagram(format="mermaid", mermaid_code=...)` | **full** | Unified diagram generation. |
+| `draw_architecture` | `generate_diagram(format="architecture", prompt=...)` | **full** | Rapid shorthand architecture generator. |
+| `draw_graph` | `generate_diagram(format="graph", nodes=..., edges=...)` | **full** | Structured Sugiyama layout generator. |
 | `save` | `scene_storage(action="save", name=...)` | **full** | Consolidated file persistence. |
 | `load` | `scene_storage(action="load", name=...)` | **full** | Consolidated file persistence. |
 | `list_saved_scenes` | `scene_storage(action="list")` | **full** | Returns stored scene names. |
@@ -104,9 +104,9 @@ create_connector(source_id=r1["rectangle_id"], target_id=r2["rectangle_id"], lab
 
 ```python
 batch_mutate(operations=[
-    {"action": "create_shape", "type": "rectangle", "client_id": "api", "x": 100, "y": 100, "w": 140, "h": 70, "label": "API Gateway"},
-    {"action": "create_shape", "type": "diamond", "client_id": "auth", "x": 320, "y": 100, "w": 100, "h": 100, "label": "Auth Check"},
-    {"action": "create_connector", "source_id": "$api", "target_id": "$auth", "label": "Authorize", "elbowed": True},
+    {"action": "add_rectangle", "client_id": "api", "x": 100, "y": 100, "width": 140, "height": 70, "label": "API Gateway"},
+    {"action": "add_diamond", "client_id": "auth", "x": 320, "y": 100, "width": 100, "height": 100, "label": "Auth Check"},
+    {"action": "connect", "from_id": "$api", "to_id": "$auth", "label": "Authorize"},
     {"action": "auto_fix_layout", "repair_scope": "all"}
 ])
 ```

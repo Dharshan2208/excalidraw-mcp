@@ -7,13 +7,11 @@ and provides cached font instantiation with robust fallback handling.
 
 import glob
 import os
-import re
 import shutil
 import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from PIL import ImageFont
 
@@ -292,21 +290,23 @@ class FontRegistry:
         # 1. Map Excalidraw integer or string family names
         if isinstance(family, int):
             int_map = {
-                1: "excalifont",  # Excalifont (Virgil)
+                1: "excalifont",  # Virgil / Excalifont (legacy)
                 2: "sans-serif",  # Helvetica
                 3: "monospace",  # Cascadia / code
-                4: "handwriting",  # Comic Shanns
+                4: "handwriting",  # Comic Shanns (legacy)
+                5: "excalifont",  # Excalifont (modern standard)
+                8: "handwriting",  # Comic Shanns (modern standard)
             }
             family = int_map.get(family, "sans-serif")
         elif isinstance(family, str):
             f_norm = family.strip().lower()
-            if f_norm in ("1", "excalifont", "virgil"):
+            if f_norm in ("1", "5", "excalifont", "virgil"):
                 family = "excalifont"
             elif f_norm in ("2", "sans-serif", "sans", "helvetica"):
                 family = "sans-serif"
             elif f_norm in ("3", "monospace", "mono", "code", "cascadia"):
                 family = "monospace"
-            elif f_norm in ("4", "comic-shanns", "comic", "comic shanns"):
+            elif f_norm in ("4", "8", "comic-shanns", "comic", "comic shanns"):
                 family = "handwriting"
 
         # 2. Check environment overrides

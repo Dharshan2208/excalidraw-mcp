@@ -7,13 +7,13 @@ This reference catalog provides concrete structural layouts, geometry calculatio
 ## 1. Flowchart Topology Rules
 
 ### Single Start & Clear Terminals
-- Every flowchart must have **exactly one** clear entry point (`add_rectangle` or `add_circle` styled as pill/rounded with green tint).
+- Every flowchart must have **exactly one** clear entry point (`create_shape` with `type="rectangle"` or `type="ellipse"` styled as pill/rounded with green tint).
 - Terminals (endpoints) must be differentiated:
   - **Success terminal**: Mint / soft green (`backgroundColor: "#ebfbee"`, `strokeColor: "#2b8a3e"`).
   - **Failure / Abort terminal**: Light salmon / soft red (`backgroundColor: "#fff5f5"`, `strokeColor: "#c92a2a"`).
   - **Terminal Dimensions**: W: 160-180px, H: 45-50px.
 
-### Decision Nodes (`add_diamond`)
+### Decision Nodes (`create_shape(type="diamond")`)
 - **Strictly for binary or ternary conditional branching**. Never place long paragraphs or multi-step procedures inside a diamond.
 - Text must be phrased as an explicit question ending in `?` (e.g., `"Valid Token?"`, `"Cache Hit?"`, `"Retry Count < 3?"`).
 - **Dimensions**: Diamonds need larger bounding boxes to fit inscribed text without clipping:
@@ -92,8 +92,9 @@ To prevent backward arrows from cutting through intermediary nodes:
 # 1. Start Node (Pill shape)
 call_mcp_tool(
     "excalidraw",
-    "add_rectangle",
+    "create_shape",
     {
+        "type": "rectangle",
         "x": 300,
         "y": 60,
         "w": 180,
@@ -109,8 +110,9 @@ call_mcp_tool(
 # 2. Ingest Step
 call_mcp_tool(
     "excalidraw",
-    "add_rectangle",
+    "create_shape",
     {
+        "type": "rectangle",
         "x": 290,
         "y": 170,
         "w": 200,
@@ -126,8 +128,9 @@ call_mcp_tool(
 # 3. Decision Diamond
 call_mcp_tool(
     "excalidraw",
-    "add_diamond",
+    "create_shape",
     {
+        "type": "diamond",
         "x": 290,
         "y": 290,
         "w": 200,
@@ -142,8 +145,9 @@ call_mcp_tool(
 # 4. Processing Step (Yes path)
 call_mcp_tool(
     "excalidraw",
-    "add_rectangle",
+    "create_shape",
     {
+        "type": "rectangle",
         "x": 290,
         "y": 470,
         "w": 200,
@@ -159,8 +163,9 @@ call_mcp_tool(
 # 5. Dead-Letter Step (No path)
 call_mcp_tool(
     "excalidraw",
-    "add_rectangle",
+    "create_shape",
     {
+        "type": "rectangle",
         "x": 580,
         "y": 315,
         "w": 180,
@@ -176,8 +181,9 @@ call_mcp_tool(
 # 6. Success End Node
 call_mcp_tool(
     "excalidraw",
-    "add_rectangle",
+    "create_shape",
     {
+        "type": "rectangle",
         "x": 300,
         "y": 590,
         "w": 180,
@@ -190,10 +196,10 @@ call_mcp_tool(
     },
 )
 
-# Connectors with bound endpoints and labels (connect automatically binds both ends)
+# Connectors with bound endpoints and labels (create_connector automatically binds both ends)
 call_mcp_tool(
     "excalidraw",
-    "connect",
+    "create_connector",
     {
         "source_id": "<start_id>",
         "target_id": "<read_id>",
@@ -203,7 +209,7 @@ call_mcp_tool(
 
 call_mcp_tool(
     "excalidraw",
-    "connect",
+    "create_connector",
     {
         "source_id": "<read_id>",
         "target_id": "<diamond_id>",
@@ -213,7 +219,7 @@ call_mcp_tool(
 
 call_mcp_tool(
     "excalidraw",
-    "connect",
+    "create_connector",
     {
         "source_id": "<diamond_id>",
         "target_id": "<process_id>",
@@ -224,7 +230,7 @@ call_mcp_tool(
 
 call_mcp_tool(
     "excalidraw",
-    "connect",
+    "create_connector",
     {
         "source_id": "<diamond_id>",
         "target_id": "<dlq_id>",
@@ -235,7 +241,7 @@ call_mcp_tool(
 
 call_mcp_tool(
     "excalidraw",
-    "connect",
+    "create_connector",
     {
         "source_id": "<process_id>",
         "target_id": "<end_id>",
@@ -248,10 +254,10 @@ call_mcp_tool(
 
 ## 4. Mermaid vs Primitives Trade-Offs
 
-| Criteria | `draw_mermaid` | Primitives (`add_rectangle`, `connect`) |
+| Criteria | `generate_diagram(format="mermaid")` | Primitives (`create_shape`, `create_connector`) |
 | :--- | :--- | :--- |
 | **Best For** | Quick standard pipelines, documentation workflows, < 10 nodes | Custom semantic styling, human-polished looks, complex loops |
 | **Styling Control** | Preset theme and stroke styles | Full granular control over colors, roughness, fonts, and roundness |
-| **Branch Labels** | Supported via `A -- Yes --> B` syntax | Explicit binding via `connect(label="Yes", ...)` |
+| **Branch Labels** | Supported via `A -- Yes --> B` syntax | Explicit binding via `create_connector(label="Yes", ...)` |
 | **Editability** | Generated shapes are native Excalidraw elements | Elements fully bound with custom groupings |
 | **Geometry Diagnostics**| Can be verified and adjusted with `auto_fix_layout` | Full verification and exact coordinate placement |

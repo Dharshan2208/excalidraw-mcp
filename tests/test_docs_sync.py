@@ -40,4 +40,37 @@ class DocumentationSyncTests(unittest.IsolatedAsyncioTestCase):
             reg_full,
             f"Full tool mismatch between docs/tools.md and server: {doc_all ^ reg_full}",
         )
-        self.assertEqual(len(reg_full), 20)
+        self.assertEqual(len(reg_full), 21)
+
+    def test_package_version_and_security_policy_sync(self):
+        """Verify __version__, pyproject.toml, SECURITY.md, and docs/tools.md are synchronized (M-029, M-030)."""
+        import excalidraw_mcp
+
+        repo_root = Path(__file__).resolve().parent.parent
+
+        # 1. __version__ == pyproject.toml version
+        pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+        version_match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+        self.assertIsNotNone(version_match, "Could not find version in pyproject.toml")
+        expected_version = version_match.group(1)
+        self.assertEqual(excalidraw_mcp.__version__, expected_version)
+        self.assertEqual(excalidraw_mcp.__version__, "0.3.0")
+
+        # 2. SECURITY.md includes current major.minor
+        security_md = (repo_root / "SECURITY.md").read_text(encoding="utf-8")
+        self.assertIn("0.3.x", security_md)
+
+        # 3. docs/tools.md parameter names match implementation
+        tools_md = (repo_root / "docs" / "tools.md").read_text(encoding="utf-8")
+        self.assertIn('format: "mermaid"', tools_md)
+        self.assertIn("verbose: bool = False", tools_md)
+        self.assertIn('"share_url"', tools_md)
+        self.assertIn("readability", tools_md)
+
+    def test_release_workflow_attaches_distribution_assets(self):
+        """Verify release workflow includes GitHub release creation with wheel/sdist assets (P-006)."""
+        repo_root = Path(__file__).resolve().parent.parent
+        release_yml = (repo_root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn("softprops/action-gh-release@v2", release_yml)
+        self.assertIn("contents: write", release_yml)
+        self.assertIn("files: dist/*", release_yml)

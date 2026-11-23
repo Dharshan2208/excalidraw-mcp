@@ -20,6 +20,7 @@ VALID_AGGRESSIVENESS = ("gentle", "balanced", "aggressive")
 TEXT_DEFICIT_THRESHOLD_PX = 1.0   # used by BOTH diagnose and repair
 SPACING_RATIO_THRESHOLD = 0.65    # used by BOTH diagnose and repair
 AGGRESSIVENESS_MULT = {"gentle": 0.8, "balanced": 1.0, "aggressive": 1.35}
+MAX_DIAGNOSED_ISSUES = 1000       # safety cap against unbounded allocations on degenerate diagrams
 
 
 def _validate_params(repair_scope: str, aggressiveness: str, min_gap: float) -> tuple[str, str, float]:
@@ -333,7 +334,7 @@ def diagnose_layout_issues(
 
     valid_shapes = []
     for e in active:
-        if e.get("type") in ("rectangle", "diamond", "ellipse") and not (_cd(e).get("type") in ("code_block_header",)):
+        if e.get("type") in ("rectangle", "diamond", "ellipse") and _cd(e).get("type") not in ("code_block_header",):
             w = e.get("width")
             h = e.get("height")
             if (
@@ -430,6 +431,8 @@ def diagnose_layout_issues(
         x1_max = x1_min + w1
 
         for j in range(i + 1, len(sorted_diag_shapes)):
+            if len(issues) >= MAX_DIAGNOSED_ISSUES:
+                break
             s2 = sorted_diag_shapes[j]
             x2_min = _coord(s2, "x")
             if x2_min >= x1_max - 1.0:
@@ -631,6 +634,8 @@ def diagnose_layout_issues(
         y1_max = y1_min + abs(_coord(s1, "height"))
 
         for j in range(i + 1, len(sorted_diag_shapes)):
+            if len(issues) >= MAX_DIAGNOSED_ISSUES:
+                break
             s2 = sorted_diag_shapes[j]
             x2_min = _coord(s2, "x")
             if x2_min >= x1_max + max_spacing_gap:
@@ -679,6 +684,13 @@ def diagnose_layout_issues(
                             "details": {"shape1_id": id1, "shape2_id": id2, "gap": round(v_gap, 1), "min_gap": min_gap},
                         }
                     )
+
+    if len(issues) >= MAX_DIAGNOSED_ISSUES:
+        if warnings is not None:
+            msg = f"Layout diagnostics reached safety cap of {MAX_DIAGNOSED_ISSUES} issues."
+            if msg not in warnings:
+                warnings.append(msg)
+        return issues[:MAX_DIAGNOSED_ISSUES]
 
     return issues
 
@@ -1167,7 +1179,7 @@ def apply_layout_repairs(
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not (_cd(e).get("type") in ("code_block_header",))
+        and _cd(e).get("type") not in ("code_block_header",)
     ]
     frames = [e for e in active if e.get("type") == "frame"]
     arrows = [e for e in active if e.get("type") in ("arrow", "line")]
@@ -1573,6 +1585,7 @@ def auto_fix_scene_layout(
     repair_scope: str = "all",
     aggressiveness: str = "balanced",
     min_gap: float = 30.0,
+    progress_callback: Any = None,
 ) -> dict[str, Any]:
     """Analyze and systematically repair layout defects in an Excalidraw scene with transactional validation.
 
@@ -1584,11 +1597,22 @@ def auto_fix_scene_layout(
     active, is_doc = _extract_active_elements(document_or_elements)
     warnings: list[str] = []
 
+    if progress_callback:
+        try:
+            progress_callback(1, 5, "Phase 1: Initial scene diagnostics")
+        except Exception:
+            pass
+
     # Step 1: Snapshot original scene for clean diffs and guaranteed rollback
     snapshot_original = deepcopy(document_or_elements)
 
     # Step 2: Empty or trivial scene handling
     if not active:
+        if progress_callback:
+            try:
+                progress_callback(5, 5, "Layout repair complete")
+            except Exception:
+                pass
         return {
             "status": "no_changes_needed",
             "dry_run": dry_run,
@@ -1610,6 +1634,11 @@ def auto_fix_scene_layout(
 
     # Step 4: If scene is already valid and has no defects
     if not initial_issues:
+        if progress_callback:
+            try:
+                progress_callback(5, 5, "Layout repair complete")
+            except Exception:
+                pass
         return {
             "status": "no_changes_needed",
             "dry_run": dry_run,
@@ -1626,6 +1655,12 @@ def auto_fix_scene_layout(
             "document": snapshot_original if is_doc else {"type": "excalidraw", "version": 2, "elements": snapshot_original},
         }
 
+    if progress_callback:
+        try:
+            progress_callback(2, 5, "Phase 2: Building repair plan")
+        except Exception:
+            pass
+
     # Step 5: Build deterministic repair plan
     planned_changes = summarize_planned_repairs(
         snapshot_original,
@@ -1634,6 +1669,12 @@ def auto_fix_scene_layout(
         aggressiveness=aggr,
         min_gap=m_gap,
     )
+
+    if progress_callback:
+        try:
+            progress_callback(3, 5, "Phase 3: Applying geometric layout repairs")
+        except Exception:
+            pass
 
     # Step 6: Create draft and apply repairs
     draft = deepcopy(snapshot_original)
@@ -1644,8 +1685,20 @@ def auto_fix_scene_layout(
         min_gap=m_gap,
     )
 
+    if progress_callback:
+        try:
+            progress_callback(4, 5, "Phase 4: Validating post-repair topology")
+        except Exception:
+            pass
+
     # Step 7: Re-run diagnostics on post-repair geometry
     final_issues = diagnose_layout_issues(draft, min_gap=m_gap, aggressiveness=aggr, warnings=warnings)
+
+    if progress_callback:
+        try:
+            progress_callback(5, 5, "Phase 5: Layout repair complete")
+        except Exception:
+            pass
 
     initial_severe_ids = _severe_ids(initial_issues)
     final_severe_ids = _severe_ids(final_issues)

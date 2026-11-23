@@ -1,6 +1,7 @@
 <div align="center">
 
 # Excalidraw MCP Server
+<!-- mcp-name: io.github.Dharshan2208/excalidraw-mcp -->
 
 **A headless, in-memory Model Context Protocol server enabling AI agents to programmatically generate, inspect, repair, and export native Excalidraw diagrams.**
 
@@ -22,8 +23,8 @@ Operating directly on scene graphs and element trees in memory with FreeType fon
 
 ## Visual Showcase
 
-![Excalidraw MCP System Architecture](docs/architecture.png)
-*System architecture diagram generated programmatically by Excalidraw MCP itself. Editable source: [docs/architecture.excalidraw](docs/architecture.excalidraw).*
+![Excalidraw MCP System Architecture](https://raw.githubusercontent.com/Dharshan2208/excalidraw-mcp/main/docs/architecture.png)
+*System architecture diagram generated programmatically by Excalidraw MCP itself. Editable source: [docs/architecture.excalidraw](https://raw.githubusercontent.com/Dharshan2208/excalidraw-mcp/main/docs/architecture.excalidraw).*
 
 ---
 
@@ -37,10 +38,10 @@ Operating directly on scene graphs and element trees in memory with FreeType fon
 - **Automated Layout Repair (`auto_fix_layout`)**: Detects bounding box collisions, text clipping, and frame escapes, executing 5-phase de-collision and spacing with transactional regression rollback.
 - **Atomic Batch Authoring (`batch_mutate`)**: Enables agents to create, move, style, connect, lock, group, and repair up to 500 operations in a single roundtrip with dynamic `client_id` resolution.
 - **Halved Schema Context Footprint**: Minimalist tool contracts and compact minified JSON responses strip `outputSchema` overhead, reducing turn context usage by up to 50.4%.
-- **High-Resolution Headless Export**: Headless Pillow rasterization generating PNG exports up to 8192 px and inline vision previews (`preview`) capped to optimal model envelopes (`max_dimension=1568`).
+- **High-Resolution Headless Export**: Headless Pillow rasterization generating PNG exports up to 8192 px, vector SVG exports, Obsidian Excalidraw plugin Markdown files (`.excalidraw.md`), and inline vision previews (`preview`) capped to optimal model envelopes (`max_dimension=1568`).
 - **Interactive Live Canvas (`live_server`)**: Real-time Starlette/Uvicorn WebSocket visualizer streaming agent mutations live into an open browser tab.
 - **Encrypted Web Sharing (`export_to_excalidraw_url`)**: Publishes scenes directly to excalidraw.com using 128-bit AES-GCM client-side encryption.
-- **Bundled Agent Skills**: Packages 6 prompt and pattern guides covering architecture design, flowcharts, 60-30-10 color palettes, and quality gates, installable via `exca-mcp install-skills`.
+- **Bundled Agent Skills**: Packages 6 prompt and pattern guides covering architecture design, flowcharts, 60-30-10 color palettes, and quality gates, installable via `exca-mcp install-skills` (including automatic discovery for Claude Code via `exca-mcp install-skills --claude`).
 
 ---
 
@@ -123,6 +124,29 @@ Add to `~/.config/zed/settings.json`:
 }
 ```
 
+### Remote Daemon / Streamable HTTP (Docker & Kubernetes)
+
+Excalidraw MCP natively supports the MCP `streamable-http` transport for remote deployments in containers, Kubernetes clusters, or standalone daemons:
+
+```bash
+# Local development daemon (binds to 127.0.0.1:8000/mcp)
+exca-mcp --transport streamable-http --port 8000
+
+# Container / Kubernetes daemon (binds to 0.0.0.0:8000/mcp)
+exca-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+Minimal Dockerfile for remote deployments:
+
+```dockerfile
+FROM python:3.12-slim
+RUN pip install --no-cache-dir exca-mcp
+EXPOSE 8000
+CMD ["exca-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+> **Security Note**: When binding to non-loopback addresses (`0.0.0.0`), the server prints a warning to `stderr` because MCP does not provide built-in client authentication. Always protect network-exposed instances behind an authenticated reverse proxy (e.g., Envoy, Traefik, NGINX) or private cluster VPC.
+
 > For configuration in OpenCode, Claude Code CLI, Gemini/Antigravity CLI, or Docker environments, see [docs/operations.md](docs/operations.md#extended-client-configurations).
 
 ---
@@ -142,7 +166,7 @@ To enable the complete 20-tool profile:
 export EXCALIDRAW_TOOLSET=full
 ```
 
-See [docs/tools.md](docs/tools.md) for the complete reference of all 20 tools, safety annotations, parameter schemas, and MCP resources.
+See [docs/tools.md](docs/tools.md) for the complete reference of all 21 tools, safety annotations, parameter schemas, and MCP resources.
 
 ---
 

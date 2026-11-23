@@ -41,11 +41,11 @@ When representing cross-cutting infrastructure (e.g. Identity/IAM, Observability
 
 | Component Type | Excalidraw Tool | Recommended Dimensions | Recommended Colors |
 |---|---|---|---|
-| Client / Frontend | `add_rectangle` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#1971c2`, Fill `#e7f5ff` |
-| Gateway / Reverse Proxy | `add_rectangle` | $180-220\text{px} \times 70-80\text{px}$ | Stroke `#0c8599`, Fill `#e3fafc` |
-| Microservice / Backend | `add_rectangle` | $160-200\text{px} \times 75-85\text{px}$ | Stroke `#5f3dc4`, Fill `#f3f0ff` |
-| Database / Persistence | `add_rectangle` or `add_circle` | $140-180\text{px} \times 70-80\text{px}$ | Stroke `#2f9e44`, Fill `#ebfbee` |
-| Queue / Message Stream | `add_rectangle` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#d9480f`, Fill `#fff4e6` |
-| Security / Firewall | `add_rectangle` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#c92a2a`, Fill `#ffe3e3` |
-| External 3rd Party | `add_rectangle` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#495057`, Fill `#f1f3f5` |
+| Client / Frontend | `create_shape (rectangle)` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#1971c2`, Fill `#e7f5ff` |
+| Gateway / Reverse Proxy | `create_shape (rectangle)` | $180-220\text{px} \times 70-80\text{px}$ | Stroke `#0c8599`, Fill `#e3fafc` |
+| Microservice / Backend | `create_shape (rectangle)` | $160-200\text{px} \times 75-85\text{px}$ | Stroke `#5f3dc4`, Fill `#f3f0ff` |
+| Database / Persistence | `create_shape (rectangle/ellipse)` | $140-180\text{px} \times 70-80\text{px}$ | Stroke `#2f9e44`, Fill `#ebfbee` |
+| Queue / Message Stream | `create_shape (rectangle)` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#d9480f`, Fill `#fff4e6` |
+| Security / Firewall | `create_shape (rectangle)` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#c92a2a`, Fill `#ffe3e3` |
+| External 3rd Party | `create_shape (rectangle)` | $160-200\text{px} \times 70-80\text{px}$ | Stroke `#495057`, Fill `#f1f3f5` |
 | System / VPC Boundary | `add_frame` | $1400-1600\text{px} \times 140-180\text{px}$ | Border `#1e1e1e`, Fill `transparent` |

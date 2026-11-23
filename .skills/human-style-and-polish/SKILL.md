@@ -1,6 +1,6 @@
 ---
 name: human-style-and-polish
-description: Apply the professional hand-drawn Excalidraw aesthetic using restrained semantic palettes, intentional typography, consistent grid spacing, and verified geometric clearances.
+description: Apply the professional hand-drawn Excalidraw aesthetic using restrained semantic palettes, intentional typography, consistent grid spacing, and verified geometric clearances. Use when styling, refining, polishing, or reviewing visual hierarchy, colors, typography, or grid spacing of Excalidraw diagrams.
 ---
 
 # Human Style & Polish
@@ -14,7 +14,7 @@ This skill turns raw boxes and arrows into a clean, human-crafted Excalidraw dia
 Excalidraw’s visual charm and readability come from subtle organic line variance, not rigid geometry or messy sketches.
 
 ### Verified Style Parameters in Code
-Every primitive shape tool (`add_rectangle`, `add_diamond`, `add_circle`) accepts these verified style parameters:
+The shape tool `create_shape` (accepting `type="rectangle"`, `"diamond"`, `"ellipse"`) and `batch_mutate` accept these verified style parameters:
 
 - **`roughness` (Integer: `0`, `1`, `2`)**:
   - `0`: Crisp, straight-line architectural blueprint style. Best for formal system documentation.

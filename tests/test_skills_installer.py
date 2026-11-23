@@ -13,6 +13,8 @@ from unittest.mock import patch
 from excalidraw_mcp.installer import (
     InstallAction,
     execute_installation,
+    get_claude_skill_dir,
+    plan_claude_installation,
     plan_installation,
     run_install_skills_cli,
     validate_target_dir,
@@ -158,6 +160,25 @@ class SkillsInstallerTests(unittest.TestCase):
                 self.assertEqual(p.action, InstallAction.SKIP)
                 self.assertIn("symlink", p.reason.lower())
 
+    def test_symlink_sibling_prefix_safety(self):
+        """Verify that symlinks to a sibling directory starting with identical string prefix are rejected (M-027)."""
+        with tempfile.TemporaryDirectory() as td:
+            # Sibling directory starts with same prefix "safe_target"
+            sibling_escaped = Path(td) / "safe_target-escaped"
+            sibling_escaped.mkdir()
+            target = Path(td) / "safe_target"
+            target.mkdir()
+
+            # Point skill to sibling that would fool a simple string startswith check
+            malicious_link = target / "architecture-diagrams"
+            malicious_link.symlink_to(sibling_escaped, target_is_directory=True)
+
+            _, plans = plan_installation(target, force=False)
+            arch_plans = [p for p in plans if p.skill_name == "architecture-diagrams"]
+            for p in arch_plans:
+                self.assertEqual(p.action, InstallAction.SKIP)
+                self.assertIn("escaping", p.reason.lower())
+
     def test_permission_error_handling(self):
         """Verify graceful handling when destination cannot be written."""
         with tempfile.TemporaryDirectory() as td:
@@ -199,6 +220,111 @@ class SkillsInstallerTests(unittest.TestCase):
 
             # Dry run with force
             self.assertEqual(run_install_skills_cli(["--target", t, "--force", "--dry-run"]), 0)
+
+    def test_claude_skill_installation_defaults_and_structure(self):
+        """Verify Claude Code skill packaging under ~/.claude/skills/excalidraw/ with frontmatter and references (M-006)."""
+        with tempfile.TemporaryDirectory() as td:
+            fake_home = Path(td) / "fake_home"
+            fake_home.mkdir()
+
+            with patch("pathlib.Path.home", return_value=fake_home), patch.dict(os.environ, {}, clear=True):
+                # 1. Default directory resolution
+                expected_dir = fake_home / ".claude" / "skills"
+                self.assertEqual(get_claude_skill_dir(), expected_dir)
+
+                # 2. Plan installation
+                root, plans = plan_claude_installation()
+                self.assertEqual(root, expected_dir.resolve())
+                skill_file_plan = next(p for p in plans if p.rel_path == "SKILL.md")
+                self.assertEqual(skill_file_plan.dest_path, expected_dir.resolve() / "excalidraw" / "SKILL.md")
+                # Frontmatter checks
+                self.assertIn("name: excalidraw", skill_file_plan.content)
+                self.assertIn("description:", skill_file_plan.content)
+                self.assertIn("## Role", skill_file_plan.content)
+
+                # 3. Dry run
+                res_dry = execute_installation(force=False, dry_run=True, is_claude=True)
+                self.assertTrue(res_dry.success)
+                self.assertFalse((expected_dir / "excalidraw").exists())
+
+                # 4. Real installation
+                res_real = execute_installation(force=False, dry_run=False, is_claude=True)
+                self.assertTrue(res_real.success)
+                installed_skill = expected_dir / "excalidraw" / "SKILL.md"
+                self.assertTrue(installed_skill.is_file())
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), skill_file_plan.content)
+
+                # Reference files present
+                self.assertTrue((expected_dir / "excalidraw" / "references" / "architecture-patterns.md").is_file())
+                self.assertTrue((expected_dir / "excalidraw" / "references" / "palette-catalog.md").is_file())
+                # Discovery links in SKILL.md (P-010)
+                skill_text = installed_skill.read_text(encoding="utf-8")
+                self.assertIn("references/architecture-patterns.md", skill_text)
+                self.assertIn("references/palette-catalog.md", skill_text)
+                self.assertIn("Bundled Reference Guidelines", skill_text)
+
+                # 5. Idempotent second run
+                res_idempotent = execute_installation(force=False, dry_run=False, is_claude=True)
+                self.assertTrue(res_idempotent.success)
+                self.assertEqual(len(res_idempotent.installed_files), 0)
+                self.assertGreater(len(res_idempotent.skipped_files), 0)
+
+    def test_claude_skill_cli_overrides_and_safety(self):
+        """Verify Claude Code CLI subcommand arguments, CLAUDE_CONFIG_DIR, and overwrite safety (M-006)."""
+        with tempfile.TemporaryDirectory() as td:
+            fake_config_dir = Path(td) / "custom_claude_config"
+            fake_config_dir.mkdir()
+
+            # Test CLAUDE_CONFIG_DIR environment variable override
+            with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(fake_config_dir)}):
+                self.assertEqual(get_claude_skill_dir(), fake_config_dir / "skills")
+
+                # Install via CLI using --claude
+                exit_code = run_install_skills_cli(["--claude"])
+                self.assertEqual(exit_code, 0)
+                installed_skill = fake_config_dir / "skills" / "excalidraw" / "SKILL.md"
+                self.assertTrue(installed_skill.is_file())
+
+                # User modifies skill file
+                custom_content = "# User custom modification\n"
+                installed_skill.write_text(custom_content, encoding="utf-8")
+
+                # Install again without --force -> user content is preserved
+                exit_code = run_install_skills_cli(["--claude"])
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(installed_skill.read_text(encoding="utf-8"), custom_content)
+
+                # Install again with --force -> canonical content restored
+                exit_code = run_install_skills_cli(["--claude", "--force"])
+                self.assertEqual(exit_code, 0)
+                self.assertNotEqual(installed_skill.read_text(encoding="utf-8"), custom_content)
+                self.assertIn("name: excalidraw", installed_skill.read_text(encoding="utf-8"))
+
+            # Test explicit --dir override with --claude
+            custom_dir = Path(td) / "project_local_skills"
+            exit_code = run_install_skills_cli(["--claude", "--dir", str(custom_dir)])
+            self.assertEqual(exit_code, 0)
+            self.assertTrue((custom_dir / "excalidraw" / "SKILL.md").is_file())
+
+    def test_cursor_and_windsurf_cli_shortcuts(self):
+        """Verify --cursor and --windsurf shortcut targets install into .cursor/skills and .windsurf/skills (P-015)."""
+        with tempfile.TemporaryDirectory() as td:
+            orig_cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                # 1. Cursor shortcut
+                cursor_exit = run_install_skills_cli(["--cursor"])
+                self.assertEqual(cursor_exit, 0)
+                cursor_skill = Path(td) / ".cursor" / "skills" / "architecture-diagrams" / "SKILL.md"
+                self.assertTrue(cursor_skill.is_file())
+
+                # 2. Windsurf shortcut
+                windsurf_exit = run_install_skills_cli(["--windsurf"])
+                self.assertEqual(windsurf_exit, 0)
+                windsurf_skill = Path(td) / ".windsurf" / "skills" / "diagram-planning" / "SKILL.md"
+                self.assertTrue(windsurf_skill.is_file())
+            finally:
+                os.chdir(orig_cwd)
 
 
 if __name__ == "__main__":

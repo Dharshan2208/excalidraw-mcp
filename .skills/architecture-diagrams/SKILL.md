@@ -47,22 +47,22 @@ frame_id = frame_result["frame_id"]
 
 | Role | Tool | Stroke Color | Background Fill | Roughness | Roundness |
 |---|---|---|---|---|---|
-| Client / UI | `add_rectangle` | `#1971c2` | `#e7f5ff` | `1` | `"round"` |
-| Gateway / Ingress | `add_rectangle` | `#0c8599` | `#e3fafc` | `1` | `"round"` |
-| Core Service | `add_rectangle` | `#5f3dc4` | `#f3f0ff` | `1` | `"round"` |
-| Database / Store | `add_rectangle` | `#2f9e44` | `#ebfbee` | `1` | `"round"` |
-| Event / Queue | `add_rectangle` | `#d9480f` | `#fff4e6` | `1` | `"round"` |
-| Security / Firewall | `add_rectangle` | `#c92a2a` | `#ffe3e3` | `1` | `"round"` |
-| External 3rd Party | `add_rectangle` | `#495057` | `#f1f3f5` | `1` | `"sharp"` |
+| Client / UI | `create_shape` | `#1971c2` | `#e7f5ff` | `1` | `"round"` |
+| Gateway / Ingress | `create_shape` | `#0c8599` | `#e3fafc` | `1` | `"round"` |
+| Core Service | `create_shape` | `#5f3dc4` | `#f3f0ff` | `1` | `"round"` |
+| Database / Store | `create_shape` | `#2f9e44` | `#ebfbee` | `1` | `"round"` |
+| Event / Queue | `create_shape` | `#d9480f` | `#fff4e6` | `1` | `"round"` |
+| Security / Firewall | `create_shape` | `#c92a2a` | `#ffe3e3` | `1` | `"round"` |
+| External 3rd Party | `create_shape` | `#495057` | `#f1f3f5` | `1` | `"sharp"` |
 
 ---
 
 ## 4. Why Primitives Outperform Shorthand
 
-While `draw_architecture` is available for quick prototypes, **production diagrams must use Primitives (`add_frame`, `add_rectangle`, `connect`)**:
-1. `draw_architecture` styles all elements identically and only supports a single horizontal grid.
+While `generate_diagram(format="architecture")` is available for quick prototypes, **production diagrams must use Primitives (`add_frame`, `create_shape`, `create_connector`, or `batch_mutate`)**:
+1. `generate_diagram` styles all elements identically and only supports a single horizontal grid.
 2. Primitives allow per-tier framing, custom semantic colors per service, and exact coordinate snapping.
-3. `connect(source_id, target_id)` establishes dynamic arrow bindings that anchor perpendicularly to cardinal faces.
+3. `create_connector(source_id, target_id)` establishes dynamic arrow bindings that anchor perpendicularly to cardinal faces.
 
 ---
 
@@ -89,7 +89,8 @@ t1_frame = await client.call_tool("add_frame", {
 })
 
 # 4. Add Tier 1 Component
-client_box = await client.call_tool("add_rectangle", {
+client_box = await client.call_tool("create_shape", {
+    "type": "rectangle",
     "label": "Web Client\nNext.js SPA",
     "x": 160.0, "y": 175.0, "w": 240.0, "h": 70.0,
     "frame_id": t1_frame["frame_id"],
@@ -103,7 +104,8 @@ t2_frame = await client.call_tool("add_frame", {
     "x": 100.0, "y": 320.0, "w": 1200.0, "h": 140.0,
 })
 
-gateway_box = await client.call_tool("add_rectangle", {
+gateway_box = await client.call_tool("create_shape", {
+    "type": "rectangle",
     "label": "Kong API Gateway\nRate Limiting • JWT Auth",
     "x": 160.0, "y": 355.0, "w": 260.0, "h": 75.0,
     "frame_id": t2_frame["frame_id"],
@@ -111,7 +113,8 @@ gateway_box = await client.call_tool("add_rectangle", {
     "fillStyle": "solid", "roundness": "round", "roughness": 1,
 })
 
-order_svc = await client.call_tool("add_rectangle", {
+order_svc = await client.call_tool("create_shape", {
+    "type": "rectangle",
     "label": "Order Service\nGo • gRPC Engine",
     "x": 560.0, "y": 355.0, "w": 240.0, "h": 75.0,
     "frame_id": t2_frame["frame_id"],
@@ -125,7 +128,8 @@ t3_frame = await client.call_tool("add_frame", {
     "x": 100.0, "y": 510.0, "w": 1200.0, "h": 140.0,
 })
 
-db_box = await client.call_tool("add_rectangle", {
+db_box = await client.call_tool("create_shape", {
+    "type": "rectangle",
     "label": "Orders Database\nPostgreSQL 16 HA Cluster",
     "x": 560.0, "y": 545.0, "w": 260.0, "h": 75.0,
     "frame_id": t3_frame["frame_id"],
@@ -134,27 +138,27 @@ db_box = await client.call_tool("add_rectangle", {
 })
 
 # 7. Connect Components with Protocol Labels
-await client.call_tool("connect", {
-    "source_id": client_box["rectangle_id"],
-    "target_id": gateway_box["rectangle_id"],
+await client.call_tool("create_connector", {
+    "source_id": client_box["id"],
+    "target_id": gateway_box["id"],
     "label": "HTTPS / TLS",
     "elbowed": True,
     "strokeStyle": "solid",
     "strokeColor": "#1e1e1e",
 })
 
-await client.call_tool("connect", {
-    "source_id": gateway_box["rectangle_id"],
-    "target_id": order_svc["rectangle_id"],
+await client.call_tool("create_connector", {
+    "source_id": gateway_box["id"],
+    "target_id": order_svc["id"],
     "label": "gRPC RPC",
     "elbowed": True,
     "strokeStyle": "solid",
     "strokeColor": "#5f3dc4",
 })
 
-await client.call_tool("connect", {
-    "source_id": order_svc["rectangle_id"],
-    "target_id": db_box["rectangle_id"],
+await client.call_tool("create_connector", {
+    "source_id": order_svc["id"],
+    "target_id": db_box["id"],
     "label": "SQL (Read/Write)",
     "elbowed": True,
     "strokeStyle": "solid",
@@ -185,7 +189,7 @@ await client.call_tool("connect", {
 
 | Failure Pattern | Root Cause | Immediate Fix |
 |---|---|---|
-| Floating text drifting when shape is moved | Calling `add_text` on top of a rectangle instead of `label` | Pass `label="Title\nSubtitle"` directly into `add_rectangle` so text is permanently centered and bound |
+| Floating text drifting when shape is moved | Calling `add_text` on top of a rectangle instead of `label` | Pass `label="Title\nSubtitle"` directly into `create_shape` so text is permanently centered and bound |
 | Frame child leaves frame on dragging | Creating shapes without `frame_id` | Always capture `frame_id` from `add_frame` and pass it to every child shape |
-| Arrows cutting through service boxes | Using straight arrows diagonally across intermediate tiers | Set `elbowed=True` in `connect` so Manhattan A* routes along clear $15\text{px}$ corridors |
+| Arrows cutting through service boxes | Using straight arrows diagonally across intermediate tiers | Set `elbowed=True` in `create_connector` so Manhattan A* routes along clear $15\text{px}$ corridors |
 | Unbalanced box heights across a row | Guessing individual heights for each node | Set identical standard heights for peers in the same tier (e.g. `w=240.0, h=75.0`) |

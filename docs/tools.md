@@ -1,8 +1,8 @@
 # MCP Tools Reference
 
-> **BREAKING CHANGE (v0.3.0)**: Tool surface has been rationalized from 48 legacy tools to **12 tools in the default `core` profile** and **20 tools in the `full` profile**, reducing schema token overhead by over 50%.
+> **BREAKING CHANGE (v0.3.0)**: Tool surface has been rationalized from 48 legacy tools to **12 tools in the default `core` profile** and **21 tools in the `full` profile**, reducing schema token overhead by over 50%.
 > - **`CORE` Toolset (12 tools, Default)**: The essential generation, editing, inspection, validation, batch mutation, and preview surface for autonomous AI coding agents.
-> - **`FULL` Toolset (20 tools)**: Adds persistent diagram file storage (`scene_storage`), high-resolution disk export (`export_png`), advanced generators (`generate_diagram`), element locking and grouping (`manage_element_state`), camera viewport framing (`set_viewport`), background live WebSocket server (`live_server`), client-side encrypted sharing (`export_to_excalidraw_url`), and design guidelines (`read_diagram_guide`).
+> - **`FULL` Toolset (21 tools)**: Adds persistent diagram file storage (`scene_storage`), high-resolution disk export (`export_png`, `export_svg`), advanced generators (`generate_diagram`), element locking and grouping (`manage_element_state`), camera viewport framing (`set_viewport`), background live WebSocket server (`live_server`), client-side encrypted sharing (`export_to_excalidraw_url`), and design guidelines (`read_diagram_guide`).
 >
 > To enable the `FULL` toolset, configure the environment variable:
 > ```bash
@@ -29,26 +29,27 @@ The default `core` toolset contains all capabilities required to construct, conn
 | `clear` | **CORE** | Destructive | None | Atomically wipes the entire active canvas and element state. |
 | `batch_mutate` | **CORE** | Mutating | `operations: list[dict]` | Atomically executes multiple shape, connector, movement, style, lock, group, duplicate, or code block operations in a single revision step with dynamic `$ref` client ID resolution. |
 | `inspect_scene` | **CORE** | Read-Only | `mode: "summary" \| "describe" \| "elements" \| "element" \| "find" \| "viewport" \| "live_server" \| "resource"`<br>Mode-specific parameters (`element_id`, `query`, `detailed`, `limit`, `offset`, etc.) | Unified query interface for scene summaries, AI-readable topological descriptions, element properties, paginated listings, and search filters. |
-| `auto_fix_layout` | **CORE** | Mutating, Idempotent | `dry_run: bool = False`<br>`repair_scope: "all" \| "overlaps" \| "connectors" \| "containment" \| "text" \| "spacing" = "all"`<br>`aggressiveness: "gentle" \| "balanced" \| "aggressive" = "balanced"`<br>`min_gap: float = 30.0`<br>`detailed: bool = False` | Five-phase topological layout diagnostic and repair engine with automatic regression rollback. Slim summary returned by default. |
+| `auto_fix_layout` | **CORE** | Mutating, Idempotent | `dry_run: bool = False`<br>`repair_scope: "all" \| "overlaps" \| "connectors" \| "containment" \| "text" \| "spacing" = "all"`<br>`aggressiveness: "gentle" \| "balanced" \| "aggressive" = "balanced"`<br>`min_gap: float = 30.0`<br>`verbose: bool = False`<br>`name: str = None` | Five-phase topological layout diagnostic and repair engine with automatic regression rollback. Slim summary returned by default. |
 | `undo` | **CORE** | Mutating | None | Reverts the canvas to the state immediately preceding the latest mutation using the in-memory undo stack. |
 | `preview` | **CORE** | Read-Only | `scale: float = 1.0`<br>`padding: int = 40`<br>`background: bool = True`<br>`max_dimension: int = 1568`<br>`format: "png" \| "jpeg" = "png"` | Renders an inline image preview directly into LLM turns. Caps maximum dimension maintaining aspect ratio (default 1568px) and supports PNG or JPEG output. |
 
 ---
 
-## 2. Full Profile Tools (8 Additional Tools — 20 Total)
+## 2. Full Profile Tools (9 Additional Tools — 21 Total)
 
-The `full` profile includes all 12 core tools plus 8 advanced management, generation, and persistence tools.
+The `full` profile includes all 12 core tools plus 9 advanced management, generation, and persistence tools.
 
 | Tool | Profile | Safety Annotations | Inputs Summary | Description |
 |---|---|---|---|---|
-| `scene_storage` | FULL | Destructive | `action: "save" \| "load" \| "list" \| "export" \| "import"`<br>`name: str = None, overwrite: bool = False`<br>`data: str = None, mode: "replace" \| "merge" = "replace"` | Consolidated scene persistence: atomically saves, loads, lists, exports, or imports native `.excalidraw` JSON documents. |
+| `scene_storage` | FULL | Destructive | `action: "save" \| "load" \| "list" \| "export" \| "import" \| "share_url"`<br>`name: str = None, overwrite: bool = False`<br>`data: str = None, mode: "replace" \| "merge" = "replace"`<br>`format: "excalidraw" \| "obsidian" = "excalidraw", directory: str = None` | Consolidated scene persistence: atomically saves, loads, lists, exports, or imports native `.excalidraw` JSON and Obsidian Excalidraw plugin `.excalidraw.md` documents, or generates an encrypted shareable link. |
 | `export_png` | FULL | Read-Only, Idempotent | `name: str`<br>`directory: str = None`<br>`scale: float = 1.0, padding: int = 40`<br>`background: bool = True, overwrite: bool = False` | Headless rasterization exporting the active scene to a high-resolution PNG file on server disk. |
-| `generate_diagram` | FULL | Destructive | `generator: "mermaid" \| "architecture" \| "graph"`<br>`mermaid_code: str = None`<br>`prompt: str = None`<br>`nodes: list[GraphNode] = None, edges: list[GraphEdge] = None`<br>Layout controls (`direction`, `elbowed`, `roundness`, etc.) | Unified generator: builds diagrams from Mermaid syntax, rapid shorthand architecture strings, or structured Sugiyama node/edge graphs with automatic frame clustering. |
+| `export_svg` | FULL | Read-Only, Idempotent | `name: str`<br>`directory: str = None`<br>`padding: int = 40`<br>`background: bool = True, overwrite: bool = False` | Headless vector export rendering the active scene to a clean, scalable SVG file on server disk. |
+| `generate_diagram` | FULL | Destructive | `format: "mermaid" \| "architecture" \| "graph"`<br>`mermaid_code: str = None`<br>`prompt: str = None`<br>`nodes: list[GraphNode] = None, edges: list[GraphEdge] = None`<br>Layout controls (`direction`, `elbowed`, `roundness`, etc.) | Unified generator: builds diagrams from Mermaid syntax, rapid shorthand architecture strings, or structured Sugiyama node/edge graphs with automatic frame clustering. |
 | `manage_element_state` | FULL | Mutating, Idempotent | `action: "lock" \| "unlock" \| "group" \| "ungroup" \| "duplicate"`<br>`element_ids: list[str] = None`<br>`group_id: str = None`<br>`offset_x: float = 20.0, offset_y: float = 20.0` | Unified management of element lock protection, logical grouping/ungrouping, and spatial duplication with relationship remapping. |
 | `set_viewport` | FULL | Mutating, Idempotent | `scroll_x: float = None, scroll_y: float = None`<br>`zoom: float = None, background_color: str = None`<br>`focus_element_ids: list[str] = None, padding: int = 50` | Sets camera scroll coordinates, zoom level, background canvas color, or automatically calculates bounding box framing on specified elements. |
 | `live_server` | FULL | Idempotent, Open-World | `action: "start" \| "stop"`<br>`host: str = "127.0.0.1", port: int = 8080` | Starts or stops the background WebSocket-enabled live canvas visualizer for real-time browser synchronization. |
 | `export_to_excalidraw_url` | FULL | Read-Only, Open-World | `name: str = None` | Publishes the scene to excalidraw.com using 128-bit client-side AES-GCM encryption and returns a shareable link. |
-| `read_diagram_guide` | FULL | Read-Only | `topic: str = None` (`layout`, `colors`, `typography`, `grouping`, `arrows`, `spacing`) | Returns practical diagram design guidelines covering 60-30-10 color rules, spacing, and readability. Prefer reading resource `excalidraw://guide/{topic}`. |
+| `read_diagram_guide` | FULL | Read-Only | `topic: str = None` (`layout`, `colors`, `typography`, `grouping`, `arrows`, `spacing`, `readability`) | Returns practical diagram design guidelines covering 60-30-10 color rules, spacing, and readability. Prefer reading resource `excalidraw://guide/{topic}`. |
 
 ---
 
@@ -58,6 +59,8 @@ Resources allow clients and models to discover metadata, documentation, and save
 
 | Resource URI | MIME Type | Description |
 |---|---|---|
+| `excalidraw://active/scene.json` | `application/vnd.excalidraw+json` | In-memory JSON snapshot of the active canvas document, readable without consuming tool execution turns. |
+| `excalidraw://active` | `application/vnd.excalidraw+json` | Canonical alias URI for the active canvas scene state. |
 | `excalidraw://fonts` | `application/json` | Discovers available system fonts, Excalifont paths, and semantic font family categories (`sans-serif`, `monospace`, `handwriting`). |
 | `excalidraw://guide/{topic}` | `text/markdown` | Parameterized design guide returning markdown principles and recommendations for `layout`, `colors`, `typography`, `grouping`, `arrows`, and `spacing`. |
 | `excalidraw://capabilities` | `application/json` | Active server metadata, toolset configuration (`core` vs `full`), tool counts, and storage paths. |

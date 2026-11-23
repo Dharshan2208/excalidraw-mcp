@@ -32,6 +32,12 @@ class MCPContractTests(unittest.TestCase):
         self.assertFalse(tools["inspect_scene"].annotations.openWorldHint)
         self.assertTrue(tools["clear"].annotations.destructiveHint)
         self.assertTrue(tools["scene_storage"].annotations.destructiveHint)
+        self.assertTrue(tools["scene_storage"].annotations.openWorldHint)
+        self.assertFalse(tools["manage_element_state"].annotations.idempotentHint)
+        self.assertFalse(tools["update_element"].annotations.destructiveHint)
+        self.assertFalse(tools["set_viewport"].annotations.destructiveHint)
+        self.assertFalse(tools["export_png"].annotations.openWorldHint)
+        self.assertFalse(tools["export_svg"].annotations.openWorldHint)
         self.assertTrue(tools["export_to_excalidraw_url"].annotations.openWorldHint)
         self.assertTrue(tools["generate_diagram"].annotations.destructiveHint)
         self.assertTrue(all(tool.run_in_thread for tool in tools.values()))
@@ -133,6 +139,93 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(invalid.is_error)
         self.assertTrue(missing.is_error)
         self.assertEqual(json.loads(graph.content[0].text)["node_map"].keys(), {"a", "b"})
+
+
+    async def test_active_scene_resource(self):
+        """Active scene can be read directly via excalidraw://active/scene.json and excalidraw://active."""
+        service = SceneService()
+        service.add_shape("rectangle", 10, 20, 100, 50, label="Resource Box")
+        server = create_server(service)
+
+        # 1. Read excalidraw://active/scene.json
+        res_json = await server.read_resource("excalidraw://active/scene.json")
+        self.assertTrue(len(res_json.contents) > 0)
+        data_json = json.loads(res_json.contents[0].content)
+        self.assertEqual(data_json["type"], "excalidraw")
+        self.assertEqual(data_json["version"], 2)
+        texts = [el for el in data_json["elements"] if el["type"] == "text"]
+        self.assertEqual(texts[0]["text"], "Resource Box")
+
+        # 2. Read excalidraw://active alias
+        res_alias = await server.read_resource("excalidraw://active")
+        self.assertTrue(len(res_alias.contents) > 0)
+        data_alias = json.loads(res_alias.contents[0].content)
+        self.assertEqual(data_alias["type"], "excalidraw")
+
+    async def test_auto_fix_layout_progress_reporting(self):
+        """auto_fix_layout executes cleanly with FastMCP Context progress reporting."""
+        service = SceneService()
+        service.add_shape("rectangle", 0, 0, 100, 100, label="Box 1")
+        service.add_shape("rectangle", 20, 20, 100, 100, label="Box 2")  # Overlapping
+        server = create_server(service)
+
+        progress_calls = []
+
+        class MockContext:
+            async def report_progress(self, progress: float, total: float | None = None, message: str | None = None):
+                progress_calls.append((progress, total, message))
+
+        # Test tool handler with MockContext directly inside AnyIO worker thread
+        import anyio
+        tool = await server.get_tool("auto_fix_layout")
+        tool_fn = tool.fn
+        await anyio.to_thread.run_sync(lambda: tool_fn(dry_run=False, repair_scope="all", ctx=MockContext()))
+        self.assertGreaterEqual(len(progress_calls), 5)
+        self.assertEqual(progress_calls[0][0], 1)
+        self.assertEqual(progress_calls[-1][0], 5)
+
+        async with Client(server) as client:
+            res = await client.call_tool("auto_fix_layout", {"dry_run": False, "repair_scope": "all"})
+            self.assertFalse(res.is_error)
+            data = json.loads(res.content[0].text)
+            self.assertIn("status", data)
+            self.assertIn("applied_change_count", data)
+
+    async def test_generate_diagram_progress_reporting(self):
+        """generate_diagram executes cleanly with FastMCP Context progress reporting (P-030)."""
+        service = SceneService()
+        server = create_server(service, toolset="full")
+
+        progress_calls = []
+        info_calls = []
+
+        class MockContext:
+            async def report_progress(self, progress: float, total: float | None = None):
+                progress_calls.append((progress, total))
+
+            async def info(self, message: str):
+                info_calls.append(message)
+
+        import anyio
+        tool = await server.get_tool("generate_diagram")
+        tool_fn = tool.fn
+        await anyio.to_thread.run_sync(
+            lambda: tool_fn(
+                format="mermaid",
+                mermaid_code="graph TD\nA --> B",
+                ctx=MockContext(),
+            )
+        )
+        self.assertGreaterEqual(len(progress_calls), 2)
+        self.assertEqual(progress_calls[-1][0], 100)
+        self.assertGreaterEqual(len(info_calls), 2)
+
+        async with Client(server) as client:
+            res = await client.call_tool("generate_diagram", {"format": "mermaid", "mermaid_code": "graph TD\nStart --> End"})
+            self.assertFalse(res.is_error)
+            data = json.loads(res.content[0].text)
+            self.assertEqual(data["status"], "graph drawn")
+            self.assertEqual(data["nodes"], 2)
 
 
 if __name__ == "__main__":

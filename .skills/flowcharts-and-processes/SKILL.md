@@ -1,6 +1,6 @@
 ---
 name: flowcharts-and-processes
-description: Design clear, human-polished flowcharts, decision trees, CI/CD pipelines, and state machines with single starts, clear terminals, labeled decision branches, and clean loop routing.
+description: Design clear, human-polished flowcharts, decision trees, CI/CD pipelines, and state machines with single starts, clear terminals, labeled decision branches, and clean loop routing. Use when creating flowcharts, business process flows, CI/CD pipelines, decision logic trees, or state transitions.
 ---
 
 # Flowcharts and Processes
@@ -11,11 +11,11 @@ This skill guides the construction of readable, professional process diagrams an
 
 ## 1. Core Principles of Human-Quality Flowcharts
 
-1. **Exactly One Start Node**: Every flowchart begins at a single entry point. Use a pill-shaped rectangle (`roundness: "round"`) with an inviting soft green tint (`#e6fcf5`, stroke `#0ca678`).
+1. **Exactly One Start Node**: Every flowchart begins at a single entry point. Use a pill-shaped rectangle (`create_shape(type="rectangle", roundness="round")`) with an inviting soft green tint (`#e6fcf5`, stroke `#0ca678`).
 2. **Distinct Terminals**: Never leave an execution branch hanging. End every path with a terminal shape:
    - **Success / Completed**: Green tint (`backgroundColor: "#ebfbee"`, `strokeColor: "#2b8a3e"`).
    - **Failure / Abort / Quarantined**: Soft red tint (`backgroundColor: "#fff5f5"`, `strokeColor: "#c92a2a"`).
-3. **Diamonds Strictly for Decisions**: Only use `add_diamond` for true conditional branching.
+3. **Diamonds Strictly for Decisions**: Only use `create_shape(type="diamond", ...)` for true conditional branching.
    - Text must be an explicit question ending with a question mark (e.g., `"Auth Valid?"`, `"Cache Hit?"`).
    - Every exiting connector MUST have an explicit label (`"Yes"`, `"No"`, `"Retry"`, `"Timeout"`).
    - Size diamonds at least `180px` wide and `110px` high to ensure inscribed labels do not clip corners.
@@ -26,7 +26,7 @@ This skill guides the construction of readable, professional process diagrams an
 5. **Clean Loop & Retry Routing**:
    - Backward loops (retries, polls) must route around the exterior perimeter, never cutting straight through intervening nodes.
    - Keep a minimum lateral clearance of `60px` from the main trunk corridor.
-6. **Elbowed Connectors**: Always set `elbowed=True` on `connect` tool calls to produce neat, 90-degree orthogonal paths.
+6. **Elbowed Connectors**: Always set `elbowed=True` on `create_connector` tool calls to produce neat, 90-degree orthogonal paths.
 
 ---
 
@@ -36,9 +36,9 @@ When rendering a flowchart or process:
 
 ```
 Is it a standard linear flow or simple pipeline (< 8 nodes, no complex styling needed)?
-  ├── YES -> Use `draw_mermaid` with direction TD or LR
+  ├── YES -> Use `generate_diagram(format="mermaid")` with direction TD or LR
   │          Example: graph TD; Start([Start]) --> Check{Valid?}; Check -- Yes --> Done([Done]); Check -- No --> Fail([Fail])
-  └── NO  -> Use primitive tools (`add_rectangle`, `add_diamond`, `connect`)
+  └── NO  -> Use primitive tools (`create_shape`, `create_connector`, or `batch_mutate`)
              Provides exact coordinate control, custom semantic colors, bound labels, and perimeter loop routing.
 ```
 
@@ -57,19 +57,19 @@ Before calling tools, calculate bounding boxes:
 - **Branch offsets**: Place side branches at least `100px` away from the diamond edge ($X_{\text{branch}} \ge 580$).
 
 ### Step 2: Render Shapes
-1. Create the single Start node (`add_rectangle`, `roundness: "round"`).
-2. Create intermediate operation steps (`add_rectangle`, `roundness: "adaptive"`).
-3. Create decision points (`add_diamond`, `roughness: 1`).
+1. Create the single Start node (`create_shape`, `type: "rectangle"`, `roundness: "round"`).
+2. Create intermediate operation steps (`create_shape`, `type: "rectangle"`, `roundness: "adaptive"`).
+3. Create decision points (`create_shape`, `type: "diamond"`, `roughness: 1`).
 4. Create explicit terminal nodes for all outcomes.
 
 ### Step 3: Connect Shapes with Labels
-1. Always use `connect(source_id, target_id)` which establishes automatic bound arrow endpoints.
+1. Always use `create_connector(source_id, target_id)` which establishes automatic bound arrow endpoints.
 2. Set `elbowed=True` for clean orthogonal bends.
 3. Add explicit `label` arguments for all decision branches:
    ```python
    call_mcp_tool(
        "excalidraw",
-       "connect",
+       "create_connector",
        {
            "source_id": diamond_id,
            "target_id": success_step_id,

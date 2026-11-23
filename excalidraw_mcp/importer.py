@@ -15,7 +15,7 @@ from PIL import Image
 from excalidraw_mcp.config import max_scene_bytes, scene_directory
 from excalidraw_mcp.document import normalize_document
 from excalidraw_mcp.errors import SceneError
-from excalidraw_mcp.models import new_document, validate_document
+from excalidraw_mcp.models import new_document
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -58,6 +58,13 @@ def _extract_from_png_bytes(png_bytes: bytes) -> dict[str, Any]:
 
 def _extract_from_obsidian_markdown(text: str) -> dict[str, Any]:
     """Extract Excalidraw scene JSON from Obsidian .excalidraw.md format."""
+    from .obsidian import parse_obsidian_markdown
+
+    try:
+        return parse_obsidian_markdown(text)
+    except Exception:
+        pass
+
     # Pattern 1: Fenced code block under ## Drawing or # Excalidraw Data
     fenced_match = re.search(
         r"```(?:json|json:excalidraw|excalidraw)\s*(\{.*?\})\s*```",
@@ -220,8 +227,20 @@ def import_scene(
     # Validate structure and ensure it's a valid Excalidraw document
     if not isinstance(raw_doc, dict) or not isinstance(raw_doc.get("elements"), list):
         raise SceneError("Imported document must be an Excalidraw scene object containing an 'elements' list")
-    if raw_doc.get("type") not in (None, "excalidraw"):
-        raise SceneError(f"Imported document has invalid type '{raw_doc.get('type')}'; expected 'excalidraw'")
+
+    doc_type = raw_doc.get("type")
+    if doc_type not in (None, "excalidraw", "excalidraw/clipboard"):
+        raise SceneError(f"Imported document has invalid type '{doc_type}'; expected 'excalidraw'")
+
+    # Normalize clipboard format envelope into standard scene format (M-014)
+    if doc_type in (None, "excalidraw/clipboard"):
+        raw_doc["type"] = "excalidraw"
+        raw_doc.setdefault("version", 2)
+        raw_doc.setdefault("source", "https://excalidraw.com")
+        raw_doc.setdefault("appState", {})
+        raw_doc.setdefault("files", {})
+    elif "version" not in raw_doc or raw_doc["version"] != 2:
+        raw_doc["version"] = 2
 
     imported_doc = normalize_document(raw_doc)
     incoming_elements = [

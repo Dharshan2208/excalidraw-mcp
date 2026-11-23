@@ -21,7 +21,11 @@ Configure server behavior using environment variables. When a variable is unset,
 
 | Variable | Default | Valid Range / Format | Description |
 |---|---|---|---|
-| `EXCALIDRAW_TOOLSET` | `core` | `core`, `full` | Active toolset exposure profile. `core` exposes 12 essential tools (~5,048 tokens); `full` exposes all 20 tools (~7,937 tokens). |
+| `EXCALIDRAW_TOOLSET` | `core` | `core`, `full` | Active toolset exposure profile. `core` exposes 12 essential tools (~5,048 tokens); `full` exposes all 21 tools (~7,937 tokens). |
+| `EXCALIDRAW_TRANSPORT` | `stdio` | `stdio`, `streamable-http` | MCP server transport protocol. |
+| `EXCALIDRAW_HOST` | `127.0.0.1` | IP address or hostname | Host interface for Streamable HTTP transport (never binds to 0.0.0.0 by default). |
+| `EXCALIDRAW_PORT` | `8000` | `1` – `65535` | TCP port for Streamable HTTP transport. |
+| `EXCALIDRAW_HTTP_PATH` | *Unset* | URL path (e.g. `/mcp`) | Custom endpoint path for Streamable HTTP transport. |
 | `EXCALIDRAW_SCENE_DIR` | OS user data dir | Absolute path | Directory where `.excalidraw` JSON scene files are saved and loaded. |
 | `EXCALIDRAW_EXPORT_DIR` | `EXCALIDRAW_SCENE_DIR/exports` | Absolute path | Target directory where PNG raster images are written. |
 | `EXCALIDRAW_HISTORY_LIMIT` | `20` | `1` – `100` | Maximum number of in-memory undo snapshots retained. |

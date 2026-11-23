@@ -201,6 +201,97 @@ class ArchitectureScalingTests(unittest.TestCase):
         self.assertTrue(diag["valid"])
         self.assertEqual(diag["overlap_count"], 0)
 
+    def test_multi_session_service_isolation(self):
+        """Verify SceneService isolates canvas drafts across multiple sessions without cross-contamination (M-008)."""
+        self.assertEqual(self.service.session_id, "default")
+        self.service.add_shape("rectangle", 10, 10, 100, 100, label="Default Canvas")
+
+        # Spawn isolated sessions
+        cursor_srv = self.service.for_session("cursor-session")
+        claude_srv = self.service.for_session("claude-session")
+
+        self.assertEqual(cursor_srv.session_id, "cursor-session")
+        self.assertEqual(claude_srv.session_id, "claude-session")
+        self.assertIn("default", self.service.list_sessions())
+        self.assertIn("cursor-session", self.service.list_sessions())
+        self.assertIn("claude-session", self.service.list_sessions())
+
+        # Fresh sessions start empty
+        self.assertEqual(cursor_srv.get_scene_summary()["element_count"], 0)
+        self.assertEqual(claude_srv.get_scene_summary()["element_count"], 0)
+
+        # Mutate cursor session
+        cursor_srv.add_shape("rectangle", 50, 50, 120, 80, label="Cursor Box")
+        cursor_srv.add_text(50, 200, "Cursor Architecture Note")
+        self.assertEqual(cursor_srv.get_scene_summary()["element_count"], 3)  # rect + label + standalone text
+
+        # Verify claude session remains unpolluted
+        self.assertEqual(claude_srv.get_scene_summary()["element_count"], 0)
+
+        # Mutate claude session
+        claude_srv.add_shape("diamond", 200, 200, 80, 80, label="Claude Decision")
+        self.assertEqual(claude_srv.get_scene_summary()["element_count"], 2)  # diamond + label
+
+        # Verify cursor session was not modified by claude
+        self.assertEqual(cursor_srv.get_scene_summary()["element_count"], 3)
+
+        # Clear cursor session, verify claude session remains intact
+        cursor_srv.clear()
+        self.assertEqual(cursor_srv.get_scene_summary()["element_count"], 0)
+        self.assertEqual(claude_srv.get_scene_summary()["element_count"], 2)
+
+        # Switch main service to claude session
+        self.service.switch_session("claude-session")
+        self.assertEqual(self.service.session_id, "claude-session")
+        self.assertEqual(self.service.get_scene_summary()["element_count"], 2)
+
+    def test_multi_session_server_and_resource_isolation(self):
+        """Verify FastMCP servers bound to different sessions maintain independent active resources (M-008)."""
+        import asyncio
+        import json
+        from excalidraw_mcp.server import create_server
+
+        server_a = create_server(session_id="workspace-alpha")
+        server_b = create_server(session_id="workspace-beta")
+
+        async def run_scenario():
+            # Workspace Alpha adds a shape
+            res_a = await server_a.call_tool(
+                "create_shape",
+                {"type": "rectangle", "x": 100, "y": 100, "w": 150, "h": 80, "label": "Alpha"},
+            )
+            # Workspace Beta adds a circle
+            res_b = await server_b.call_tool(
+                "create_shape",
+                {"type": "circle", "x": 300, "y": 300, "w": 100, "label": "Beta"},
+            )
+
+            # Inspect capabilities and sessions
+            res_cap_a = await server_a.read_resource("excalidraw://capabilities")
+            res_cap_b = await server_b.read_resource("excalidraw://capabilities")
+            cap_a = json.loads(res_cap_a.contents[0].content)
+            cap_b = json.loads(res_cap_b.contents[0].content)
+            self.assertEqual(cap_a["session_id"], "workspace-alpha")
+            self.assertEqual(cap_b["session_id"], "workspace-beta")
+
+            # Read active scene resources
+            res_doc_a = await server_a.read_resource("excalidraw://active/scene.json")
+            res_doc_b = await server_b.read_resource("excalidraw://active/scene.json")
+            doc_a = json.loads(res_doc_a.contents[0].content)
+            doc_b = json.loads(res_doc_b.contents[0].content)
+
+            # Alpha has rectangle + label
+            alpha_types = [e["type"] for e in doc_a["elements"]]
+            self.assertIn("rectangle", alpha_types)
+            self.assertNotIn("ellipse", alpha_types)
+
+            # Beta has ellipse + label
+            beta_types = [e["type"] for e in doc_b["elements"]]
+            self.assertIn("ellipse", beta_types)
+            self.assertNotIn("rectangle", beta_types)
+
+        asyncio.run(run_scenario())
+
 
 if __name__ == "__main__":
     unittest.main()

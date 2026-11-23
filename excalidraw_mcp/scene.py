@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from excalidraw_mcp.config import max_scene_bytes, scene_directory
 from excalidraw_mcp.errors import SceneError
 from excalidraw_mcp.document import normalize_document, serialize_document
-from excalidraw_mcp.models import new_document
+from excalidraw_mcp.models import new_document as new_document
 
 
 def _filename(name):
