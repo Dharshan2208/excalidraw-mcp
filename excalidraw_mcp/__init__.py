@@ -1,7 +1,7 @@
 """Excalidraw MCP server package."""
 
-__version__ = "0.3.0"
+from excalidraw_mcp.server import create_server, get_server_version, main, mcp, run
 
-from excalidraw_mcp.server import create_server, main, mcp, run
+__version__ = get_server_version()
 
-__all__ = ["__version__", "create_server", "main", "mcp", "run"]
+__all__ = ["__version__", "create_server", "get_server_version", "main", "mcp", "run"]

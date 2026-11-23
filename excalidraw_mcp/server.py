@@ -4,6 +4,7 @@ from hashlib import sha256
 import json
 from typing import Any, Literal
 
+import anyio
 from fastmcp import FastMCP, Context
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.base import Tool, ToolResult
@@ -44,6 +45,24 @@ def _configure_tool_registration(mcp: FastMCP) -> None:
         return orig_tool(name_or_fn, **kwargs)
 
     mcp.tool = custom_tool  # type: ignore[method-assign]
+
+
+def _report_tool_progress(
+    ctx: Context | None,
+    progress: float,
+    total: float,
+    message: str | None = None,
+) -> None:
+    """Safely report progress and logging notifications when Context is provided."""
+    if ctx is None:
+        return
+    try:
+        if message:
+            anyio.from_thread.run(ctx.info, message)
+        anyio.from_thread.run(ctx.report_progress, progress, total)
+    except Exception:
+        pass
+
 
 from excalidraw_mcp.contracts import (
     Aggressiveness,
@@ -769,12 +788,15 @@ def create_server(
             strokeStyle: StrokeStyle | None = None,
             opacity: Opacity | None = None,
             roughness: Roughness | None = None,
+            ctx: Context | None = None,
         ) -> DiagramResult:
             """Generate diagrams from Mermaid syntax, architecture text prompts, or graphs."""
+            _report_tool_progress(ctx, 10, 100, f"Initializing diagram generation for format='{format}'")
             if format == "mermaid":
                 if not mermaid_code or not mermaid_code.strip():
                     raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
-                return invoke(
+                _report_tool_progress(ctx, 40, 100, "Parsing Mermaid syntax and computing layout")
+                res = invoke(
                     service.draw_mermaid,
                     mermaid_code=mermaid_code,
                     direction=direction,
@@ -782,9 +804,12 @@ def create_server(
                     elbowed=elbowed,
                     roundness=roundness,
                 )
+                _report_tool_progress(ctx, 100, 100, "Mermaid diagram generated successfully")
+                return res
             elif format == "architecture":
                 if not prompt or not prompt.strip():
                     raise ToolError("generate_diagram(format='architecture') requires non-empty prompt parameter.")
+                _report_tool_progress(ctx, 40, 100, "Synthesizing architecture layout from prompt")
                 style = _style_kwargs(
                     strokeColor=strokeColor,
                     backgroundColor=backgroundColor,
@@ -796,11 +821,14 @@ def create_server(
                     font_family=font_family,
                     font_size=font_size,
                 )
-                return invoke(service.draw_architecture, prompt, **style)
+                res = invoke(service.draw_architecture, prompt, **style)
+                _report_tool_progress(ctx, 100, 100, "Architecture diagram generated successfully")
+                return res
             elif format == "graph":
                 if nodes is None or edges is None:
                     raise ToolError("generate_diagram(format='graph') requires nodes and edges parameters.")
-                return invoke(
+                _report_tool_progress(ctx, 40, 100, "Routing nodes, edges, and clusters into scene graph")
+                res = invoke(
                     service.draw_graph,
                     [node.model_dump() if hasattr(node, "model_dump") else node for node in nodes],
                     [edge.model_dump() if hasattr(edge, "model_dump") else edge for edge in edges],
@@ -816,6 +844,8 @@ def create_server(
                     cycle_fallback=cycle_fallback,
                     expected_revision=expected_revision,
                 )
+                _report_tool_progress(ctx, 100, 100, "Graph diagram generated successfully")
+                return res
             else:
                 raise ToolError(f"Unsupported diagram format: {format}")
 

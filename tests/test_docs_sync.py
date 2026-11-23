@@ -66,3 +66,11 @@ class DocumentationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("verbose: bool = False", tools_md)
         self.assertIn('"share_url"', tools_md)
         self.assertIn("readability", tools_md)
+
+    def test_release_workflow_attaches_distribution_assets(self):
+        """Verify release workflow includes GitHub release creation with wheel/sdist assets (P-006)."""
+        repo_root = Path(__file__).resolve().parent.parent
+        release_yml = (repo_root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn("softprops/action-gh-release@v2", release_yml)
+        self.assertIn("contents: write", release_yml)
+        self.assertIn("files: dist/*", release_yml)

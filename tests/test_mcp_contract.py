@@ -191,6 +191,42 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("status", data)
             self.assertIn("applied_change_count", data)
 
+    async def test_generate_diagram_progress_reporting(self):
+        """generate_diagram executes cleanly with FastMCP Context progress reporting (P-030)."""
+        service = SceneService()
+        server = create_server(service, toolset="full")
+
+        progress_calls = []
+        info_calls = []
+
+        class MockContext:
+            async def report_progress(self, progress: float, total: float | None = None):
+                progress_calls.append((progress, total))
+
+            async def info(self, message: str):
+                info_calls.append(message)
+
+        import anyio
+        tool = await server.get_tool("generate_diagram")
+        tool_fn = tool.fn
+        await anyio.to_thread.run_sync(
+            lambda: tool_fn(
+                format="mermaid",
+                mermaid_code="graph TD\nA --> B",
+                ctx=MockContext(),
+            )
+        )
+        self.assertGreaterEqual(len(progress_calls), 2)
+        self.assertEqual(progress_calls[-1][0], 100)
+        self.assertGreaterEqual(len(info_calls), 2)
+
+        async with Client(server) as client:
+            res = await client.call_tool("generate_diagram", {"format": "mermaid", "mermaid_code": "graph TD\nStart --> End"})
+            self.assertFalse(res.is_error)
+            data = json.loads(res.content[0].text)
+            self.assertEqual(data["status"], "graph drawn")
+            self.assertEqual(data["nodes"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
