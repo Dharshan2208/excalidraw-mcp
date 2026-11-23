@@ -24,11 +24,12 @@ Excalidraw MCP maintains comprehensive test coverage across all tools, services,
 To run the test suite:
 
 ```bash
-# Using unittest (as configured in CI)
-uv run --locked python -B -m unittest discover -s tests -v
+# Using pytest (primary test runner in CI)
+uv run --locked pytest tests/
 
-# Or using pytest
-uv run pytest
+# Code quality gates
+uvx ruff check excalidraw_mcp tests
+uv run --with mypy mypy excalidraw_mcp
 ```
 
 ### Static Analysis and Compilation

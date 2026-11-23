@@ -108,6 +108,15 @@ uvx exca-mcp install-skills --claude
 uvx exca-mcp install-skills --claude --dry-run
 ```
 
+Install into Cursor or Windsurf IDE:
+```bash
+# Cursor IDE (installs to .cursor/skills/)
+uvx exca-mcp install-skills --cursor
+
+# Windsurf IDE (installs to .windsurf/skills/)
+uvx exca-mcp install-skills --windsurf
+```
+
 Install all skills into a global agent skills directory:
 ```bash
 # Using uvx without installing exca-mcp globally

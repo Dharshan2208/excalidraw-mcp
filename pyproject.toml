@@ -26,7 +26,6 @@ keywords = [
     "diagrams",
     "agent-skills",
     "fastmcp",
-    "pytest"
 ]
 dependencies = [
     "fastmcp>=3.3.1,<4",
@@ -89,3 +88,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "excalidraw_mcp/server.py" = ["E402"]
 "tests/*" = ["F401", "F841"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]

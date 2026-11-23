@@ -73,6 +73,31 @@ python -m excalidraw_mcp
 
 ---
 
+## CLI Utilities
+
+`exca-mcp` includes built-in subcommands for environment diagnostics, configuration generation, and agent skill distribution:
+
+```bash
+# Run environment & dependency diagnostics (Python, fonts, storage, skills)
+exca-mcp doctor
+
+# Print copy-pasteable client configuration JSON
+exca-mcp print-config claude      # Claude Desktop / Claude Code
+exca-mcp print-config cursor      # Cursor (.cursor/mcp.json)
+exca-mcp print-config zed         # Zed (settings.json)
+exca-mcp print-config windsurf    # Windsurf
+exca-mcp print-config opencode    # OpenCode
+exca-mcp print-config antigravity # Google Antigravity / Gemini CLI
+
+# Install agent skills into your editor
+exca-mcp install-skills --claude    # ~/.claude/skills/excalidraw/
+exca-mcp install-skills --cursor    # .cursor/skills/
+exca-mcp install-skills --windsurf  # .windsurf/skills/
+exca-mcp install-skills --target <path>
+```
+
+---
+
 ## MCP Client Configuration
 
 Add Excalidraw MCP to your AI development environment:
@@ -157,10 +182,10 @@ Excalidraw MCP provides two toolset profiles controlled by the `EXCALIDRAW_TOOLS
 
 | Profile | Tools | Context Overhead | Primary Capabilities |
 |---|---:|---:|---|
-| **`core`** *(default)* | **12** | **~5,048 tokens** | Primitives (`create_shape`, `create_connector`, `add_text`, `add_frame`), mutations (`update_element`, `delete`, `clear`, `undo`), atomic batches (`batch_mutate`), inspection (`inspect_scene`), layout repair (`auto_fix_layout`), and vision previews (`preview`). |
-| **`full`** | **20** | **~7,937 tokens** | Includes all `core` tools plus file storage (`scene_storage`), disk export (`export_png`), generators (`generate_diagram`), element locking/grouping (`manage_element_state`), viewport framing (`set_viewport`), live browser sync (`live_server`), cloud sharing (`export_to_excalidraw_url`), and design rules (`read_diagram_guide`). |
+| **`core`** *(default)* | **12** | **~3,133 tokens** | Primitives (`create_shape`, `create_connector`, `add_text`, `add_frame`), mutations (`update_element`, `delete`, `clear`, `undo`), atomic batches (`batch_mutate`), inspection (`inspect_scene`), layout repair (`auto_fix_layout`), and vision previews (`preview`). |
+| **`full`** | **21** | **~5,628 tokens** | Includes all `core` tools plus file storage (`scene_storage`), disk export (`export_png`, `export_svg`), generators (`generate_diagram`), element locking/grouping (`manage_element_state`), viewport framing (`set_viewport`), live browser sync (`live_server`), cloud sharing (`export_to_excalidraw_url`), and design rules (`read_diagram_guide`). |
 
-To enable the complete 20-tool profile:
+To enable the complete 21-tool profile:
 
 ```bash
 export EXCALIDRAW_TOOLSET=full
@@ -220,14 +245,18 @@ For comprehensive end-to-end multi-tier cloud and flowchart workflows, see [docs
 git clone https://github.com/Dharshan2208/excalidraw-mcp.git
 cd excalidraw-mcp
 
-# Synchronize dependencies with uv
+# Synchronize dependencies with uv (including test & dev tools)
 uv sync --locked
 
-# Run the test suite (490 unit & contract tests)
-uv run --locked python -B -m unittest discover -s tests -v
+# Run the full test suite (551 unit & integration tests)
+uv run --locked pytest tests/
+
+# Run code quality gates (linting & typechecking)
+uvx ruff check excalidraw_mcp tests
+uv run --with mypy mypy excalidraw_mcp
 
 # Verify byte-compilation
-uv run --locked python -B -m compileall -q -f excalidraw_mcp tests
+uv run --locked python -B -m compileall -q -f main.py excalidraw_mcp tests
 
 # Validate package build
 uv build

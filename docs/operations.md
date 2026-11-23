@@ -21,7 +21,7 @@ Configure server behavior using environment variables. When a variable is unset,
 
 | Variable | Default | Valid Range / Format | Description |
 |---|---|---|---|
-| `EXCALIDRAW_TOOLSET` | `core` | `core`, `full` | Active toolset exposure profile. `core` exposes 12 essential tools (~5,048 tokens); `full` exposes all 21 tools (~7,937 tokens). |
+| `EXCALIDRAW_TOOLSET` | `core` | `core`, `full` | Active toolset exposure profile. `core` exposes 12 essential tools (~3,133 tokens); `full` exposes all 21 tools (~5,628 tokens). |
 | `EXCALIDRAW_TRANSPORT` | `stdio` | `stdio`, `streamable-http` | MCP server transport protocol. |
 | `EXCALIDRAW_HOST` | `127.0.0.1` | IP address or hostname | Host interface for Streamable HTTP transport (never binds to 0.0.0.0 by default). |
 | `EXCALIDRAW_PORT` | `8000` | `1` – `65535` | TCP port for Streamable HTTP transport. |
@@ -160,8 +160,10 @@ Before tagging a release, run the quality checks:
 
 ```bash
 uv lock --check
-uv run --locked python -B -m unittest discover -s tests -v
-uv run --locked python -B -m compileall -q -f excalidraw_mcp tests
+uv run --locked pytest tests/
+uvx ruff check excalidraw_mcp tests
+uv run --with mypy mypy excalidraw_mcp
+uv run --locked python -B -m compileall -q -f main.py excalidraw_mcp tests
 uv build
 uvx twine check dist/*
 ```
