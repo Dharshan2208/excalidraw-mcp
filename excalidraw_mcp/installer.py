@@ -75,7 +75,7 @@ def validate_target_dir(target: str | Path) -> Path:
         raise ValueError(f"Invalid target path '{target}': {e}") from e
 
     # Disallow dangerous root paths
-    if str(resolved) in ("/", "C:\\", "C:/"):
+    if resolved == resolved.parent or resolved.anchor == str(resolved) or str(resolved) in ("/", "\\", "C:\\", "C:/"):
         raise ValueError("Installing skills directly into system root is not permitted.")
 
     return resolved

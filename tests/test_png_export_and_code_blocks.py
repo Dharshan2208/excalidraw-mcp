@@ -29,7 +29,7 @@ from excalidraw_mcp.service import SceneService
 class PngExportTests(unittest.TestCase):
     def setUp(self):
         self.service = SceneService()
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = str(Path(tempfile.mkdtemp()).resolve())
         self.addCleanup(lambda: shutil.rmtree(self.temp_dir, ignore_errors=True))
 
         # Direct default export directory to temp_dir
@@ -76,7 +76,7 @@ class PngExportTests(unittest.TestCase):
         )
         self.assertEqual(result["name"], "arch-v1.png")
         self.assertTrue(os.path.exists(result["path"]))
-        self.assertEqual(os.path.dirname(result["path"]), custom_folder)
+        self.assertEqual(Path(result["path"]).resolve().parent, Path(custom_folder).resolve())
 
     def test_export_png_strips_png_extension_cleanly(self):
         result = self.service.export_png(

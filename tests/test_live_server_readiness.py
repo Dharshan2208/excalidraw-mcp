@@ -9,6 +9,7 @@ import asyncio
 import errno
 import json
 import socket
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -117,7 +118,10 @@ class LiveServerReadinessTests(unittest.TestCase):
 
             err_msg = str(ctx.exception)
             self.assertIn(str(occupied_port), err_msg)
-            self.assertIn("already in use", err_msg.lower())
+            self.assertTrue(
+                any(p in err_msg.lower() for p in ("already in use", "only one usage", "address in use", "10048")),
+                f"Unexpected error message: {err_msg}",
+            )
             self.assertFalse(self.server.is_running)
             self.assertIsNone(self.server.server)
             self.assertIsNone(self.server.thread)
@@ -308,6 +312,9 @@ class LiveServerReadinessTests(unittest.TestCase):
         self.assertIsNone(self.server.server)
         self.assertIsNone(self.server.thread)
 
+    @unittest.skipIf(
+        sys.platform == "win32", "SIGTERM graceful signal handling is not supported on Windows"
+    )
     def test_subprocess_sigterm_graceful_shutdown(self):
         """Subprocess running LiveCanvasServer cleanly shuts down upon receiving SIGTERM."""
         import subprocess

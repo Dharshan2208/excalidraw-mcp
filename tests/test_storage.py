@@ -18,7 +18,7 @@ class StorageTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.base = Path(temporary.name)
+        self.base = Path(temporary.name).resolve()
         self.root = self.base / "scenes"
         env = patch.dict(os.environ, {"EXCALIDRAW_SCENE_DIR": str(self.root)})
         env.start()
@@ -32,26 +32,44 @@ class StorageTests(unittest.TestCase):
         self.assertFalse(self.root.exists())
 
     def test_default_directory_is_independent_of_working_directory(self):
+        fake_home = (
+            Path("C:/Users/tester")
+            if config.sys.platform.startswith("win")
+            else Path("/home/tester")
+        )
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch.object(config.Path, "home", return_value=Path("/home/tester")),
+            patch.object(config.Path, "home", return_value=fake_home),
         ):
-            expected = (
-                Path("/home/tester/Library/Application Support")
-                if config.sys.platform == "darwin"
-                else Path("/home/tester/.local/share")
-            )
+            if config.sys.platform == "darwin":
+                expected = fake_home / "Library" / "Application Support"
+            elif config.sys.platform.startswith("win"):
+                expected = fake_home / "AppData" / "Roaming"
+            else:
+                expected = fake_home / ".local" / "share"
             self.assertEqual(
                 config.scene_directory(), expected / "excalidraw-mcp/scenes"
             )
 
     @unittest.skipIf(
-        config.sys.platform == "darwin", "XDG data directories are not used on macOS"
+        config.sys.platform in ("darwin", "win32") or config.sys.platform.startswith("win"),
+        "XDG data directories are not used on macOS or Windows",
     )
     def test_xdg_data_home_must_be_absolute(self):
         with patch.dict(os.environ, {"XDG_DATA_HOME": "relative"}, clear=True):
             with self.assertRaisesRegex(
                 ValueError, "XDG_DATA_HOME must be an absolute path"
+            ):
+                config.scene_directory()
+
+    @unittest.skipUnless(
+        config.sys.platform.startswith("win"),
+        "APPDATA environment variable is checked on Windows",
+    )
+    def test_appdata_must_be_absolute(self):
+        with patch.dict(os.environ, {"APPDATA": "relative"}, clear=True):
+            with self.assertRaisesRegex(
+                ValueError, "APPDATA must be an absolute path"
             ):
                 config.scene_directory()
 

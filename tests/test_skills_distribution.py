@@ -210,7 +210,12 @@ class SkillsDistributionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             venv_path = Path(td) / "clean_venv"
             subprocess.run(["uv", "venv", str(venv_path)], check=True, capture_output=True)
-            py_bin = venv_path / "bin" / "python"
+            import sys
+            py_bin = (
+                venv_path / "Scripts" / "python.exe"
+                if sys.platform == "win32"
+                else venv_path / "bin" / "python"
+            )
 
             subprocess.run(
                 ["uv", "pip", "install", "--python", str(py_bin), str(wheel_path)],

@@ -3,6 +3,7 @@ import json
 import math
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +110,9 @@ class StorageAndLimitRegressionTests(unittest.TestCase):
             (root / "link.excalidraw").symlink_to(root / "valid.excalidraw")
             self.assertEqual(list_scenes(), ["valid"])
 
+    @unittest.skipIf(
+        sys.platform == "win32", "POSIX file permission mode bits are not enforced on Windows"
+    )
     def test_new_scene_directory_is_private(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(
             os.environ, {"EXCALIDRAW_SCENE_DIR": str(Path(directory) / "scenes")}

@@ -107,7 +107,7 @@ class SkillsInstallerTests(unittest.TestCase):
     def test_skip_modified_user_files_without_force(self):
         """Verify safety: existing modified files are preserved and never overwritten without --force."""
         with tempfile.TemporaryDirectory() as td:
-            target = Path(td) / "custom_target"
+            target = Path(td).resolve() / "custom_target"
             execute_installation(target, force=False)
 
             custom_file = target / "architecture-diagrams" / "SKILL.md"
@@ -126,7 +126,7 @@ class SkillsInstallerTests(unittest.TestCase):
     def test_force_overwrites_modified_files(self):
         """Verify that --force replaces modified files with the packaged canonical versions."""
         with tempfile.TemporaryDirectory() as td:
-            target = Path(td) / "force_target"
+            target = Path(td).resolve() / "force_target"
             execute_installation(target, force=False)
 
             custom_file = target / "architecture-diagrams" / "SKILL.md"
