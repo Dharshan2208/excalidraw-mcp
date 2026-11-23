@@ -7,9 +7,30 @@ name = "exca-mcp"
 version = "0.3.0"
 description = "A local MCP server for creating and editing Excalidraw documents"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Multimedia :: Graphics :: Presentation",
+]
+keywords = [
+    "excalidraw",
+    "mcp",
+    "model-context-protocol",
+    "diagrams",
+    "agent-skills",
+    "fastmcp",
+]
 dependencies = [
     "fastmcp>=3.3.1,<4",
+    "pydantic>=2.0.0",
+    "mcp>=1.2.0",
     "pillow>=13.0.0",
     "pygments>=2.20.0",
     "cryptography>=42.0.0",
@@ -19,8 +40,11 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/Dharshan2208/excalidraw-mcp"
 Repository = "https://github.com/Dharshan2208/excalidraw-mcp"
+Documentation = "https://github.com/Dharshan2208/excalidraw-mcp#readme"
 Issues = "https://github.com/Dharshan2208/excalidraw-mcp/issues"
+Changelog = "https://github.com/Dharshan2208/excalidraw-mcp/blob/main/CHANGELOG.md"
 
 [project.scripts]
 exca-mcp = "excalidraw_mcp.server:main"
@@ -38,6 +62,8 @@ exclude = [
     "/audit_tests",
     "/.coverage",
     "/dist",
+    "/research",
+    "/.pytest_cache",
 ]
 
 [tool.pytest.ini_options]

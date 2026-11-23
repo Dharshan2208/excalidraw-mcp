@@ -1,6 +1,7 @@
 <div align="center">
 
 # Excalidraw MCP Server
+<!-- mcp-name: io.github.Dharshan2208/excalidraw-mcp -->
 
 **A headless, in-memory Model Context Protocol server enabling AI agents to programmatically generate, inspect, repair, and export native Excalidraw diagrams.**
 
