@@ -333,7 +333,7 @@ def diagnose_layout_issues(
 
     valid_shapes = []
     for e in active:
-        if e.get("type") in ("rectangle", "diamond", "ellipse") and not (_cd(e).get("type") in ("code_block_header",)):
+        if e.get("type") in ("rectangle", "diamond", "ellipse") and _cd(e).get("type") not in ("code_block_header",):
             w = e.get("width")
             h = e.get("height")
             if (
@@ -1167,7 +1167,7 @@ def apply_layout_repairs(
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not (_cd(e).get("type") in ("code_block_header",))
+        and _cd(e).get("type") not in ("code_block_header",)
     ]
     frames = [e for e in active if e.get("type") == "frame"]
     arrows = [e for e in active if e.get("type") in ("arrow", "line")]

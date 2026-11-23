@@ -13,7 +13,7 @@ import json
 import math
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont, PngImagePlugin
+from PIL import Image, ImageDraw, PngImagePlugin
 
 from excalidraw_mcp.code_blocks import get_theme, highlight_code
 from excalidraw_mcp.fonts import get_font

@@ -9,7 +9,6 @@ import signal
 import socket
 import sys
 import threading
-import time
 from typing import Any
 
 from starlette.applications import Starlette

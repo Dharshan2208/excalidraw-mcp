@@ -185,7 +185,7 @@ LIBRARIES: dict[str, dict[str, Any]] = {
                 "type": "frame",
                 "width": 500,
                 "height": 350,
-                "name": "VPC Network (10.0.0.0/16)",
+                "label": "VPC Network (10.0.0.0/16)",
             },
             {
                 "name": "Load Balancer",

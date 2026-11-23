@@ -74,3 +74,17 @@ filterwarnings = [
     "ignore:remove second argument of ws_handler:DeprecationWarning",
     "ignore::starlette.exceptions.StarletteDeprecationWarning",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"excalidraw_mcp/server.py" = ["E402"]
+"tests/*" = ["F401", "F841"]

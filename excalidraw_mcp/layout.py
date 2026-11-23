@@ -563,7 +563,7 @@ def check_diagram_geometry(document_or_elements, min_gap=30.0):
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
+        and (e.get("customData") or {}).get("type") not in ("code_block_header",)
     ]
     frames = [e for e in active if e.get("type") == "frame"]
     text_els = [e for e in active if e.get("type") == "text"]

@@ -1,7 +1,6 @@
 """Mermaid flowchart and graph parser for Excalidraw MCP."""
 
 import re
-from typing import Literal
 from .contracts import GraphCluster, GraphEdge, GraphNode, LayoutType, Direction
 from .errors import SceneError
 

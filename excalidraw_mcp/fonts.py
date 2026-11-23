@@ -7,13 +7,11 @@ and provides cached font instantiation with robust fallback handling.
 
 import glob
 import os
-import re
 import shutil
 import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from PIL import ImageFont
 

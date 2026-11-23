@@ -6,7 +6,7 @@ multiple-edge offset handling, and collision-free connector label placement.
 
 import heapq
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .errors import SceneError
 
@@ -427,7 +427,7 @@ def reroute_scene_arrows(
         e
         for e in active
         if e.get("type") in ("rectangle", "diamond", "ellipse")
-        and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
+        and (e.get("customData") or {}).get("type") not in ("code_block_header",)
     ]
     arrows = [e for e in active if e.get("type") in ("arrow", "line")]
     texts = [e for e in active if e.get("type") == "text"]

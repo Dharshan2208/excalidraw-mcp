@@ -487,13 +487,13 @@ def render_scene_svg(
                     svg_parts.append(f'    <tspan x="{cx:.2f}" {dy_attr}>{html.escape(line)}</tspan>\n')
                 svg_parts.append("  </text>\n")
             elif ctype in ("arrow", "line"):
-                pts = container.get("points") or [
+                container_pts = container.get("points") or [
                     [0.0, 0.0],
                     [float(container.get("width", 0.0)), float(container.get("height", 0.0))],
                 ]
-                if len(pts) >= 2:
-                    p0 = pts[0]
-                    p1 = pts[-1]
+                if len(container_pts) >= 2:
+                    p0 = container_pts[0]
+                    p1 = container_pts[-1]
                     cx = tx(float(container.get("x", 0.0)) + (float(p0[0]) + float(p1[0])) / 2.0)
                     cy = ty(float(container.get("y", 0.0)) + (float(p0[1]) + float(p1[1])) / 2.0)
                 else:
@@ -501,7 +501,7 @@ def render_scene_svg(
                     cy = ty(container.get("y", 0.0))
 
                 # Background mask rectangle behind label text
-                approx_w = max(len(l) for l in lines) * font_size * 0.6 + 12.0
+                approx_w = max(len(line) for line in lines) * font_size * 0.6 + 12.0
                 approx_h = len(lines) * line_height + 6.0
                 svg_parts.append(
                     f'  <rect x="{cx - approx_w / 2.0:.2f}" y="{cy - approx_h / 2.0:.2f}" '

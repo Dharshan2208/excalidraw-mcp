@@ -24,7 +24,7 @@ from excalidraw_mcp.models import _finite_number, new_document
 from excalidraw_mcp.scene import list_scenes, load_scene, save_scene
 from excalidraw_mcp.state import SceneState
 from excalidraw_mcp.text_padding import required_container_size
-from excalidraw_mcp.layout import boundary_point, clustered_layout, layered_layout, linear_layout, wrap_label
+from excalidraw_mcp.layout import boundary_point, clustered_layout, layered_layout, linear_layout
 from excalidraw_mcp.parser import parse_architecture
 
 SHAPES = {"rectangle": rect, "ellipse": ellipse, "diamond": diamond}
@@ -859,7 +859,7 @@ class SceneService:
                     for e in index.values()
                     if e["type"] in SHAPES
                     and not e.get("isDeleted")
-                    and not ((e.get("customData") or {}).get("type") in ("code_block_header",))
+                    and (e.get("customData") or {}).get("type") not in ("code_block_header",)
                 ]
                 pair_arrows = [
                     e

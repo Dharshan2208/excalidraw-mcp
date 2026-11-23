@@ -419,10 +419,6 @@ def register_skills_mcp(mcp: Any) -> None:
         output_name: str = "architecture",
     ) -> str:
         """Prompt guiding an AI agent to design and export a multi-tier system architecture diagram."""
-        arch_skill = read_skill_content("architecture-diagrams")
-        polish_skill = read_skill_content("human-style-and-polish")
-        handoff_skill = read_skill_content("verify-and-editable-handoff")
-
         return f"""# Architecture Diagram Creation Task
 
 Target System: {system_description}

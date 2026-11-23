@@ -4,7 +4,6 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from excalidraw_mcp.validation import COLOR_PATTERN
 
 Coordinate = Annotated[float, Field(strict=True, ge=-100_000, le=100_000)]
 Dimension = Annotated[float, Field(strict=True, gt=0, le=100_000)]

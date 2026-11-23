@@ -15,7 +15,7 @@ from PIL import Image
 from excalidraw_mcp.config import max_scene_bytes, scene_directory
 from excalidraw_mcp.document import normalize_document
 from excalidraw_mcp.errors import SceneError
-from excalidraw_mcp.models import new_document, validate_document
+from excalidraw_mcp.models import new_document
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 

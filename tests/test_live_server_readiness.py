@@ -99,7 +99,7 @@ class LiveServerReadinessTests(unittest.TestCase):
                 if self.service.state.all():
                     break
                 time.sleep(0.01)
-            
+
             elements = self.service.state.all()
             self.assertEqual(len(elements), 1)
             self.assertEqual(elements[0]["id"], "rect-ready")

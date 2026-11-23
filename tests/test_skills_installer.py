@@ -257,6 +257,11 @@ class SkillsInstallerTests(unittest.TestCase):
                 # Reference files present
                 self.assertTrue((expected_dir / "excalidraw" / "references" / "architecture-patterns.md").is_file())
                 self.assertTrue((expected_dir / "excalidraw" / "references" / "palette-catalog.md").is_file())
+                # Discovery links in SKILL.md (P-010)
+                skill_text = installed_skill.read_text(encoding="utf-8")
+                self.assertIn("references/architecture-patterns.md", skill_text)
+                self.assertIn("references/palette-catalog.md", skill_text)
+                self.assertIn("Bundled Reference Guidelines", skill_text)
 
                 # 5. Idempotent second run
                 res_idempotent = execute_installation(force=False, dry_run=False, is_claude=True)

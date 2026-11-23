@@ -1,8 +1,6 @@
 """MCP adapters; each server owns an explicit scene service."""
 
-import functools
 from hashlib import sha256
-import inspect
 import json
 from typing import Any, Literal
 
@@ -34,7 +32,7 @@ def _custom_convert_result(self, raw_value: Any) -> ToolResult:
     )
 
 
-Tool.convert_result = _custom_convert_result
+Tool.convert_result = _custom_convert_result  # type: ignore[method-assign]
 
 
 def _configure_tool_registration(mcp: FastMCP) -> None:
@@ -45,20 +43,14 @@ def _configure_tool_registration(mcp: FastMCP) -> None:
         kwargs["output_schema"] = None
         return orig_tool(name_or_fn, **kwargs)
 
-    mcp.tool = custom_tool
+    mcp.tool = custom_tool  # type: ignore[method-assign]
 
 from excalidraw_mcp.contracts import (
     Aggressiveness,
-    ArchitectureResult,
     Arrowhead,
-    AutoFixLayoutResult,
-    BatchOperation,
     BatchResult,
     Boolean,
-    CodeBlockResult,
-    CodeTheme,
     Color,
-    ConnectResult,
     Coordinate,
     CreateResult,
     CreateShapeType,
@@ -68,33 +60,21 @@ from excalidraw_mcp.contracts import (
     DiagramResult,
     Dimension,
     Direction,
-    DuplicateResult,
     ElementId,
-    ElementResult,
     ElementStateAction,
-    ElementSummary,
     ElementType,
     FillStyle,
-    FindResult,
     FocusResult,
     FontSize,
-    FontCategory,
     FontFamily,
-    FontListResult,
     GraphCluster,
     GraphEdge,
     GraphNode,
-    GraphResult,
-    GroupResult,
-    ImportResult,
     InspectMode,
     Label,
     LayoutType,
     LiveServerAction,
     LiveServerResult,
-    LoadResult,
-    LockResult,
-    MoveResult,
     NonEmptyText,
     Offset,
     Opacity,
@@ -106,28 +86,16 @@ from excalidraw_mcp.contracts import (
     PreviewPadding,
     PreviewScale,
     RepairScope,
-    ResizeResult,
-    ResourceResult,
     Roughness,
     Roundness,
-    SaveResult,
-    SavedScenesResult,
-    SceneDescriptionResult,
     SceneName,
-    ScenePage,
-    SceneSummaryResult,
-    ShapeType,
     ShareUrlResult,
     StatusResult,
     StorageAction,
     StorageFormat,
-    StorageResult,
     StrokeStyle,
     StrokeWidth,
     UndoResult,
-    UnlockResult,
-    UngroupResult,
-    UpdateResult,
     ViewportResult,
 )
 from excalidraw_mcp.config import configured_toolset
@@ -648,14 +616,14 @@ def create_server(
                         ratio = max_dimension / max(w, h)
                         new_w = max(1, int(round(w * ratio)))
                         new_h = max(1, int(round(h * ratio)))
-                        im = im.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
+                        im = im.resize((new_w, new_h), PILImage.Resampling.LANCZOS)  # type: ignore[assignment]
 
                     out_buf = io.BytesIO()
                     if fmt == "jpeg":
                         if im.mode in ("RGBA", "LA", "P"):
                             rgb_im = PILImage.new("RGB", im.size, (255, 255, 255))
                             if im.mode == "P":
-                                im = im.convert("RGBA")
+                                im = im.convert("RGBA")  # type: ignore[assignment]
                             rgb_im.paste(
                                 im, mask=im.split()[-1] if "A" in im.mode else None
                             )

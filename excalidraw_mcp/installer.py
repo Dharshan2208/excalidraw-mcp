@@ -187,8 +187,8 @@ def get_claude_skill_dir() -> Path:
 
 
 def _build_claude_skill_content() -> str:
-    """Construct unified Claude Code SKILL.md reusing excalidraw-workflow instructions with Claude frontmatter."""
-    from excalidraw_mcp.skills import read_skill_content
+    """Construct unified Claude Code SKILL.md reusing excalidraw-workflow instructions with Claude frontmatter and reference links."""
+    from excalidraw_mcp.skills import get_skill_metadata, list_skills, read_skill_content
 
     raw_workflow = read_skill_content("excalidraw-workflow")
     # Strip existing frontmatter if present
@@ -205,7 +205,24 @@ def _build_claude_skill_content() -> str:
         "Use whenever an agent needs to create or modify architecture diagrams, flowcharts, or visual documentation.\n"
         "---\n\n"
     )
-    return frontmatter + body
+
+    # Append navigation index to bundled references and specialized skill guidelines
+    ref_section = [
+        "\n---\n",
+        "## Bundled Reference Guidelines & Specialized Skills\n\n",
+        "The following specialized reference documents are bundled in `./references/`:\n\n",
+    ]
+    for s_name in sorted(list_skills()):
+        meta = get_skill_metadata(s_name)
+        ref_section.append(f"### Skill: `{meta.name}`\n")
+        ref_section.append(f"{meta.description}\n\n")
+        if meta.reference_names:
+            ref_section.append("Reference guides:\n")
+            for ref_name in meta.reference_names:
+                ref_section.append(f"- [{ref_name}](references/{ref_name}.md)\n")
+            ref_section.append("\n")
+
+    return frontmatter + body + "".join(ref_section)
 
 
 def plan_claude_installation(
