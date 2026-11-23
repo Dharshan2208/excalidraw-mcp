@@ -136,6 +136,27 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("find_elements", data["capabilities"]["full_only_features"])
             self.assertNotIn("get_resource", data["capabilities"]["full_only_features"])
 
+    def test_get_resource_supports_exca_mcp_skills_and_capabilities(self):
+        from excalidraw_mcp.resources import get_resource
+        from excalidraw_mcp.service import SceneService
+        service = SceneService()
+
+        # exca-mcp:// URI scheme for skills
+        skill_res = get_resource(service, uri="exca-mcp://skills/diagram-planning")
+        self.assertEqual(skill_res["resource_type"], "skill")
+        self.assertEqual(skill_res["identifier"], "diagram-planning")
+        self.assertIn("content", skill_res)
+
+        # exca-mcp://skills/index
+        index_res = get_resource(service, uri="exca-mcp://skills/index")
+        self.assertEqual(index_res["resource_type"], "skill")
+        self.assertIn("skills", index_res["index"])
+
+        # excalidraw://capabilities resource via get_resource
+        cap_res = get_resource(service, uri="excalidraw://capabilities")
+        self.assertEqual(cap_res["server_version"], "0.3.0")
+        self.assertIn(cap_res["tool_count"], (12, 21))
+
     async def test_documentation_and_font_resources(self):
         server = create_server(toolset="core")
         resources = await server.list_resources()

@@ -424,7 +424,7 @@ def create_server(
         )
 
     @mcp.tool(
-        annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+        annotations=ToolAnnotations(destructiveHint=False, idempotentHint=True, openWorldHint=False),
     )
     def update_element(
         element_id: ElementId,
@@ -671,7 +671,7 @@ def create_server(
 
     if is_full:
         @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=False),
+            annotations=ToolAnnotations(destructiveHint=True, openWorldHint=True),
         )
         def scene_storage(
             action: StorageAction = "save",
@@ -735,7 +735,7 @@ def create_server(
                 raise ToolError(f"Unsupported storage action: {action}")
 
         @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False),
         )
         def export_png(
             name: SceneName,
@@ -757,7 +757,7 @@ def create_server(
             )
 
         @mcp.tool(
-            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=True),
+            annotations=ToolAnnotations(destructiveHint=False, openWorldHint=False),
         )
         def export_svg(
             name: SceneName,
@@ -853,7 +853,7 @@ def create_server(
 
     if is_full:
         @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            annotations=ToolAnnotations(idempotentHint=False, openWorldHint=False),
         )
         def manage_element_state(
             element_ids: list[ElementId] | None = None,
@@ -878,7 +878,7 @@ def create_server(
 
     if is_full:
         @mcp.tool(
-            annotations=ToolAnnotations(idempotentHint=True, openWorldHint=False),
+            annotations=ToolAnnotations(destructiveHint=False, idempotentHint=True, openWorldHint=False),
         )
         def set_viewport(
             scroll_x: Coordinate | None = None,
