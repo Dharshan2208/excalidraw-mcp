@@ -3,7 +3,7 @@
   "name": "io.github.Dharshan2208/excalidraw-mcp",
   "title": "Excalidraw MCP",
   "description": "Local MCP server for creating, editing, and repairing Excalidraw diagrams with agent skills.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": {
     "url": "https://github.com/Dharshan2208/excalidraw-mcp.git",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "exca-mcp",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

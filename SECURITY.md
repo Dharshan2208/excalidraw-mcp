@@ -20,6 +20,7 @@ You will receive an acknowledgment of your report and updates as we work to addr
 
 | Version | Supported |
 |---|---|
+| `0.4.x` | Yes |
 | `0.3.x` | Yes |
 | `0.2.x` | Yes |
 | `< 0.2.0` | No |
