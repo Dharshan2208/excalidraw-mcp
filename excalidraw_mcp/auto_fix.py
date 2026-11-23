@@ -20,6 +20,7 @@ VALID_AGGRESSIVENESS = ("gentle", "balanced", "aggressive")
 TEXT_DEFICIT_THRESHOLD_PX = 1.0   # used by BOTH diagnose and repair
 SPACING_RATIO_THRESHOLD = 0.65    # used by BOTH diagnose and repair
 AGGRESSIVENESS_MULT = {"gentle": 0.8, "balanced": 1.0, "aggressive": 1.35}
+MAX_DIAGNOSED_ISSUES = 1000       # safety cap against unbounded allocations on degenerate diagrams
 
 
 def _validate_params(repair_scope: str, aggressiveness: str, min_gap: float) -> tuple[str, str, float]:
@@ -430,6 +431,8 @@ def diagnose_layout_issues(
         x1_max = x1_min + w1
 
         for j in range(i + 1, len(sorted_diag_shapes)):
+            if len(issues) >= MAX_DIAGNOSED_ISSUES:
+                break
             s2 = sorted_diag_shapes[j]
             x2_min = _coord(s2, "x")
             if x2_min >= x1_max - 1.0:
@@ -631,6 +634,8 @@ def diagnose_layout_issues(
         y1_max = y1_min + abs(_coord(s1, "height"))
 
         for j in range(i + 1, len(sorted_diag_shapes)):
+            if len(issues) >= MAX_DIAGNOSED_ISSUES:
+                break
             s2 = sorted_diag_shapes[j]
             x2_min = _coord(s2, "x")
             if x2_min >= x1_max + max_spacing_gap:
@@ -679,6 +684,13 @@ def diagnose_layout_issues(
                             "details": {"shape1_id": id1, "shape2_id": id2, "gap": round(v_gap, 1), "min_gap": min_gap},
                         }
                     )
+
+    if len(issues) >= MAX_DIAGNOSED_ISSUES:
+        if warnings is not None:
+            msg = f"Layout diagnostics reached safety cap of {MAX_DIAGNOSED_ISSUES} issues."
+            if msg not in warnings:
+                warnings.append(msg)
+        return issues[:MAX_DIAGNOSED_ISSUES]
 
     return issues
 

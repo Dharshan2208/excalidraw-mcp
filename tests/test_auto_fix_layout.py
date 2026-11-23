@@ -94,6 +94,27 @@ class AutoFixDiagnosticsAndDiscriminationTests(unittest.TestCase):
         self.assertEqual(post_el["width"], init_w)
         self.assertEqual(post_el["height"], init_h)
 
+    def test_max_diagnosed_issues_cap_prevents_runaway(self):
+        """Verify that diagnose_layout_issues caps detected defects at MAX_DIAGNOSED_ISSUES (P-037)."""
+        shapes = []
+        # Create 60 mutually overlapping rectangles. Number of pairs = 60 * 59 / 2 = 1,770 collisions
+        for i in range(60):
+            shapes.append(
+                rect(
+                    100.0,
+                    100.0,
+                    200.0,
+                    100.0,
+                    id=f"box-{i}",
+                )
+            )
+        doc = {"elements": shapes}
+        warnings: list[str] = []
+        issues = diagnose_layout_issues(doc, warnings=warnings)
+
+        self.assertEqual(len(issues), 1000)
+        self.assertTrue(any("safety cap of 1000 issues" in w for w in warnings))
+
     def test_all_shapes_agree_between_creation_and_repair_sizing(self):
         """All shapes agree between creation and repair sizing via required_container_size."""
         for shape_type in ("rectangle", "ellipse", "diamond"):

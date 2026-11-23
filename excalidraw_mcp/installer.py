@@ -444,6 +444,16 @@ def run_install_skills_cli(argv: Sequence[str] | None = None) -> int:
         help="Install Claude Code CLI skill into ~/.claude/skills/excalidraw/ (or $CLAUDE_CONFIG_DIR/skills/excalidraw/)",
     )
     parser.add_argument(
+        "--cursor",
+        action="store_true",
+        help="Install agent skills into .cursor/skills/",
+    )
+    parser.add_argument(
+        "--windsurf",
+        action="store_true",
+        help="Install agent skills into .windsurf/skills/",
+    )
+    parser.add_argument(
         "--force",
         "-f",
         action="store_true",
@@ -468,11 +478,19 @@ def run_install_skills_cli(argv: Sequence[str] | None = None) -> int:
         print(format_list_output())
         return 0
 
-    target = args.target or args.target_dir_alias
+    if args.cursor:
+        target = str(Path(".cursor/skills").resolve())
+    elif args.windsurf:
+        target = str(Path(".windsurf/skills").resolve())
+    else:
+        target = args.target or args.target_dir_alias
+
     if not args.claude and not target:
         print("Error: --target directory is required for installation (or specify --claude).\n", file=sys.stderr)
         print("Quick options:", file=sys.stderr)
         print("  • Claude Code CLI:   exca-mcp install-skills --claude", file=sys.stderr)
+        print("  • Cursor:            exca-mcp install-skills --cursor", file=sys.stderr)
+        print("  • Windsurf:          exca-mcp install-skills --windsurf", file=sys.stderr)
         print("  • Custom Directory:  exca-mcp install-skills --target <path>", file=sys.stderr)
         print("  • List Skills:       exca-mcp install-skills --list\n", file=sys.stderr)
         print("Run 'exca-mcp install-skills --help' for details.", file=sys.stderr)

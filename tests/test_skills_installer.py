@@ -306,6 +306,26 @@ class SkillsInstallerTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue((custom_dir / "excalidraw" / "SKILL.md").is_file())
 
+    def test_cursor_and_windsurf_cli_shortcuts(self):
+        """Verify --cursor and --windsurf shortcut targets install into .cursor/skills and .windsurf/skills (P-015)."""
+        with tempfile.TemporaryDirectory() as td:
+            orig_cwd = os.getcwd()
+            try:
+                os.chdir(td)
+                # 1. Cursor shortcut
+                cursor_exit = run_install_skills_cli(["--cursor"])
+                self.assertEqual(cursor_exit, 0)
+                cursor_skill = Path(td) / ".cursor" / "skills" / "architecture-diagrams" / "SKILL.md"
+                self.assertTrue(cursor_skill.is_file())
+
+                # 2. Windsurf shortcut
+                windsurf_exit = run_install_skills_cli(["--windsurf"])
+                self.assertEqual(windsurf_exit, 0)
+                windsurf_skill = Path(td) / ".windsurf" / "skills" / "diagram-planning" / "SKILL.md"
+                self.assertTrue(windsurf_skill.is_file())
+            finally:
+                os.chdir(orig_cwd)
+
 
 if __name__ == "__main__":
     unittest.main()
