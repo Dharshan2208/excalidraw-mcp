@@ -12,6 +12,7 @@ WORKDIR /app
 # Copy project metadata and source code
 COPY pyproject.toml README.md ./
 COPY excalidraw_mcp ./excalidraw_mcp
+COPY .skills ./.skills
 COPY main.py ./
 
 # Install package and dependencies

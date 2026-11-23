@@ -1039,7 +1039,12 @@ def main(argv: list[str] | None = None) -> None:
     import sys
 
     if argv is None:
-        if any(arg.startswith(("-W", "--import-mode", "--capture")) for arg in sys.argv[1:]) or "pytest" in sys.argv[0]:
+        if (
+            any(arg.startswith(("-W", "--import-mode", "--capture")) for arg in sys.argv[1:])
+            or "pytest" in sys.argv[0]
+            or "unittest" in sys.argv[0]
+            or (sys.argv[1:] and sys.argv[1] == "discover")
+        ):
             args = []
         else:
             args = sys.argv[1:]
