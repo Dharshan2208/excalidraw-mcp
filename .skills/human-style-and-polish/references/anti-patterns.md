@@ -19,7 +19,7 @@ This catalog documents common visual defects that make diagrams look machine-gen
   - Main services: `200 x 70px` or `220 x 80px`.
   - Databases: Cylinders or distinct tinted rectangles with `[(DB)]` badge.
   - Queues / Buffers: Narrow elongated rectangles (`200 x 45px`).
-  - Decisions: Diamonds (`add_diamond`, min `180 x 110px`).
+  - Decisions: Diamonds (`create_shape` with `type="diamond"`, min `180 x 110px`).
 
 ---
 

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from PIL import Image
 
 from fastmcp import Client
@@ -283,27 +283,40 @@ class TestRenderingAndExportCompatibility(unittest.TestCase):
         self.assertEqual(img.size, (width, height))
 
     def test_export_scene_and_url_preserves_font_family(self):
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+        mock_post_resp.json.return_value = {"id": "mock-excalifont-scene"}
+
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch.dict(os.environ, {"EXCALIDRAW_SCENE_DIR": tmp_dir}):
-                service = SceneService()
-                service.add_text(100, 100, "Web URL Note", font_size=20, font_family="excalifont")
+                with patch("httpx.Client.post", return_value=mock_post_resp) as mock_post:
+                    def get_side_effect(*args, **kwargs):
+                        mock_get_resp.content = mock_post.call_args[1]["content"]
+                        return mock_get_resp
 
-                # Test export_to_excalidraw_url
-                url_res = service.export_to_excalidraw_url()
-                self.assertIn("url", url_res)
-                self.assertTrue(url_res["url"].startswith("https://excalidraw.com/#json="))
+                    with patch("httpx.Client.get", side_effect=get_side_effect):
+                        service = SceneService()
+                        service.add_text(100, 100, "Web URL Note", font_size=20, font_family="excalifont")
 
-                # Test save and load
-                service.save("excalifont_scene")
+                        # Test export_to_excalidraw_url
+                        url_res = service.export_to_excalidraw_url()
+                        self.assertIn("url", url_res)
+                        self.assertTrue(url_res["url"].startswith("https://excalidraw.com/#json="))
 
-                # Load into fresh service
-                new_service = SceneService()
-                new_service.load("excalifont_scene")
-                doc, _ = new_service.state.snapshot()
-                text_elements = [el for el in doc["elements"] if el["type"] == "text"]
-                self.assertEqual(len(text_elements), 1)
-                self.assertEqual(text_elements[0]["fontFamily"], 5)
-                self.assertEqual(text_elements[0]["text"], "Web URL Note")
+                        # Test save and load
+                        service.save("excalifont_scene")
+
+                        # Load into fresh service
+                        new_service = SceneService()
+                        new_service.load("excalifont_scene")
+                        doc, _ = new_service.state.snapshot()
+                        text_elements = [el for el in doc["elements"] if el["type"] == "text"]
+                        self.assertEqual(len(text_elements), 1)
+                        self.assertEqual(text_elements[0]["fontFamily"], 5)
+                        self.assertEqual(text_elements[0]["text"], "Web URL Note")
 
 
 class TestMcpServerExcalifontToolCalls(unittest.IsolatedAsyncioTestCase):

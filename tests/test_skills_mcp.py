@@ -119,8 +119,8 @@ class SkillsMCPTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Payments & Billing Gateway", text)
         self.assertIn("payments-arch", text)
         self.assertIn("add_frame", text)
-        self.assertIn("add_rectangle", text)
-        self.assertIn("connect", text)
+        self.assertIn("create_shape", text)
+        self.assertIn("create_connector", text)
         self.assertIn("auto_fix_layout", text)
         self.assertIn("60-30-10", text)
         self.assertIn("exca-mcp://skills/architecture-diagrams", text)
@@ -141,8 +141,8 @@ class SkillsMCPTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("User Onboarding and KYC Verification", text)
         self.assertIn("kyc-flow", text)
         self.assertIn("Single Start Node", text)
-        self.assertIn("add_diamond", text)
-        self.assertIn("elbowed=True", text)
+        self.assertIn("create_shape", text)
+        self.assertIn("create_connector", text)
         self.assertIn("exca-mcp://skills/flowcharts-and-processes", text)
 
     async def test_mcp_prompt_plan_diagram(self):
@@ -176,7 +176,7 @@ class SkillsMCPTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Redis caching cluster", text)
         self.assertIn("production-v1", text)
-        self.assertIn("get_scene", text)
+        self.assertIn("inspect_scene", text)
         self.assertIn("update_element", text)
         self.assertIn("auto_fix_layout", text)
         self.assertIn("exca-mcp://skills/excalidraw-workflow", text)

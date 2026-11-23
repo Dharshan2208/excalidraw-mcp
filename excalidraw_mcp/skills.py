@@ -454,8 +454,8 @@ You are acting as a Principal Software Architect. Follow this strict 10-step pro
 
 ## 4. Construction via Primitives
 - Use `add_frame(name, x, y, w, h)` to establish physical and logical deployment boundaries.
-- Use `add_rectangle(x, y, w, h, label="Title\\nSubtitle", frame_id=...)` to create components.
-- Use `connect(source_id, target_id, label="Protocol", elbowed=True)` to create bound, orthogonal connectors.
+- Use `create_shape(type="rectangle", x=x, y=y, width=w, height=h, label="Title\\nSubtitle", frame_id=...)` (or `batch_mutate`) to create components.
+- Use `create_connector(source_id=..., target_id=..., label="Protocol", elbowed=True)` to create bound, orthogonal connectors.
   * Solid lines (`strokeStyle="solid"`) for synchronous HTTP/gRPC.
   * Dashed lines (`strokeStyle="dashed"`) for asynchronous events, Kafka topics, or message queues.
 
@@ -468,7 +468,7 @@ You are acting as a Principal Software Architect. Follow this strict 10-step pro
 
 ## 7. Delivery & Human Editability
 - Verify editability: all connectors must have bound endpoints (`source_id`, `target_id`), labels bound inside shapes, and no locked elements.
-- Save native editable document snapshot: `save(name="{output_name}", overwrite=True)`.
+- Save native editable document snapshot: `scene_storage(action="save", name="{output_name}", overwrite=True)`.
 - Export high-resolution PNG: `export_png(name="{output_name}", scale=2.0, overwrite=True)`.
 
 ---
@@ -495,16 +495,16 @@ Export Base Name: {output_name}
 
 Follow these professional flowchart rules using exca-mcp tools:
 
-1. Single Start Node: Exactly one entry point styled as a soft green pill (`roundness="round"`, backgroundColor="#e6fcf5", strokeColor="#0ca678").
-2. Explicit Decision Diamonds: Use `add_diamond` strictly for conditional branches. Phrased as questions ending with `?`. Minimum dimensions 180x110px.
+1. Single Start Node: Exactly one entry point styled as a soft green pill (`create_shape(type="rectangle", roundness="round", backgroundColor="#e6fcf5", strokeColor="#0ca678")`).
+2. Explicit Decision Diamonds: Use `create_shape(type="diamond", ...)` strictly for conditional branches. Phrased as questions ending with `?`. Minimum dimensions 180x110px.
 3. Labeled Outlets: Every connector exiting a diamond MUST have an explicit label (`"Yes"`, `"No"`, `"Retry"`, `"Timeout"`).
 4. Distinct Terminals: End every path with a terminal (Success in mint green `#ebfbee`, Failure/Abort in light red `#fff5f5`).
-5. Orthogonal Routing: Set `elbowed=True` on all `connect` calls.
+5. Orthogonal Routing: Set `elbowed=True` on all `create_connector` calls.
 6. Perimeter Loops: Route retry or feedback loops around the exterior perimeter (>= 60px lateral clearance from trunk).
 7. Verification & Delivery:
    - Run `auto_fix_layout(dry_run=True)` to confirm 0 defects.
    - Inspect visual rendering with `preview(scale=1.0)`.
-   - Save native scene `save(name="{output_name}", overwrite=True)` and export `export_png(name="{output_name}", overwrite=True)`.
+   - Save native scene `scene_storage(action="save", name="{output_name}", overwrite=True)` and export `export_png(name="{output_name}", overwrite=True)`.
 
 Reference: exca-mcp://skills/flowcharts-and-processes
 """
@@ -532,7 +532,7 @@ Before making any drawing tool calls, create a written diagram plan covering:
    - Identify tiers (Clients, Gateway, Microservices, Storage, Third-party).
    - Choose flow direction (Top-to-Bottom for multi-tier systems, Left-to-Right for event pipelines).
 4. Entry Tool Justification:
-   - Select and justify tool: Primitives (`add_frame`, `add_rectangle`, `connect`) for multi-tier production architecture, `draw_mermaid` for quick sequential pipelines.
+   - Select and justify tool: Primitives (`add_frame`, `create_shape`, `create_connector`, or `batch_mutate`) for multi-tier production architecture, `generate_diagram(format="mermaid")` for quick sequential pipelines.
 5. Semantic Palette Plan (60-30-10):
    - 60% Neutrals (containers, borders, body text).
    - 30% Structural Primary (core services).
@@ -550,7 +550,7 @@ Reference: exca-mcp://skills/diagram-planning
     ) -> str:
         """Prompt guiding non-destructive edits to an active or loaded Excalidraw diagram."""
         load_instruction = (
-            f"1. First load the target scene: `load(name='{scene_name}')`."
+            f"1. First load the target scene: `scene_storage(action='load', name='{scene_name}')`."
             if scene_name
             else "1. Inspect the currently active canvas."
         )
@@ -563,16 +563,16 @@ Target Scene: {scene_name or "active canvas"}
 Perform targeted, non-destructive modifications to the diagram:
 
 {load_instruction}
-2. Call `get_scene()` to retrieve active elements, their IDs, positions, and connections.
+2. Call `inspect_scene(mode="summary")` or `inspect_scene(mode="elements")` to retrieve active elements, their IDs, positions, and connections.
 3. Plan minimal required mutations:
    - To update labels or styles: call `update_element(element_id=..., ...)`.
-   - To reposition components: call `move(element_id=..., x=..., y=...)` (attached bound connectors will follow).
+   - To reposition components: call `update_element(element_id=..., x=..., y=...)` or `batch_mutate` (attached bound connectors will follow).
    - To remove elements: call `delete(element_id=...)`.
-   - To connect new relationships: call `connect(source_id=..., target_id=..., label=..., elbowed=True)`.
+   - To connect new relationships: call `create_connector(source_id=..., target_id=..., label=..., elbowed=True)`.
 4. Maintain visual hierarchy and grid spacing: do not cause accidental overlaps or frame boundary escapes.
 5. Validate layout: run `auto_fix_layout(dry_run=True)` to confirm zero introduced defects.
 6. Check visual appearance with `preview(scale=1.0)`.
-7. Save snapshot: `save(name=..., overwrite=True)`.
+7. Save snapshot: `scene_storage(action="save", name=..., overwrite=True)`.
 
 Reference: exca-mcp://skills/excalidraw-workflow
 """
@@ -606,7 +606,7 @@ Execute this quality gate before completing the diagram task:
    - Confirm shape labels are bound to their host elements.
    - Ensure no elements remain locked.
 5. Step 5: Dual Format Export
-   - Save native editable file: `save(name='{output_name}', overwrite=True)` or export scene JSON via `export_scene()`.
+   - Save native editable file: `scene_storage(action='save', name='{output_name}', overwrite=True)` or inspect scene elements via `inspect_scene(mode='elements')`.
    - Export high-resolution PNG: `export_png(name='{output_name}', directory='{directory}', scale=2.0, overwrite=True)`.
 
 Reference: exca-mcp://skills/verify-and-editable-handoff

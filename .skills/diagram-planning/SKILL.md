@@ -45,9 +45,9 @@ Follow these 5 steps sequentially before invoking any tool:
 
 ### 5. Select Entry Tool & Palette
 - **Tool Selection Decision**: See [Entry Tool Decision Tree](./references/entry-tool-decision-tree.md).
-  - Use **Primitives (`add_rectangle`, `add_frame`, `connect`)** for production multi-tier architecture diagrams where each layer has distinct colors, frames, and precise docking.
-  - Use **`draw_mermaid`** for fast flowcharts, state transitions, or sequence trees.
-  - Use **`draw_architecture`** only for simple single-tier component lists ($<6$ items).
+  - Use **Primitives (`add_frame`, `create_shape`, `create_connector`, or `batch_mutate`)** for production multi-tier architecture diagrams where each layer has distinct colors, frames, and precise docking.
+  - Use **`generate_diagram(format="mermaid")`** for fast flowcharts, state transitions, or sequence trees.
+  - Use **`generate_diagram(format="architecture")`** only for simple single-tier component lists ($<6$ items).
 - **Semantic Palette Selection** (see `human-style-and-polish`):
   - Neutral canvas: Background `#ffffff`, text/borders `#1e1e1e`.
   - Blue (`#1971c2` stroke, `#e7f5ff` fill): Clients, UI, Frontend.
@@ -76,7 +76,7 @@ DIAGRAM EXECUTION PLAN
    - Tier 4: Redis Cache, PostgreSQL Cluster, Kafka Event Bus
    - Tier 5: Stripe API, Bank Gateway
    - Side Column: Prometheus & Datadog
-5. Selected Tool: Primitives (add_frame + add_rectangle + connect)
+5. Selected Tool: Primitives (add_frame + create_shape + create_connector or batch_mutate)
 6. Palette:
    - Clients: #1971c2 / #e7f5ff
    - Edge: #0c8599 / #e3fafc
