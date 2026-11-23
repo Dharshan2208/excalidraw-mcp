@@ -26,6 +26,7 @@ keywords = [
     "diagrams",
     "agent-skills",
     "fastmcp",
+    "pytest"
 ]
 dependencies = [
     "fastmcp>=3.3.1,<4",
