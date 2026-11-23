@@ -69,6 +69,27 @@ class TestTransportCliParsing(unittest.TestCase):
             with patch("sys.stderr", new=io.StringIO()):
                 parse_cli_args(["--port", "0"])
 
+    def test_version_cli_flag(self):
+        stdout = io.StringIO()
+        with self.assertRaises(SystemExit) as ctx:
+            with patch("sys.stdout", stdout):
+                parse_cli_args(["--version"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn("exca-mcp", stdout.getvalue())
+
+    def test_help_lists_subcommands(self):
+        stdout = io.StringIO()
+        with self.assertRaises(SystemExit) as ctx:
+            with patch("sys.stdout", stdout):
+                parse_cli_args(["--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn("install-skills", stdout.getvalue())
+
+    def test_server_fastmcp_version_configured(self):
+        from excalidraw_mcp.server import create_server, get_server_version
+        server = create_server()
+        self.assertEqual(server.version, get_server_version())
+
 
 class TestLoopbackSecurityCheck(unittest.TestCase):
     def test_loopback_hosts(self):
@@ -89,7 +110,7 @@ class TestMainDispatch(unittest.TestCase):
     @patch("excalidraw_mcp.server.mcp.run")
     def test_main_stdio_default(self, mock_run):
         main([])
-        mock_run.assert_called_once_with()
+        mock_run.assert_called_once_with(show_banner=False)
 
     @patch("excalidraw_mcp.server.mcp.run")
     def test_main_streamable_http_loopback(self, mock_run):
@@ -97,6 +118,7 @@ class TestMainDispatch(unittest.TestCase):
         with patch("sys.stderr", stderr):
             main(["--transport", "streamable-http", "--port", "8080"])
         mock_run.assert_called_once_with(
+            show_banner=False,
             transport="streamable-http",
             host="127.0.0.1",
             port=8080,
@@ -109,6 +131,7 @@ class TestMainDispatch(unittest.TestCase):
         with patch("sys.stderr", stderr):
             main(["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8080", "--path", "/mcp"])
         mock_run.assert_called_once_with(
+            show_banner=False,
             transport="streamable-http",
             host="0.0.0.0",
             port=8080,

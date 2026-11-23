@@ -185,7 +185,7 @@ def create_server(
         "and add_frame for primitives, or batch_mutate for atomic updates. Use inspect_scene to query "
         "elements and metrics. Use auto_fix_layout to repair defects, and preview to inspect visuals."
     )
-    mcp = FastMCP("Excalidraw MCP", instructions=instructions)
+    mcp = FastMCP("Excalidraw MCP", instructions=instructions, version=get_server_version())
     _configure_tool_registration(mcp)
 
     def invoke(operation, *args, **kwargs):
@@ -1001,6 +1001,11 @@ def _build_argument_parser() -> Any:
         description="Excalidraw MCP Server: programmatic diagram generation, inspection, and repair.",
     )
     parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {get_server_version()}",
+    )
+    parser.add_argument(
         "--transport",
         choices=["stdio", "streamable-http"],
         default=os.getenv("EXCALIDRAW_TRANSPORT", "stdio"),
@@ -1021,6 +1026,11 @@ def _build_argument_parser() -> Any:
         "--path",
         default=os.getenv("EXCALIDRAW_HTTP_PATH", None),
         help="Custom HTTP endpoint path (optional, defaults to '/mcp')",
+    )
+    subparsers = parser.add_subparsers(dest="subcommand", title="subcommands")
+    subparsers.add_parser(
+        "install-skills",
+        help="Install agent skills into Claude Code, Cursor, Windsurf, or custom directory.",
     )
     return parser
 
@@ -1074,9 +1084,9 @@ def main(argv: list[str] | None = None) -> None:
         }
         if opts.path:
             run_kwargs["path"] = opts.path
-        mcp.run(**run_kwargs)
+        mcp.run(show_banner=False, **run_kwargs)
     else:
-        mcp.run()
+        mcp.run(show_banner=False)
 
 
 def run():
