@@ -882,6 +882,86 @@ def recommend_routing_mode(
     return "straight"
 
 
+def route_curved_connector(
+    source: dict,
+    target: dict,
+    context: SceneRoutingContext,
+    lane_offset: float = 0.0,
+    s_offset: float = 0.0,
+    t_offset: float = 0.0,
+    preferred_faces: Optional[Tuple[str, str]] = None,
+    clearance: float = 15.0,
+) -> List[Tuple[float, float]]:
+    """Generate smooth curved waypoints (for roundness={'type': 2}, elbowed=False)."""
+    sid = source.get("id")
+    tid = target.get("id")
+    p_s, p_t = _straight_endpoints(source, target, lane_offset=lane_offset)
+    if _is_los_clear(p_s, p_t, sid, tid, context):
+        dx = p_t[0] - p_s[0]
+        dy = p_t[1] - p_s[1]
+        dist = math.hypot(dx, dy)
+        if dist > 1e-4:
+            nx, ny = -dy / dist, dx / dist
+            bow = 28.0 + abs(lane_offset) * 1.2
+            mid = ((p_s[0] + p_t[0]) / 2.0 + nx * bow, (p_s[1] + p_t[1]) / 2.0 + ny * bow)
+            if _is_los_clear(p_s, mid, sid, tid, context, los_pad=2.0) and _is_los_clear(
+                mid, p_t, sid, tid, context, los_pad=2.0
+            ):
+                return [p_s, mid, p_t]
+            # Try opposite bow direction
+            mid_opp = ((p_s[0] + p_t[0]) / 2.0 - nx * bow, (p_s[1] + p_t[1]) / 2.0 - ny * bow)
+            if _is_los_clear(p_s, mid_opp, sid, tid, context, los_pad=2.0) and _is_los_clear(
+                mid_opp, p_t, sid, tid, context, los_pad=2.0
+            ):
+                return [p_s, mid_opp, p_t]
+    return route_orthogonal_connector(
+        source,
+        target,
+        obstacles=context.shapes,
+        clearance=clearance,
+        s_offset=s_offset,
+        t_offset=t_offset,
+        preferred_faces=preferred_faces,
+        context=context,
+    )
+
+
+def catmull_rom_bezier_segments(
+    pts: List[Tuple[float, float]],
+) -> List[Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]:
+    """Convert a >=3-point polyline into cubic Bezier segments (c1, c2, end) matching Catmull-Rom."""
+    if len(pts) < 2:
+        return []
+    padded = [pts[0]] + list(pts) + [pts[-1]]
+    segments: List[Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]] = []
+    for i in range(1, len(padded) - 2):
+        p0, p1, p2, p3 = padded[i - 1], padded[i], padded[i + 1], padded[i + 2]
+        c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
+        c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
+        segments.append((c1, c2, p2))
+    return segments
+
+
+def sample_catmull_rom_curve(
+    pts: List[Tuple[float, float]], samples_per_seg: int = 16
+) -> List[Tuple[float, float]]:
+    """Sample a Catmull-Rom spline into dense polyline points for raster rendering."""
+    if len(pts) < 3:
+        return list(pts)
+    segs = catmull_rom_bezier_segments(pts)
+    out: List[Tuple[float, float]] = [pts[0]]
+    cur = pts[0]
+    for c1, c2, end in segs:
+        for step in range(1, samples_per_seg + 1):
+            t = step / samples_per_seg
+            mt = 1.0 - t
+            x = mt**3 * cur[0] + 3 * mt**2 * t * c1[0] + 3 * mt * t**2 * c2[0] + t**3 * end[0]
+            y = mt**3 * cur[1] + 3 * mt**2 * t * c1[1] + 3 * mt * t**2 * c2[1] + t**3 * end[1]
+            out.append((x, y))
+        cur = end
+    return out
+
+
 def route_connector_scene_aware(
     source: dict,
     target: dict,
@@ -908,7 +988,19 @@ def route_connector_scene_aware(
         p_s, p_t = _straight_endpoints(source, target, lane_offset=lane_offset)
         return [p_s, p_t], "straight"
 
-    # Orthogonal (and Phase 4 curved fallback until Phase 4 adds smooth splines)
+    if eff_mode == "curved":
+        pts = route_curved_connector(
+            source,
+            target,
+            context,
+            lane_offset=lane_offset,
+            s_offset=s_offset,
+            t_offset=t_offset,
+            preferred_faces=preferred_faces,
+            clearance=clearance,
+        )
+        return pts, "curved"
+
     pts = route_orthogonal_connector(
         source,
         target,
@@ -1049,6 +1141,9 @@ def reroute_scene_arrows(
 
         if mode == "straight" or chosen == "straight":
             a["elbowed"] = False
+        elif mode == "curved" or chosen == "curved":
+            a["elbowed"] = False
+            a["roundness"] = {"type": 2}
         elif mode == "orthogonal" or chosen == "orthogonal":
             a["elbowed"] = True
 

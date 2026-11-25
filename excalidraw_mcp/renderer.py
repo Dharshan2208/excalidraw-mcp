@@ -595,7 +595,19 @@ def render_scene_image(
 
         screen_pts = [(tx(ax + pt[0]), ty(ay + pt[1])) for pt in arrow_pts]
         if len(screen_pts) >= 2:
-            _draw_polyline(draw, screen_pts, fill=stroke_color, width=stroke_w, stroke_style=a.get("strokeStyle", "solid"))
+            is_curved = (
+                not is_elbowed
+                and isinstance(a.get("roundness"), dict)
+                and a["roundness"].get("type") == 2
+                and len(screen_pts) >= 3
+            )
+            if is_curved:
+                from .routing import sample_catmull_rom_curve
+
+                draw_pts = sample_catmull_rom_curve(screen_pts, samples_per_seg=16)
+            else:
+                draw_pts = screen_pts
+            _draw_polyline(draw, draw_pts, fill=stroke_color, width=stroke_w, stroke_style=a.get("strokeStyle", "solid"))
 
             # Arrowhead at end
             default_end = "arrow" if a.get("type") == "arrow" else None
@@ -603,8 +615,8 @@ def render_scene_image(
             if end_head:
                 _draw_arrowhead(
                     draw,
-                    screen_pts[-1],
-                    screen_pts[-2],
+                    draw_pts[-1],
+                    draw_pts[-2],
                     stroke_color,
                     arrowhead_type=end_head,
                     stroke_w=stroke_w,
@@ -616,8 +628,8 @@ def render_scene_image(
             if start_head:
                 _draw_arrowhead(
                     draw,
-                    screen_pts[0],
-                    screen_pts[1],
+                    draw_pts[0],
+                    draw_pts[1],
                     stroke_color,
                     arrowhead_type=start_head,
                     stroke_w=stroke_w,

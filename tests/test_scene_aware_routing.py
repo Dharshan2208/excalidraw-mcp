@@ -230,5 +230,43 @@ class Phase3LabelPlacementAndInspectTests(unittest.TestCase):
         self.assertEqual(conn_desc["recommended_routing_mode"], "orthogonal")
 
 
+class Phase4CurvedConnectorsAndRenderersTests(unittest.TestCase):
+    def setUp(self):
+        self.service = SceneService()
+
+    def test_curved_connector_generates_3_plus_points_with_roundness_type_2(self):
+        """Phase 4: routing_mode='curved' produces >=3 waypoints, elbowed=False, and roundness={'type': 2}."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        b = self.service.add_shape("rectangle", 400, 100, 100, 60, label="B")
+        c1 = self.service.connect(a["rectangle_id"], b["rectangle_id"], label="fwd", routing_mode="curved")
+        c2 = self.service.connect(b["rectangle_id"], a["rectangle_id"], label="rev", routing_mode="curved")
+
+        e1 = self.service.state.get(c1["arrow_id"])
+        e2 = self.service.state.get(c2["arrow_id"])
+        self.assertFalse(e1["elbowed"])
+        self.assertEqual(e1["roundness"], {"type": 2})
+        self.assertGreaterEqual(len(e1["points"]), 3)
+        self.assertGreaterEqual(len(e2["points"]), 3)
+        # Parallel curved arcs bow to distinct sides
+        self.assertNotAlmostEqual(e1["points"][1][1], e2["points"][1][1], places=1)
+
+    def test_svg_and_png_render_curved_arrows_as_smooth_paths(self):
+        """Phase 4: SVG emits cubic Bezier <path> and PNG renders without error for curved arrows."""
+        from excalidraw_mcp.renderer import render_scene_to_png
+        from excalidraw_mcp.svg_renderer import render_scene_svg
+
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        b = self.service.add_shape("rectangle", 400, 100, 100, 60, label="B")
+        self.service.connect(a["rectangle_id"], b["rectangle_id"], label="arc", routing_mode="curved")
+
+        doc, _ = self.service.state.snapshot()
+        svg_str, _, _ = render_scene_svg(doc)
+        self.assertIn("<path d=", svg_str)
+        self.assertIn(" C ", svg_str)
+
+        png_bytes = render_scene_to_png(doc)
+        self.assertTrue(png_bytes.startswith(b"\x89PNG"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -199,7 +199,7 @@ def _reroute_connector(index, connector):
     from .routing import build_scene_routing_context, resolve_arrow_routing_mode, route_connector_scene_aware
 
     mode = resolve_arrow_routing_mode(connector, default="auto")
-    if mode in ("orthogonal", "auto"):
+    if mode in ("orthogonal", "curved", "auto"):
         ctx = build_scene_routing_context(list(index.values()), exclude_arrow_ids={connector["id"]})
         cd = connector.get("customData") or {}
         pref = (str(cd["source_face"]), str(cd["target_face"])) if cd.get("source_face") and cd.get("target_face") else None
@@ -207,6 +207,8 @@ def _reroute_connector(index, connector):
             source, target, ctx, routing_mode=mode, preferred_faces=pref, clearance=15.0
         )
         connector["elbowed"] = chosen == "orthogonal"
+        if chosen == "curved":
+            connector["roundness"] = {"type": 2}
         origin_x, origin_y = world_pts[0]
         connector["x"] = origin_x
         connector["y"] = origin_y
@@ -1037,7 +1039,7 @@ class SceneService:
                 raise SceneError(
                     "Connectors can target rectangle, ellipse or diamond elements"
                 )
-            if effective_mode in ("orthogonal", "auto"):
+            if effective_mode in ("orthogonal", "curved", "auto"):
                 from .routing import build_scene_routing_context, route_connector_scene_aware
 
                 ctx = build_scene_routing_context(list(index.values()))
@@ -1073,6 +1075,8 @@ class SceneService:
                     origin_x, origin_y, end[0], end[1],
                     elbowed=(chosen == "orthogonal"), routing_mode=routing_mode, **style,
                 )
+                if chosen == "curved":
+                    connector["roundness"] = {"type": 2}
                 connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
                 all_x = [pt[0] for pt in world_pts]
                 all_y = [pt[1] for pt in world_pts]
@@ -2286,16 +2290,10 @@ class SceneService:
                         )
                         and v is not None
                     }
-                    if eff_op_mode == "orthogonal":
-                        from .routing import route_orthogonal_connector
+                    if eff_op_mode in ("orthogonal", "curved"):
+                        from .routing import build_scene_routing_context, route_connector_scene_aware
 
-                        shapes = [
-                            e
-                            for e in index.values()
-                            if e["type"] in SHAPES
-                            and not e.get("isDeleted")
-                            and (e.get("customData") or {}).get("type") not in ("code_block_header",)
-                        ]
+                        ctx = build_scene_routing_context(list(index.values()))
                         pair_arrows = [
                             e
                             for e in index.values()
@@ -2311,22 +2309,27 @@ class SceneService:
                         sf = style.pop("source_face", None)
                         tf = style.pop("target_face", None)
                         pref = (sf, tf) if (sf and tf) else None
-                        world_pts = route_orthogonal_connector(
+                        world_pts, chosen = route_connector_scene_aware(
                             source,
                             target,
-                            obstacles=shapes,
-                            clearance=15.0,
+                            ctx,
+                            routing_mode=eff_op_mode,
                             s_offset=slot_offset,
                             t_offset=slot_offset,
                             preferred_faces=pref,
+                            clearance=15.0,
+                            parallel_count=len(pair_arrows) + 1,
+                            lane_offset=slot_offset,
                         )
                         start = world_pts[0]
                         end = world_pts[-1]
                         origin_x, origin_y = world_pts[0]
                         connector = arrow(
                             origin_x, origin_y, end[0], end[1],
-                            elbowed=True, routing_mode=op_routing_mode, **style,
+                            elbowed=(chosen == "orthogonal"), routing_mode=op_routing_mode, **style,
                         )
+                        if chosen == "curved":
+                            connector["roundness"] = {"type": 2}
                         connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
                         all_x = [pt[0] for pt in world_pts]
                         all_y = [pt[1] for pt in world_pts]

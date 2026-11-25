@@ -417,12 +417,38 @@ def render_scene_svg(
 
         screen_pts = [(tx(ax + pt[0]), ty(ay + pt[1])) for pt in arrow_pts]
         if len(screen_pts) >= 2:
-            pts_str = " ".join(f"{pt[0]:.2f},{pt[1]:.2f}" for pt in screen_pts)
-            svg_parts.append(
-                f'  <polyline points="{pts_str}" fill="none" stroke="{stroke}" '
-                f'stroke-width="{stroke_w}" stroke-linecap="round" stroke-linejoin="round" '
-                f'{dash} {opacity_attr} />\n'
+            is_curved = (
+                not is_elbowed
+                and isinstance(a.get("roundness"), dict)
+                and a["roundness"].get("type") == 2
+                and len(screen_pts) >= 3
             )
+            end_prev = screen_pts[-2]
+            start_next = screen_pts[1]
+            if is_curved:
+                from .routing import catmull_rom_bezier_segments
+
+                segs = catmull_rom_bezier_segments(screen_pts)
+                d_parts = [f"M {screen_pts[0][0]:.2f} {screen_pts[0][1]:.2f}"]
+                for c1, c2, end in segs:
+                    d_parts.append(
+                        f"C {c1[0]:.2f} {c1[1]:.2f}, {c2[0]:.2f} {c2[1]:.2f}, {end[0]:.2f} {end[1]:.2f}"
+                    )
+                svg_parts.append(
+                    f'  <path d="{" ".join(d_parts)}" fill="none" stroke="{stroke}" '
+                    f'stroke-width="{stroke_w}" stroke-linecap="round" stroke-linejoin="round" '
+                    f'{dash} {opacity_attr} />\n'
+                )
+                if segs:
+                    start_next = segs[0][0]
+                    end_prev = segs[-1][1]
+            else:
+                pts_str = " ".join(f"{pt[0]:.2f},{pt[1]:.2f}" for pt in screen_pts)
+                svg_parts.append(
+                    f'  <polyline points="{pts_str}" fill="none" stroke="{stroke}" '
+                    f'stroke-width="{stroke_w}" stroke-linecap="round" stroke-linejoin="round" '
+                    f'{dash} {opacity_attr} />\n'
+                )
 
             # Arrowhead at end
             default_end = "arrow" if a.get("type") == "arrow" else None
@@ -431,7 +457,7 @@ def render_scene_svg(
                 svg_parts.append(
                     _render_svg_arrowhead(
                         screen_pts[-1],
-                        screen_pts[-2],
+                        end_prev,
                         stroke,
                         arrowhead_type=end_head,
                         stroke_w=stroke_w,
@@ -445,7 +471,7 @@ def render_scene_svg(
                 svg_parts.append(
                     _render_svg_arrowhead(
                         screen_pts[0],
-                        screen_pts[1],
+                        start_next,
                         stroke,
                         arrowhead_type=start_head,
                         stroke_w=stroke_w,
