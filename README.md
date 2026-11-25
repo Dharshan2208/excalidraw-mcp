@@ -10,6 +10,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![CI Status](https://img.shields.io/github/actions/workflow/status/Dharshan2208/excalidraw-mcp/ci.yml?style=for-the-badge)](https://github.com/Dharshan2208/excalidraw-mcp/actions)
 [![GitHub Stars](https://img.shields.io/github/stars/Dharshan2208/excalidraw-mcp?style=for-the-badge)](https://github.com/Dharshan2208/excalidraw-mcp/stargazers)
+[![Dharshan2208/excalidraw-mcp MCP server](https://glama.ai/mcp/servers/Dharshan2208/excalidraw-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Dharshan2208/excalidraw-mcp)
 
 </div>
 
