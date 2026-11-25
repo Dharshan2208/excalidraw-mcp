@@ -68,17 +68,19 @@ def get_shape_port(
             return (px, cy + off), (1, 0)
 
     # Default: Rectangle
+    mx = min(10.0, w * 0.25)
+    my = min(10.0, h * 0.25)
     if face == "top":
-        px = max(x + 10.0, min(x + w - 10.0, cx + offset))
+        px = max(x + mx, min(x + w - mx, cx + offset))
         return (px, y), (0, -1)
     elif face == "bottom":
-        px = max(x + 10.0, min(x + w - 10.0, cx + offset))
+        px = max(x + mx, min(x + w - mx, cx + offset))
         return (px, y + h), (0, 1)
     elif face == "left":
-        py = max(y + 10.0, min(y + h - 10.0, cy + offset))
+        py = max(y + my, min(y + h - my, cy + offset))
         return (x, py), (-1, 0)
     elif face == "right":
-        py = max(y + 10.0, min(y + h - 10.0, cy + offset))
+        py = max(y + my, min(y + h - my, cy + offset))
         return (x + w, py), (1, 0)
 
     raise SceneError(f"Unsupported face: {face}")
@@ -112,7 +114,9 @@ def choose_natural_faces(
             return [("bottom", "top"), ("right", "top"), ("left", "top")]
         side_src = "right" if dx > 0 else "left"
         side_dst = "left" if dx > 0 else "right"
-        return [("bottom", "top"), (side_src, "top"), ("bottom", side_dst)]
+        if abs(dx) > abs(dy) * 1.5:
+            return [(side_src, side_dst), ("bottom", "top"), (side_src, "top"), ("bottom", side_dst)]
+        return [("bottom", "top"), (side_src, "top"), ("bottom", side_dst), (side_src, side_dst)]
 
     # Target is clearly above source
     elif ty + th <= sy + 5.0:
@@ -120,7 +124,9 @@ def choose_natural_faces(
             return [("top", "bottom"), ("right", "bottom"), ("left", "bottom")]
         side_src = "right" if dx > 0 else "left"
         side_dst = "left" if dx > 0 else "right"
-        return [("top", "bottom"), (side_src, "bottom"), ("top", side_dst)]
+        if abs(dx) > abs(dy) * 1.5:
+            return [(side_src, side_dst), ("top", "bottom"), (side_src, "bottom"), ("top", side_dst)]
+        return [("top", "bottom"), (side_src, "bottom"), ("top", side_dst), (side_src, side_dst)]
 
     # Target is to the right
     elif tx >= sx + sw - 5.0:
@@ -222,28 +228,45 @@ def route_orthogonal_connector(
         oh = float(o.get("height", o.get("h", 0.0)))
         obs_boxes.append((ox - clearance, oy - clearance, ox + ow + clearance, oy + oh + clearance))
 
-    def seg_hits_obs(p1: Tuple[float, float], p2: Tuple[float, float]) -> bool:
+    endpoint_boxes = [
+        (
+            float(el.get("x", 0.0)),
+            float(el.get("y", 0.0)),
+            float(el.get("x", 0.0)) + float(el.get("width", el.get("w", 0.0))),
+            float(el.get("y", 0.0)) + float(el.get("height", el.get("h", 0.0))),
+        )
+        for el in (source, target)
+    ]
+
+    def _hits_boxes(p1: Tuple[float, float], p2: Tuple[float, float], boxes: list[tuple[float, float, float, float]]) -> bool:
         eps = 0.5
         x1, y1 = p1
         x2, y2 = p2
         if abs(y1 - y2) < 1e-4:  # Horizontal segment
             y = y1
             min_x, max_x = min(x1, x2), max(x1, x2)
-            for ox1, oy1, ox2, oy2 in obs_boxes:
+            for ox1, oy1, ox2, oy2 in boxes:
                 if oy1 + eps < y < oy2 - eps:
                     if max(min_x, ox1 + eps) < min(max_x, ox2 - eps):
                         return True
         elif abs(x1 - x2) < 1e-4:  # Vertical segment
             x = x1
             min_y, max_y = min(y1, y2), max(y1, y2)
-            for ox1, oy1, ox2, oy2 in obs_boxes:
+            for ox1, oy1, ox2, oy2 in boxes:
                 if ox1 + eps < x < ox2 - eps:
                     if max(min_y, oy1 + eps) < min(max_y, oy2 - eps):
                         return True
         else:
-            for b in obs_boxes:
+            for b in boxes:
                 if segment_intersects_rect(p1, p2, b, margin=eps):
                     return True
+        return False
+
+    def seg_hits_obs(p1: Tuple[float, float], p2: Tuple[float, float], include_endpoints: bool = True) -> bool:
+        if _hits_boxes(p1, p2, obs_boxes):
+            return True
+        if include_endpoints and _hits_boxes(p1, p2, endpoint_boxes):
+            return True
         return False
 
     candidate_pairs = choose_natural_faces(source, target, preferred=preferred_faces)
@@ -254,10 +277,19 @@ def route_orthogonal_connector(
         p_start, v_start = get_shape_port(source, s_face, s_offset)
         p_end, v_end = get_shape_port(target, t_face, t_offset)
 
-        stub_s = (p_start[0] + v_start[0] * clearance, p_start[1] + v_start[1] * clearance)
-        stub_e = (p_end[0] + v_end[0] * clearance, p_end[1] + v_end[1] * clearance)
-
-        if seg_hits_obs(p_start, stub_s) or seg_hits_obs(stub_e, p_end):
+        stub_s = None
+        for stub_dist in (clearance, min(clearance, 4.0), 0.0):
+            cand_s = (p_start[0] + v_start[0] * stub_dist, p_start[1] + v_start[1] * stub_dist)
+            if stub_dist == 0.0 or not seg_hits_obs(p_start, cand_s, include_endpoints=False):
+                stub_s = cand_s
+                break
+        stub_e = None
+        for stub_dist in (clearance, min(clearance, 4.0), 0.0):
+            cand_e = (p_end[0] + v_end[0] * stub_dist, p_end[1] + v_end[1] * stub_dist)
+            if stub_dist == 0.0 or not seg_hits_obs(cand_e, p_end, include_endpoints=False):
+                stub_e = cand_e
+                break
+        if stub_s is None or stub_e is None:
             continue
 
         # Build sparse orthogonal coordinate grid
@@ -288,59 +320,61 @@ def route_orthogonal_connector(
         all_x = sorted(set(sorted_x + mid_x))
         all_y = sorted(set(sorted_y + mid_y))
 
-        # A* pathfinding on corridor grid
+        # A* pathfinding on integer-indexed corridor grid
+        start_xi = all_x.index(stub_s[0])
+        start_yi = all_y.index(stub_s[1])
+        target_xi = all_x.index(stub_e[0])
+        target_yi = all_y.index(stub_e[1])
         target_pt = stub_e
         init_dir = "V" if abs(v_start[1]) > 0 else "H"
         pq = [
             (
                 abs(stub_s[0] - target_pt[0]) + abs(stub_s[1] - target_pt[1]),
                 0.0,
-                stub_s[0],
-                stub_s[1],
+                start_xi,
+                start_yi,
                 init_dir,
                 [p_start, stub_s],
             )
         ]
-        visited: dict[tuple[float, float, str], float] = {}
+        visited: dict[tuple[int, int, str], float] = {}
         path_found = None
         total_cost = float("inf")
 
         while pq:
-            f, g, cx, cy, cdir, path = heapq.heappop(pq)
-            if (cx, cy) == target_pt:
+            f, g, xi, yi, cdir, path = heapq.heappop(pq)
+            cx, cy = all_x[xi], all_y[yi]
+            if xi == target_xi and yi == target_yi:
                 path_found = path + [p_end]
                 total_cost = g
                 break
 
-            state_key = (cx, cy, cdir)
+            state_key = (xi, yi, cdir)
             if state_key in visited and visited[state_key] <= g:
                 continue
             visited[state_key] = g
-
-            xi = all_x.index(cx) if cx in all_x else -1
-            yi = all_y.index(cy) if cy in all_y else -1
 
             # Step along horizontal corridor
             for nxi in (xi - 1, xi + 1):
                 if 0 <= nxi < len(all_x):
                     nx = all_x[nxi]
-                    if not seg_hits_obs((cx, cy), (nx, cy)):
+                    if not seg_hits_obs((cx, cy), (nx, cy), include_endpoints=True):
                         dist = abs(nx - cx)
                         turn_cost = bend_penalty if cdir == "V" else 0.0
                         ng = g + dist + turn_cost
                         h = abs(nx - target_pt[0]) + abs(cy - target_pt[1])
-                        heapq.heappush(pq, (ng + h, ng, nx, cy, "H", path + [(nx, cy)]))
+                        heapq.heappush(pq, (ng + h, ng, nxi, yi, "H", path + [(nx, cy)]))
 
             # Step along vertical corridor
             for nyi in (yi - 1, yi + 1):
                 if 0 <= nyi < len(all_y):
                     ny = all_y[nyi]
-                    if not seg_hits_obs((cx, cy), (cx, ny)):
+                    if not seg_hits_obs((cx, cy), (cx, ny), include_endpoints=True):
                         dist = abs(ny - cy)
                         turn_cost = bend_penalty if cdir == "H" else 0.0
                         ng = g + dist + turn_cost
                         h = abs(cx - target_pt[0]) + abs(ny - target_pt[1])
-                        heapq.heappush(pq, (ng + h, ng, cx, ny, "V", path + [(cx, ny)]))
+                        heapq.heappush(pq, (ng + h, ng, xi, nyi, "V", path + [(cx, ny)]))
 
         if path_found and total_cost < best_cost:
             best_cost = total_cost
@@ -458,6 +492,8 @@ def reroute_scene_arrows(
             slot_offset = (idx - (total_in_pair - 1) / 2.0) * lane_spacing if total_in_pair > 1 else 0.0
 
             is_elbowed = bool(a.get("elbowed"))
+            if only_elbowed and not is_elbowed:
+                continue
 
             # Check direct line collision
             cand_pairs = choose_natural_faces(source_el, target_el)

@@ -158,23 +158,43 @@ def _as_layout_node(el):
 
 
 def _reroute_connector(index, connector):
-    if connector.get("elbowed") or connector.get("angle", 0):
+    if connector.get("angle", 0):
         raise SceneError(
-            "Resizing shapes attached to elbowed or rotated arrows is not supported yet"
+            "Resizing shapes attached to rotated arrows is not supported yet"
         )
     start_id = (connector.get("startBinding") or {}).get("elementId")
     end_id = (connector.get("endBinding") or {}).get("elementId")
     if not start_id or not end_id or start_id not in index or end_id not in index:
         return
     source, target = index[start_id], index[end_id]
-    start = boundary_point(_as_layout_node(source), _as_layout_node(target), 1)
-    end = boundary_point(_as_layout_node(target), _as_layout_node(source), -1)
-    connector["x"], connector["y"] = start
-    connector["points"] = [[0, 0], [end[0] - start[0], end[1] - start[1]]]
-    connector["width"], connector["height"] = (
-        abs(end[0] - start[0]),
-        abs(end[1] - start[1]),
-    )
+    if connector.get("elbowed"):
+        from .routing import route_orthogonal_connector
+
+        shapes = [
+            e
+            for e in index.values()
+            if e.get("type") in SHAPES
+            and not e.get("isDeleted")
+            and (e.get("customData") or {}).get("type") not in ("code_block_header",)
+        ]
+        world_pts = route_orthogonal_connector(source, target, obstacles=shapes, clearance=15.0)
+        origin_x, origin_y = world_pts[0]
+        connector["x"] = origin_x
+        connector["y"] = origin_y
+        connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
+        all_x = [pt[0] for pt in world_pts]
+        all_y = [pt[1] for pt in world_pts]
+        connector["width"] = max(all_x) - min(all_x)
+        connector["height"] = max(all_y) - min(all_y)
+    else:
+        start = boundary_point(_as_layout_node(source), _as_layout_node(target), 1)
+        end = boundary_point(_as_layout_node(target), _as_layout_node(source), -1)
+        connector["x"], connector["y"] = start
+        connector["points"] = [[0, 0], [end[0] - start[0], end[1] - start[1]]]
+        connector["width"], connector["height"] = (
+            abs(end[0] - start[0]),
+            abs(end[1] - start[1]),
+        )
     label = _label_for(index, connector["id"])
     if label:
         _center_label(label, connector)
@@ -305,15 +325,18 @@ def _apply_move(index, element_id, x, y):
             "elementId"
         ) in moved_targets
         if start or end:
-            _move_arrow_endpoints(connector, dx, dy, start, end)
-            # Preserve the label's offset from the endpoint midpoint.
-            label = owned_labels.get(connector["id"])
-            if label:
-                _translate(
-                    label,
-                    dx * (int(start) + int(end)) / 2,
-                    dy * (int(start) + int(end)) / 2,
-                )
+            if connector.get("elbowed") and not (start and end):
+                _reroute_connector(index, connector)
+            else:
+                _move_arrow_endpoints(connector, dx, dy, start, end)
+                # Preserve the label's offset from the endpoint midpoint.
+                label = owned_labels.get(connector["id"])
+                if label:
+                    _translate(
+                        label,
+                        dx * (int(start) + int(end)) / 2,
+                        dy * (int(start) + int(end)) / 2,
+                    )
     return {"status": "moved", "element_id": element_id, "x": x, "y": y}
 
 
@@ -3150,6 +3173,10 @@ class SceneService:
                 "strokeStyle",
                 "opacity",
                 "roughness",
+                "startArrowhead",
+                "endArrowhead",
+                "start_arrowhead",
+                "end_arrowhead",
                 "fontFamily",
                 "font_family",
                 "fontSize",
@@ -3196,6 +3223,10 @@ class SceneService:
                 "element_id": connector["id"],
                 "label_id": label_id,
             }
+        if any(e.get("type") == "arrow" and e.get("elbowed") for e in elements):
+            from .routing import reroute_scene_arrows
+
+            reroute_scene_arrows(elements, clearance=15.0, only_elbowed=True)
         doc = new_document(elements)
         if resolve:
             from .layout import resolve_scene_layout

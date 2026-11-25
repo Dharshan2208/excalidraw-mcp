@@ -191,6 +191,68 @@ class ArrowRoutingTests(unittest.TestCase):
         self.assertGreater(rev_after, rev_before)
         self.assertEqual(res["status"], "connectors rerouted")
 
+    def test_tight_gap_obstacle_does_not_abort_to_straight_line(self):
+        """Regression for BUG-005: 20px gap with clearance=15 must still route around obstacle."""
+        from excalidraw_mcp.routing import route_orthogonal_connector, segment_intersects_rect
+
+        a = rect(100, 100, 100, 60)
+        b = rect(100, 300, 100, 60)
+        c = rect(100, 180, 100, 60)  # 20px gap below A
+        pts = route_orthogonal_connector(a, b, [a, b, c], clearance=15.0)
+        self.assertGreater(len(pts), 2)
+        c_box = (100.0, 180.0, 200.0, 240.0)
+        for k in range(len(pts) - 1):
+            self.assertFalse(segment_intersects_rect(pts[k], pts[k + 1], c_box, margin=1.0))
+
+    def test_narrow_shape_port_clamping_and_only_elbowed(self):
+        """Regression for BUG-007: port on w=8 rect stays inside [x, x+w], and only_elbowed=True preserves straight arrows."""
+        from excalidraw_mcp.routing import get_shape_port, reroute_scene_arrows
+
+        tiny = rect(100, 100, 8, 8)
+        pt, _ = get_shape_port(tiny, "top", 0.0)
+        self.assertGreaterEqual(pt[0], 100.0)
+        self.assertLessEqual(pt[0], 108.0)
+
+        a = self.service.add_shape("rectangle", 0, 0, 100, 60)
+        b = self.service.add_shape("rectangle", 300, 0, 100, 60)
+        obs = self.service.add_shape("rectangle", 150, 0, 100, 60)
+        conn = self.service.connect(a["rectangle_id"], b["rectangle_id"], elbowed=False)
+        doc = self.service.state.document()
+        reroute_scene_arrows(doc["elements"], only_elbowed=True)
+        arr = next(e for e in doc["elements"] if e["id"] == conn["arrow_id"])
+        self.assertFalse(arr["elbowed"])
+
+    def test_draw_graph_routes_elbowed_edges_and_preserves_arrowheads(self):
+        """Regression for BUG-008: draw_graph routes elbowed=True edges and preserves start/end arrowheads."""
+        res = self.service.draw_graph(
+            nodes=[
+                {"id": "a", "label": "A"},
+                {"id": "b", "label": "B"},
+                {"id": "c", "label": "C"},
+            ],
+            edges=[
+                {"source": "a", "target": "b"},
+                {"source": "b", "target": "c"},
+                {"source": "a", "target": "c", "elbowed": True, "endArrowhead": "diamond"},
+            ],
+            layout="horizontal",
+        )
+        ac_el = self.service.state.get(res["edge_map"]["edge-3"]["element_id"])
+        self.assertEqual(ac_el["endArrowhead"], "diamond")
+        self.assertGreater(len(ac_el["points"]), 2)
+
+    def test_move_and_resize_bound_elbowed_connector_reroutes_cleanly(self):
+        """Regression for BUG-009: moving or resizing a shape bound to an elbowed arrow reroutes it."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60)
+        b = self.service.add_shape("rectangle", 400, 100, 100, 60)
+        conn = self.service.connect(a["rectangle_id"], b["rectangle_id"], elbowed=True)
+
+        self.service.move(a["rectangle_id"], 100, 250)
+        self.service.resize(b["rectangle_id"], 140, 100)
+        arr = self.service.state.get(conn["arrow_id"])
+        self.assertTrue(arr["elbowed"])
+        self.assertGreaterEqual(len(arr["points"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
