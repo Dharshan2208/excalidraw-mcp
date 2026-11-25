@@ -167,17 +167,17 @@ def _reroute_connector(index, connector):
     if not start_id or not end_id or start_id not in index or end_id not in index:
         return
     source, target = index[start_id], index[end_id]
-    if connector.get("elbowed"):
-        from .routing import route_orthogonal_connector
+    from .routing import build_scene_routing_context, resolve_arrow_routing_mode, route_connector_scene_aware
 
-        shapes = [
-            e
-            for e in index.values()
-            if e.get("type") in SHAPES
-            and not e.get("isDeleted")
-            and (e.get("customData") or {}).get("type") not in ("code_block_header",)
-        ]
-        world_pts = route_orthogonal_connector(source, target, obstacles=shapes, clearance=15.0)
+    mode = resolve_arrow_routing_mode(connector, default="auto")
+    if mode in ("orthogonal", "auto"):
+        ctx = build_scene_routing_context(list(index.values()), exclude_arrow_ids={connector["id"]})
+        cd = connector.get("customData") or {}
+        pref = (str(cd["source_face"]), str(cd["target_face"])) if cd.get("source_face") and cd.get("target_face") else None
+        world_pts, chosen = route_connector_scene_aware(
+            source, target, ctx, routing_mode=mode, preferred_faces=pref, clearance=15.0
+        )
+        connector["elbowed"] = chosen == "orthogonal"
         origin_x, origin_y = world_pts[0]
         connector["x"] = origin_x
         connector["y"] = origin_y
@@ -189,6 +189,7 @@ def _reroute_connector(index, connector):
     else:
         start = boundary_point(_as_layout_node(source), _as_layout_node(target), 1)
         end = boundary_point(_as_layout_node(target), _as_layout_node(source), -1)
+        connector["elbowed"] = False
         connector["x"], connector["y"] = start
         connector["points"] = [[0, 0], [end[0] - start[0], end[1] - start[1]]]
         connector["width"], connector["height"] = (
@@ -198,6 +199,39 @@ def _reroute_connector(index, connector):
     label = _label_for(index, connector["id"])
     if label:
         _center_label(label, connector)
+
+
+def _reroute_blocked_non_incident(index, moved_ids):
+    """Reroute any non-incident 'auto' straight connector whose path is now blocked."""
+    from .routing import build_scene_routing_context, resolve_arrow_routing_mode, segment_intersects_rect
+
+    moved_shapes = [
+        index[mid]
+        for mid in moved_ids
+        if mid in index and index[mid].get("type") in SHAPES and not index[mid].get("isDeleted")
+    ]
+    if not moved_shapes:
+        return
+    for conn in list(index.values()):
+        if conn.get("type") != "arrow" or conn.get("isDeleted") or conn.get("locked"):
+            continue
+        sb = (conn.get("startBinding") or {}).get("elementId")
+        eb = (conn.get("endBinding") or {}).get("elementId")
+        if not sb or not eb or sb in moved_ids or eb in moved_ids:
+            continue
+        if resolve_arrow_routing_mode(conn, default="auto") != "auto" or conn.get("elbowed"):
+            continue
+        ax, ay = float(conn.get("x", 0.0)), float(conn.get("y", 0.0))
+        pts = conn.get("points") or [[0.0, 0.0], [float(conn.get("width", 0.0)), float(conn.get("height", 0.0))]]
+        wpts = [(ax + float(p[0]), ay + float(p[1])) for p in pts]
+        blocked = False
+        for ms in moved_shapes:
+            box = (float(ms["x"]), float(ms["y"]), float(ms["x"]) + float(ms["width"]), float(ms["y"]) + float(ms["height"]))
+            if any(segment_intersects_rect(wpts[i], wpts[i + 1], box, margin=2.0) for i in range(len(wpts) - 1)):
+                blocked = True
+                break
+        if blocked:
+            _reroute_connector(index, conn)
 
 
 def _move_arrow_endpoints(el, dx, dy, start, end):
@@ -325,7 +359,8 @@ def _apply_move(index, element_id, x, y):
             "elementId"
         ) in moved_targets
         if start or end:
-            if connector.get("elbowed") and not (start and end):
+            explicit_mode = (connector.get("customData") or {}).get("routing_mode")
+            if not (start and end) and (connector.get("elbowed") or explicit_mode == "auto"):
                 _reroute_connector(index, connector)
             else:
                 _move_arrow_endpoints(connector, dx, dy, start, end)
@@ -337,6 +372,7 @@ def _apply_move(index, element_id, x, y):
                         dx * (int(start) + int(end)) / 2,
                         dy * (int(start) + int(end)) / 2,
                     )
+    _reroute_blocked_non_incident(index, moved_targets)
     return {"status": "moved", "element_id": element_id, "x": x, "y": y}
 
 
@@ -366,6 +402,7 @@ def _apply_resize(index, element_id, width, height):
             for end in ("startBinding", "endBinding")
         ):
             _reroute_connector(index, connector)
+    _reroute_blocked_non_incident(index, {element_id})
     return {
         "status": "resized",
         "element_id": element_id,
@@ -957,11 +994,12 @@ class SceneService:
         if routing_mode is None:
             if elbowed is True:
                 effective_mode = "orthogonal"
+            elif elbowed is False:
+                effective_mode = "straight"
             else:
                 effective_mode = "auto"
         else:
             effective_mode = routing_mode
-        use_orthogonal = effective_mode == "orthogonal"
 
         def add_connection(document):
             index = _active(document)
@@ -970,32 +1008,10 @@ class SceneService:
                 raise SceneError(
                     "Connectors can target rectangle, ellipse or diamond elements"
                 )
-            source_node = {
-                "shape": source["type"],
-                "x": source["x"],
-                "y": source["y"],
-                "w": source["width"],
-                "h": source["height"],
-                "angle": source.get("angle", 0),
-            }
-            target_node = {
-                "shape": target["type"],
-                "x": target["x"],
-                "y": target["y"],
-                "w": target["width"],
-                "h": target["height"],
-                "angle": target.get("angle", 0),
-            }
-            if use_orthogonal:
-                from .routing import route_orthogonal_connector
+            if effective_mode in ("orthogonal", "auto"):
+                from .routing import build_scene_routing_context, route_connector_scene_aware
 
-                shapes = [
-                    e
-                    for e in index.values()
-                    if e["type"] in SHAPES
-                    and not e.get("isDeleted")
-                    and (e.get("customData") or {}).get("type") not in ("code_block_header",)
-                ]
+                ctx = build_scene_routing_context(list(index.values()))
                 pair_arrows = [
                     e
                     for e in index.values()
@@ -1009,21 +1025,24 @@ class SceneService:
                 ]
                 slot_offset = len(pair_arrows) * 20.0
                 pref_faces = (s_face, t_face) if (s_face and t_face) else None
-                world_pts = route_orthogonal_connector(
+                world_pts, chosen = route_connector_scene_aware(
                     source,
                     target,
-                    obstacles=shapes,
-                    clearance=15.0,
+                    ctx,
+                    routing_mode=effective_mode,
                     s_offset=slot_offset,
                     t_offset=slot_offset,
                     preferred_faces=pref_faces,
+                    clearance=15.0,
+                    parallel_count=len(pair_arrows) + 1,
+                    lane_offset=slot_offset,
                 )
                 start = world_pts[0]
                 end = world_pts[-1]
                 origin_x, origin_y = world_pts[0]
                 connector = arrow(
                     origin_x, origin_y, end[0], end[1],
-                    elbowed=True, routing_mode=routing_mode, **style,
+                    elbowed=(chosen == "orthogonal"), routing_mode=routing_mode, **style,
                 )
                 connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
                 all_x = [pt[0] for pt in world_pts]
@@ -1031,6 +1050,22 @@ class SceneService:
                 connector["width"] = max(all_x) - min(all_x)
                 connector["height"] = max(all_y) - min(all_y)
             else:
+                source_node = {
+                    "shape": source["type"],
+                    "x": source["x"],
+                    "y": source["y"],
+                    "w": source["width"],
+                    "h": source["height"],
+                    "angle": source.get("angle", 0),
+                }
+                target_node = {
+                    "shape": target["type"],
+                    "x": target["x"],
+                    "y": target["y"],
+                    "w": target["width"],
+                    "h": target["height"],
+                    "angle": target.get("angle", 0),
+                }
                 start, end = (
                     boundary_point(source_node, target_node, 1),
                     boundary_point(target_node, source_node, -1),
@@ -3293,10 +3328,18 @@ class SceneService:
                 "element_id": connector["id"],
                 "label_id": label_id,
             }
-        if any(e.get("type") == "arrow" and e.get("elbowed") for e in elements):
+        if any(
+            e.get("type") == "arrow"
+            and (
+                e.get("elbowed")
+                or (e.get("customData") or {}).get("routing_mode") in ("auto", "orthogonal", "curved")
+            )
+            for e in elements
+        ) or routing_mode in ("auto", "orthogonal", "curved"):
             from .routing import reroute_scene_arrows
 
-            reroute_scene_arrows(elements, clearance=15.0, only_elbowed=True)
+            only_elb = routing_mode is None and elbowed is None and any(e.get("elbowed") for e in elements)
+            reroute_scene_arrows(elements, clearance=15.0, only_elbowed=only_elb)
         doc = new_document(elements)
         if resolve:
             from .layout import resolve_scene_layout

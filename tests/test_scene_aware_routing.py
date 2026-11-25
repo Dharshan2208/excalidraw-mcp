@@ -101,5 +101,90 @@ class Phase1MCPContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((e3.get("customData") or {}).get("routing_mode"), "straight")
 
 
+class Phase2SceneRouterAndMultiCriteriaTests(unittest.TestCase):
+    def setUp(self):
+        self.service = SceneService()
+
+    def test_auto_mode_picks_straight_diagonal_when_clear_and_orthogonal_when_blocked(self):
+        """Phase 2: routing_mode='auto' picks straight diagonal when clear, orthogonal when blocked."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        b = self.service.add_shape("rectangle", 340, 260, 100, 60, label="B")
+        c1 = self.service.connect(a["rectangle_id"], b["rectangle_id"], routing_mode="auto")
+        arr1 = self.service.state.get(c1["arrow_id"])
+        self.assertFalse(arr1["elbowed"])
+        self.assertEqual(len(arr1["points"]), 2)
+
+        # Now add an obstacle directly on a second auto path
+        self.service.clear()
+        s = self.service.add_shape("rectangle", 100, 100, 100, 60, label="S")
+        obs = self.service.add_shape("rectangle", 240, 80, 100, 100, label="Obs")
+        t = self.service.add_shape("rectangle", 400, 100, 100, 60, label="T")
+        c2 = self.service.connect(s["rectangle_id"], t["rectangle_id"], routing_mode="auto")
+        arr2 = self.service.state.get(c2["arrow_id"])
+        self.assertTrue(arr2["elbowed"])
+        self.assertGreater(len(arr2["points"]), 2)
+
+    def test_orthogonal_router_avoids_crossing_existing_arrow_and_frame_headers(self):
+        """Phase 2: Multi-criteria A* avoids crossing an existing arrow and frame header band."""
+        from excalidraw_mcp.routing import (
+            build_scene_routing_context,
+            route_connector_scene_aware,
+            segment_intersects_rect,
+        )
+
+        f1 = frame(80, 80, 320, 220, name="Cluster")
+        a = rect(110, 140, 100, 60)
+        a["frameId"] = f1["id"]
+        b = rect(260, 140, 100, 60)
+        b["frameId"] = f1["id"]
+        c = rect(480, 140, 100, 60)
+
+        # Route A -> C with B blocking the middle and F1 header at y=80..108
+        ctx = build_scene_routing_context([f1, a, b, c])
+        pts, chosen = route_connector_scene_aware(a, c, ctx, routing_mode="orthogonal")
+        self.assertEqual(chosen, "orthogonal")
+        header_rect = (80.0, 80.0, 400.0, 108.0)
+        b_rect = (260.0, 140.0, 360.0, 200.0)
+        for i in range(len(pts) - 1):
+            self.assertFalse(segment_intersects_rect(pts[i], pts[i + 1], b_rect, margin=1.0))
+            self.assertFalse(segment_intersects_rect(pts[i], pts[i + 1], header_rect, margin=1.0))
+
+    def test_moving_unrelated_node_onto_auto_straight_path_triggers_reroute(self):
+        """Phase 2: Moving a third node into an existing auto straight connector reroutes it."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        b = self.service.add_shape("rectangle", 420, 100, 100, 60, label="B")
+        obs = self.service.add_shape("rectangle", 260, 260, 100, 60, label="Obs")
+
+        conn = self.service.connect(a["rectangle_id"], b["rectangle_id"], routing_mode="auto")
+        self.assertFalse(self.service.state.get(conn["arrow_id"])["elbowed"])
+
+        # Move obs right across A -> B path
+        self.service.move(obs["rectangle_id"], 260, 100)
+        arr_after = self.service.state.get(conn["arrow_id"])
+        self.assertTrue(arr_after["elbowed"])
+        self.assertGreater(len(arr_after["points"]), 2)
+
+    def test_fan_in_connectors_distribute_ports_on_shared_face(self):
+        """Phase 2: Multiple connectors targeting the same shape face distribute ports cleanly."""
+        a1 = self.service.add_shape("rectangle", 100, 60, 100, 50, label="A1")
+        a2 = self.service.add_shape("rectangle", 100, 140, 100, 50, label="A2")
+        a3 = self.service.add_shape("rectangle", 100, 220, 100, 50, label="A3")
+        tgt = self.service.add_shape("rectangle", 360, 110, 120, 120, label="Target")
+
+        c1 = self.service.connect(a1["rectangle_id"], tgt["rectangle_id"], routing_mode="orthogonal")
+        c2 = self.service.connect(a2["rectangle_id"], tgt["rectangle_id"], routing_mode="orthogonal")
+        c3 = self.service.connect(a3["rectangle_id"], tgt["rectangle_id"], routing_mode="orthogonal")
+
+        doc = self.service.state.document()
+        from excalidraw_mcp.routing import reroute_scene_arrows
+        reroute_scene_arrows(doc["elements"])
+        ends = []
+        for cid in (c1["arrow_id"], c2["arrow_id"], c3["arrow_id"]):
+            el = next(e for e in doc["elements"] if e["id"] == cid)
+            last_pt = el["points"][-1]
+            ends.append((round(el["x"] + last_pt[0], 1), round(el["y"] + last_pt[1], 1)))
+        self.assertEqual(len(set(ends)), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
