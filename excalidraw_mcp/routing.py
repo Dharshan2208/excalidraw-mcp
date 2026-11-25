@@ -4,11 +4,210 @@ Provides Manhattan A* routing around diagram components, frame-aware corridors,
 multiple-edge offset handling, and collision-free connector label placement.
 """
 
+from dataclasses import dataclass, field
 import heapq
 import math
 from typing import Dict, List, Optional, Tuple
 
 from .errors import SceneError
+
+VALID_ROUTING_MODES = ("auto", "straight", "orthogonal", "curved")
+FRAME_HEADER_HEIGHT = 28.0
+
+
+def resolve_arrow_routing_mode(arrow_el: dict, default: str = "auto") -> str:
+    """Resolve effective routing mode for an arrow from customData, elbowed, and roundness."""
+    cd_mode = (arrow_el.get("customData") or {}).get("routing_mode")
+    if cd_mode in VALID_ROUTING_MODES:
+        return str(cd_mode)
+    if arrow_el.get("elbowed"):
+        return "orthogonal"
+    pts = arrow_el.get("points") or []
+    roundness = arrow_el.get("roundness")
+    if isinstance(roundness, dict) and roundness.get("type") == 2 and len(pts) >= 3:
+        return "curved"
+    return default
+
+
+def set_arrow_routing_mode(arrow_el: dict, mode: str) -> None:
+    """Persist routing_mode in customData while preserving other customData fields."""
+    if mode not in VALID_ROUTING_MODES:
+        raise SceneError(f"Unsupported routing_mode: '{mode}'")
+    cd = dict(arrow_el.get("customData") or {})
+    cd["routing_mode"] = mode
+    arrow_el["customData"] = cd
+
+
+@dataclass
+class SceneRoutingContext:
+    """Snapshot of scene geometry used for scene-aware connector routing."""
+
+    shapes: List[dict]
+    shape_boxes: Dict[str, Tuple[float, float, float, float]]
+    frames: List[dict]
+    frame_headers: List[Tuple[float, float, float, float]]
+    existing_segments: Dict[str, List[Tuple[Tuple[float, float], Tuple[float, float]]]]
+    label_boxes: List[Tuple[float, float, float, float, Optional[str]]]
+    density: float
+    structure: str
+    port_usage: Dict[Tuple[str, str], List[str]] = field(default_factory=dict)
+
+
+def _arrow_world_segments(arrow_el: dict) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
+    ax = float(arrow_el.get("x", 0.0))
+    ay = float(arrow_el.get("y", 0.0))
+    pts = arrow_el.get("points") or [
+        [0.0, 0.0],
+        [float(arrow_el.get("width", 0.0)), float(arrow_el.get("height", 0.0))],
+    ]
+    wpts = [(ax + float(p[0]), ay + float(p[1])) for p in pts]
+    return [(wpts[i], wpts[i + 1]) for i in range(len(wpts) - 1)]
+
+
+def _classify_scene_structure(
+    shapes: List[dict], frames: List[dict], arrows: List[dict]
+) -> Tuple[str, float]:
+    if not shapes:
+        return "freeform", 0.0
+
+    min_x = min(float(s.get("x", 0.0)) for s in shapes)
+    min_y = min(float(s.get("y", 0.0)) for s in shapes)
+    max_x = max(float(s.get("x", 0.0)) + float(s.get("width", s.get("w", 0.0))) for s in shapes)
+    max_y = max(float(s.get("y", 0.0)) + float(s.get("height", s.get("h", 0.0))) for s in shapes)
+    span_x = max(1.0, max_x - min_x)
+    span_y = max(1.0, max_y - min_y)
+    shape_area = sum(
+        max(0.0, float(s.get("width", s.get("w", 0.0))))
+        * max(0.0, float(s.get("height", s.get("h", 0.0))))
+        for s in shapes
+    )
+    density = min(1.0, shape_area / max(1.0, span_x * span_y))
+
+    if frames:
+        framed = sum(1 for s in shapes if s.get("frameId"))
+        if framed / len(shapes) >= 0.5:
+            return "clustered", density
+
+    # Degree check for sequential pipelines
+    deg: Dict[str, int] = {str(s.get("id")): 0 for s in shapes if s.get("id")}
+    shape_map = {str(s.get("id")): s for s in shapes if s.get("id")}
+    directed_pairs: List[Tuple[dict, dict]] = []
+    for a in arrows:
+        sb = (a.get("startBinding") or {}).get("elementId")
+        eb = (a.get("endBinding") or {}).get("elementId")
+        if sb in shape_map and eb in shape_map:
+            deg[sb] = deg.get(sb, 0) + 1
+            deg[eb] = deg.get(eb, 0) + 1
+            directed_pairs.append((shape_map[sb], shape_map[eb]))
+
+    max_deg = max(deg.values(), default=0)
+    aspect = max(span_x, span_y) / max(1.0, min(span_x, span_y))
+    if len(shapes) >= 2 and aspect >= 2.5 and max_deg <= 2:
+        return "sequential_pipeline", density
+
+    # Rank alignment check for hierarchical layered graphs
+    if len(shapes) >= 3 and directed_pairs:
+        xs_c = sorted(float(s.get("x", 0.0)) + float(s.get("width", 0.0)) / 2.0 for s in shapes)
+        ys_c = sorted(float(s.get("y", 0.0)) + float(s.get("height", 0.0)) / 2.0 for s in shapes)
+
+        def _count_bands(vals: List[float]) -> int:
+            bands = 1
+            anchor = vals[0]
+            for v in vals[1:]:
+                if abs(v - anchor) > 15.0:
+                    bands += 1
+                    anchor = v
+            return bands
+
+        x_bands = _count_bands(xs_c)
+        y_bands = _count_bands(ys_c)
+        forward_x = sum(
+            1
+            for s1, s2 in directed_pairs
+            if float(s2.get("x", 0.0)) > float(s1.get("x", 0.0)) + 15.0
+        )
+        forward_y = sum(
+            1
+            for s1, s2 in directed_pairs
+            if float(s2.get("y", 0.0)) > float(s1.get("y", 0.0)) + 15.0
+        )
+        n_edges = len(directed_pairs)
+        if (x_bands >= 2 and forward_x / n_edges >= 0.75) or (
+            y_bands >= 2 and forward_y / n_edges >= 0.75
+        ):
+            return "hierarchical_layered", density
+
+    return "freeform", density
+
+
+def build_scene_routing_context(
+    elements: List[dict], exclude_arrow_ids: Optional[set] = None
+) -> SceneRoutingContext:
+    """Build a deterministic SceneRoutingContext from active scene elements."""
+    exclude = exclude_arrow_ids or set()
+    active = [e for e in elements if not e.get("isDeleted")]
+    shapes = [
+        e
+        for e in active
+        if e.get("type") in ("rectangle", "diamond", "ellipse")
+        and (e.get("customData") or {}).get("type") not in ("code_block_header",)
+        and (e.get("customData") or {}).get("allow_overlap") is not True
+    ]
+    frames = [e for e in active if e.get("type") == "frame"]
+    arrows = [e for e in active if e.get("type") in ("arrow", "line")]
+    texts = [e for e in active if e.get("type") == "text"]
+
+    shape_boxes: Dict[str, Tuple[float, float, float, float]] = {}
+    for s in shapes:
+        sid = s.get("id")
+        if not sid:
+            continue
+        sx = float(s.get("x", 0.0))
+        sy = float(s.get("y", 0.0))
+        sw = float(s.get("width", s.get("w", 0.0)))
+        sh = float(s.get("height", s.get("h", 0.0)))
+        shape_boxes[str(sid)] = (sx, sy, sx + sw, sy + sh)
+
+    frame_headers: List[Tuple[float, float, float, float]] = []
+    for f in frames:
+        fx = float(f.get("x", 0.0))
+        fy = float(f.get("y", 0.0))
+        fw = float(f.get("width", f.get("w", 0.0)))
+        fh = float(f.get("height", f.get("h", 0.0)))
+        frame_headers.append((fx, fy, fx + fw, min(fy + fh, fy + FRAME_HEADER_HEIGHT)))
+
+    existing_segments: Dict[str, List[Tuple[Tuple[float, float], Tuple[float, float]]]] = {}
+    for a in arrows:
+        aid = a.get("id")
+        if aid and aid not in exclude:
+            existing_segments[str(aid)] = _arrow_world_segments(a)
+
+    label_boxes: List[Tuple[float, float, float, float, Optional[str]]] = []
+    for t in texts:
+        cid = t.get("containerId")
+        # Include standalone text and bound arrow labels (shape-bound labels sit inside shapes)
+        if cid and cid in shape_boxes:
+            continue
+        if cid and cid in exclude:
+            continue
+        tx = float(t.get("x", 0.0))
+        ty = float(t.get("y", 0.0))
+        tw = float(t.get("width", 40.0))
+        th = float(t.get("height", 20.0))
+        pad = 6.0
+        label_boxes.append((tx - pad, ty - pad, tx + tw + pad, ty + th + pad, cid))
+
+    structure, density = _classify_scene_structure(shapes, frames, arrows)
+    return SceneRoutingContext(
+        shapes=shapes,
+        shape_boxes=shape_boxes,
+        frames=frames,
+        frame_headers=frame_headers,
+        existing_segments=existing_segments,
+        label_boxes=label_boxes,
+        density=density,
+        structure=structure,
+    )
 
 
 def get_shape_port(
@@ -491,41 +690,74 @@ def reroute_scene_arrows(
             # Calculate lane slot offset
             slot_offset = (idx - (total_in_pair - 1) / 2.0) * lane_spacing if total_in_pair > 1 else 0.0
 
+            mode = resolve_arrow_routing_mode(a, default="auto")
             is_elbowed = bool(a.get("elbowed"))
-            if only_elbowed and not is_elbowed:
+            if only_elbowed and not is_elbowed and mode != "orthogonal":
                 continue
 
-            # Check direct line collision
-            cand_pairs = choose_natural_faces(source_el, target_el)
-            default_s_face, default_t_face = cand_pairs[0]
-            p_start, _ = get_shape_port(source_el, default_s_face, slot_offset)
-            p_end, _ = get_shape_port(target_el, default_t_face, slot_offset)
+            if mode == "straight":
+                from .layout import boundary_point
 
-            has_direct_collision = False
-            for s in shapes:
-                if s.get("id") in (sb, eb):
-                    continue
-                sx = float(s.get("x", 0.0))
-                sy = float(s.get("y", 0.0))
-                sw = float(s.get("width", s.get("w", 0.0)))
-                sh = float(s.get("height", s.get("h", 0.0)))
-                if segment_intersects_rect(p_start, p_end, (sx, sy, sx + sw, sy + sh), margin=2.0):
-                    has_direct_collision = True
-                    break
-
-            if is_elbowed or has_direct_collision:
-                world_pts = route_orthogonal_connector(
-                    source_el,
-                    target_el,
-                    obstacles=shapes,
-                    clearance=clearance,
-                    s_offset=slot_offset,
-                    t_offset=slot_offset,
-                )
-                if is_elbowed or len(world_pts) > 2:
-                    a["elbowed"] = True
-            else:
+                s_node = {
+                    "shape": source_el.get("type", "rectangle"),
+                    "x": float(source_el.get("x", 0.0)),
+                    "y": float(source_el.get("y", 0.0)),
+                    "w": float(source_el.get("width", 0.0)),
+                    "h": float(source_el.get("height", 0.0)),
+                    "angle": float(source_el.get("angle", 0.0)),
+                }
+                t_node = {
+                    "shape": target_el.get("type", "rectangle"),
+                    "x": float(target_el.get("x", 0.0)),
+                    "y": float(target_el.get("y", 0.0)),
+                    "w": float(target_el.get("width", 0.0)),
+                    "h": float(target_el.get("height", 0.0)),
+                    "angle": float(target_el.get("angle", 0.0)),
+                }
+                p_start = boundary_point(s_node, t_node, 1)
+                p_end = boundary_point(t_node, s_node, -1)
+                if total_in_pair > 1:
+                    dx = p_end[0] - p_start[0]
+                    dy = p_end[1] - p_start[1]
+                    dist = math.hypot(dx, dy)
+                    if dist > 1e-4:
+                        nx, ny = -dy / dist, dx / dist
+                        p_start = (p_start[0] + nx * slot_offset, p_start[1] + ny * slot_offset)
+                        p_end = (p_end[0] + nx * slot_offset, p_end[1] + ny * slot_offset)
+                a["elbowed"] = False
                 world_pts = [p_start, p_end]
+            else:
+                # Check direct line collision
+                cand_pairs = choose_natural_faces(source_el, target_el)
+                default_s_face, default_t_face = cand_pairs[0]
+                p_start, _ = get_shape_port(source_el, default_s_face, slot_offset)
+                p_end, _ = get_shape_port(target_el, default_t_face, slot_offset)
+
+                has_direct_collision = False
+                for s in shapes:
+                    if s.get("id") in (sb, eb):
+                        continue
+                    sx = float(s.get("x", 0.0))
+                    sy = float(s.get("y", 0.0))
+                    sw = float(s.get("width", s.get("w", 0.0)))
+                    sh = float(s.get("height", s.get("h", 0.0)))
+                    if segment_intersects_rect(p_start, p_end, (sx, sy, sx + sw, sy + sh), margin=2.0):
+                        has_direct_collision = True
+                        break
+
+                if mode == "orthogonal" or is_elbowed or has_direct_collision:
+                    world_pts = route_orthogonal_connector(
+                        source_el,
+                        target_el,
+                        obstacles=shapes,
+                        clearance=clearance,
+                        s_offset=slot_offset,
+                        t_offset=slot_offset,
+                    )
+                    if mode == "orthogonal" or is_elbowed or len(world_pts) > 2:
+                        a["elbowed"] = True
+                else:
+                    world_pts = [p_start, p_end]
 
             # Convert world points to Excalidraw arrow format (x, y + relative points)
             origin_x, origin_y = world_pts[0]

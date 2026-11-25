@@ -596,6 +596,7 @@ class SceneService:
         y=None,
         width=None,
         height=None,
+        routing_mode=None,
     ):
         updates = {
             "strokeColor": stroke_color,
@@ -618,6 +619,13 @@ class SceneService:
                 updates["roundness"] = roundness
         if elbowed is not None:
             updates["elbowed"] = bool(elbowed)
+        if routing_mode is not None:
+            if routing_mode == "orthogonal":
+                updates["elbowed"] = True
+            elif routing_mode in ("straight", "curved"):
+                updates["elbowed"] = False
+            if routing_mode == "curved" and "roundness" not in updates:
+                updates["roundness"] = {"type": 2}
         if (
             label is None
             and frame_id is None
@@ -628,6 +636,7 @@ class SceneService:
             and y is None
             and width is None
             and height is None
+            and routing_mode is None
         ):
             raise SceneError("Provide a label or at least one style, position, size, or font update")
 
@@ -922,6 +931,13 @@ class SceneService:
 
                     _center_label(target, el)
                 el.update(updates)
+                if el.get("type") == "arrow" and (routing_mode is not None or elbowed is not None):
+                    from .routing import set_arrow_routing_mode
+
+                    eff_mode = routing_mode or ("orthogonal" if elbowed else "straight")
+                    set_arrow_routing_mode(el, eff_mode)
+                    if (el.get("startBinding") or {}).get("elementId") and (el.get("endBinding") or {}).get("elementId"):
+                        _reroute_connector(index, el)
                 return {
                     **extra_result,
                     "status": "updated",
@@ -931,9 +947,21 @@ class SceneService:
 
         return self.state.apply(update)
 
-    def connect(self, source_id, target_id, label="", elbowed=False, **style):
+    def connect(self, source_id, target_id, label="", elbowed=None, **style):
         if source_id == target_id:
             raise SceneError("A connector requires two different elements")
+
+        routing_mode = style.pop("routing_mode", None)
+        s_face = style.pop("source_face", None)
+        t_face = style.pop("target_face", None)
+        if routing_mode is None:
+            if elbowed is True:
+                effective_mode = "orthogonal"
+            else:
+                effective_mode = "auto"
+        else:
+            effective_mode = routing_mode
+        use_orthogonal = effective_mode == "orthogonal"
 
         def add_connection(document):
             index = _active(document)
@@ -958,7 +986,7 @@ class SceneService:
                 "h": target["height"],
                 "angle": target.get("angle", 0),
             }
-            if elbowed:
+            if use_orthogonal:
                 from .routing import route_orthogonal_connector
 
                 shapes = [
@@ -980,6 +1008,7 @@ class SceneService:
                     == {source_id, target_id}
                 ]
                 slot_offset = len(pair_arrows) * 20.0
+                pref_faces = (s_face, t_face) if (s_face and t_face) else None
                 world_pts = route_orthogonal_connector(
                     source,
                     target,
@@ -987,11 +1016,15 @@ class SceneService:
                     clearance=15.0,
                     s_offset=slot_offset,
                     t_offset=slot_offset,
+                    preferred_faces=pref_faces,
                 )
                 start = world_pts[0]
                 end = world_pts[-1]
                 origin_x, origin_y = world_pts[0]
-                connector = arrow(origin_x, origin_y, end[0], end[1], elbowed=True, **style)
+                connector = arrow(
+                    origin_x, origin_y, end[0], end[1],
+                    elbowed=True, routing_mode=routing_mode, **style,
+                )
                 connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
                 all_x = [pt[0] for pt in world_pts]
                 all_y = [pt[1] for pt in world_pts]
@@ -1002,7 +1035,9 @@ class SceneService:
                     boundary_point(source_node, target_node, 1),
                     boundary_point(target_node, source_node, -1),
                 )
-                connector = arrow(*start, *end, elbowed=elbowed, **style)
+                connector = arrow(
+                    *start, *end, elbowed=False, routing_mode=routing_mode, **style
+                )
             connector["startBinding"] = {
                 "elementId": source_id,
                 "focus": 0,
@@ -2156,7 +2191,12 @@ class SceneService:
                         "h": target["height"],
                         "angle": target.get("angle", 0),
                     }
-                    elbowed = op.get("elbowed", False)
+                    elbowed = op.get("elbowed")
+                    op_routing_mode = op.get("routing_mode")
+                    if op_routing_mode is None:
+                        eff_op_mode = "orthogonal" if elbowed is True else "auto"
+                    else:
+                        eff_op_mode = op_routing_mode
                     style = {
                         k: v
                         for k, v in op.items()
@@ -2177,10 +2217,12 @@ class SceneService:
                             "font_size",
                             "fontFamily",
                             "fontSize",
+                            "source_face",
+                            "target_face",
                         )
                         and v is not None
                     }
-                    if elbowed:
+                    if eff_op_mode == "orthogonal":
                         from .routing import route_orthogonal_connector
 
                         shapes = [
@@ -2202,6 +2244,9 @@ class SceneService:
                             == {source_id, target_id}
                         ]
                         slot_offset = len(pair_arrows) * 20.0
+                        sf = style.pop("source_face", None)
+                        tf = style.pop("target_face", None)
+                        pref = (sf, tf) if (sf and tf) else None
                         world_pts = route_orthogonal_connector(
                             source,
                             target,
@@ -2209,11 +2254,15 @@ class SceneService:
                             clearance=15.0,
                             s_offset=slot_offset,
                             t_offset=slot_offset,
+                            preferred_faces=pref,
                         )
                         start = world_pts[0]
                         end = world_pts[-1]
                         origin_x, origin_y = world_pts[0]
-                        connector = arrow(origin_x, origin_y, end[0], end[1], elbowed=True, **style)
+                        connector = arrow(
+                            origin_x, origin_y, end[0], end[1],
+                            elbowed=True, routing_mode=op_routing_mode, **style,
+                        )
                         connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
                         all_x = [pt[0] for pt in world_pts]
                         all_y = [pt[1] for pt in world_pts]
@@ -2222,7 +2271,9 @@ class SceneService:
                     else:
                         start = boundary_point(source_node, target_node, 1)
                         end = boundary_point(target_node, source_node, -1)
-                        connector = arrow(*start, *end, elbowed=elbowed, **style)
+                        connector = arrow(
+                            *start, *end, elbowed=False, routing_mode=op_routing_mode, **style
+                        )
                     connector["startBinding"] = {
                         "elementId": source_id,
                         "focus": 0,
@@ -2944,7 +2995,7 @@ class SceneService:
         clusters=None,
         layout="layered",
         direction="horizontal",
-        elbowed=False,
+        elbowed=None,
         roundness=None,
         style=None,
         expected_revision=None,
@@ -2952,6 +3003,7 @@ class SceneService:
         font_size=None,
         cycle_fallback=False,
         resolve=False,
+        routing_mode=None,
     ):
         style = dict(style or {})
         if roundness is not None:
@@ -3173,6 +3225,7 @@ class SceneService:
                 "strokeStyle",
                 "opacity",
                 "roughness",
+                "roundness",
                 "startArrowhead",
                 "endArrowhead",
                 "start_arrowhead",
@@ -3181,11 +3234,28 @@ class SceneService:
                 "font_family",
                 "fontSize",
                 "font_size",
+                "source_face",
+                "target_face",
             ):
                 if edge.get(k) is not None:
                     edge_style[k] = edge[k]
-            edge_elbowed = edge.get("elbowed", elbowed)
-            connector = arrow(*start, *end, elbowed=edge_elbowed, **edge_style)
+            diag_mode = routing_mode
+            if diag_mode is None:
+                if elbowed is True:
+                    diag_mode = "orthogonal"
+                else:
+                    diag_mode = "auto"
+            if edge.get("routing_mode") is not None:
+                edge_mode = edge["routing_mode"]
+            elif edge.get("elbowed") is True:
+                edge_mode = "orthogonal"
+            elif edge.get("elbowed") is False:
+                edge_mode = "straight"
+            else:
+                edge_mode = diag_mode
+            edge_elbowed = edge_mode == "orthogonal"
+            stored_mode = edge.get("routing_mode") or routing_mode
+            connector = arrow(*start, *end, elbowed=edge_elbowed, routing_mode=stored_mode, **edge_style)
             connector["startBinding"] = {
                 "elementId": id_map[edge["source"]]["element_id"],
                 "focus": 0,
@@ -3398,9 +3468,10 @@ class SceneService:
         mermaid_code: str,
         direction: str | None = None,
         layout: str = "layered",
-        elbowed: bool = False,
+        elbowed: bool | None = None,
         roundness: str | None = None,
         style: dict[str, Any] | None = None,
+        routing_mode: str | None = None,
     ):
         from .mermaid import parse_mermaid
 
@@ -3421,6 +3492,7 @@ class SceneService:
             roundness=roundness,
             style=style,
             cycle_fallback=True,
+            routing_mode=routing_mode,
         )
 
     def get_viewport(self):

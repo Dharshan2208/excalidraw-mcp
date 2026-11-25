@@ -71,6 +71,7 @@ from excalidraw_mcp.contracts import (
     BatchResult,
     Boolean,
     Color,
+    ConnectorFace,
     Coordinate,
     CreateResult,
     CreateShapeType,
@@ -110,6 +111,7 @@ from excalidraw_mcp.contracts import (
     RepairScope,
     Roughness,
     Roundness,
+    RoutingMode,
     SceneName,
     ShareUrlResult,
     StatusResult,
@@ -144,6 +146,9 @@ def _style_kwargs(
     font_size: int | None = None,
     startArrowhead: str | None = None,
     endArrowhead: str | None = None,
+    routing_mode: RoutingMode | None = None,
+    source_face: ConnectorFace | None = None,
+    target_face: ConnectorFace | None = None,
 ) -> dict:
     """Collect non-None style keyword arguments into a dict."""
     return {k: v for k, v in locals().items() if v is not None}
@@ -239,7 +244,10 @@ def create_server(
         x2: Coordinate | None = None,
         y2: Coordinate | None = None,
         label: Label = "",
-        elbowed: Boolean = False,
+        elbowed: Boolean | None = None,
+        routing_mode: RoutingMode | None = None,
+        source_face: ConnectorFace | None = None,
+        target_face: ConnectorFace | None = None,
         startArrowhead: Arrowhead | None = None,
         endArrowhead: Arrowhead | None = None,
         strokeColor: Color | None = None,
@@ -265,6 +273,9 @@ def create_server(
             font_size=font_size,
             startArrowhead=startArrowhead,
             endArrowhead=endArrowhead,
+            routing_mode=routing_mode,
+            source_face=source_face,
+            target_face=target_face,
         )
         has_ids = source_id is not None or target_id is not None
         has_coords = any(v is not None for v in (x, y, x2, y2))
@@ -275,7 +286,7 @@ def create_server(
         if source_id and target_id:
             res = invoke(service.connect, source_id, target_id, label, elbowed=elbowed, **style)
         elif x is not None and y is not None and x2 is not None and y2 is not None:
-            res = invoke(service.add_arrow, x, y, x2, y2, label, elbowed=elbowed, **style)
+            res = invoke(service.add_arrow, x, y, x2, y2, label, elbowed=bool(elbowed), **style)
         else:
             raise ToolError(
                 "create_connector requires either both source_id and target_id, or coordinate points (x, y, x2, y2)."
@@ -431,6 +442,7 @@ def create_server(
         roundness: Roundness | None = None,
         frame_id: ElementId | None = None,
         elbowed: Boolean | None = None,
+        routing_mode: RoutingMode | None = None,
         strokeColor: Color | None = None,
         backgroundColor: Color | None = None,
         fillStyle: FillStyle | None = None,
@@ -458,6 +470,7 @@ def create_server(
             roundness=roundness,
             frame_id=frame_id,
             elbowed=elbowed,
+            routing_mode=routing_mode,
             font_family=font_family,
             font_size=font_size,
             x=x,
@@ -750,7 +763,8 @@ def create_server(
             clusters: list[GraphCluster] | None = None,
             layout: LayoutType = "layered",
             direction: Direction | None = None,
-            elbowed: Boolean = False,
+            elbowed: Boolean | None = None,
+            routing_mode: RoutingMode | None = None,
             roundness: Roundness | None = None,
             font_family: FontFamily | None = None,
             font_size: FontSize | None = None,
@@ -788,6 +802,7 @@ def create_server(
                     direction=direction,
                     layout=layout,
                     elbowed=elbowed,
+                    routing_mode=routing_mode,
                     roundness=roundness,
                     style=style or None,
                 )
@@ -814,6 +829,7 @@ def create_server(
                     layout=layout,
                     direction=direction or "horizontal",
                     elbowed=elbowed,
+                    routing_mode=routing_mode,
                     roundness=roundness,
                     style=style or None,
                     font_family=font_family,

@@ -67,6 +67,8 @@ NonEmptyText = Annotated[
 ]
 RepairScope = Literal["all", "overlaps", "connectors", "containment", "text", "spacing"]
 Aggressiveness = Literal["gentle", "balanced", "aggressive"]
+RoutingMode = Literal["auto", "straight", "orthogonal", "curved"]
+ConnectorFace = Literal["top", "bottom", "left", "right"]
 
 
 class GraphNode(BaseModel):
@@ -98,7 +100,11 @@ class GraphEdge(BaseModel):
     source: ElementId
     target: ElementId
     label: Label = ""
-    elbowed: Boolean = False
+    elbowed: Boolean | None = None
+    routing_mode: RoutingMode | None = None
+    roundness: Roundness | None = None
+    source_face: ConnectorFace | None = None
+    target_face: ConnectorFace | None = None
     startArrowhead: Arrowhead | None = None
     endArrowhead: Arrowhead | None = None
     strokeColor: Color | None = None
@@ -217,6 +223,9 @@ class BatchOperation(BaseModel):
     font_family: FontFamily | None = None
     line_numbers: bool | None = None
     elbowed: bool | None = None
+    routing_mode: RoutingMode | None = None
+    source_face: ConnectorFace | None = None
+    target_face: ConnectorFace | None = None
     roundness: Roundness | None = None
     strokeColor: str | None = None
     backgroundColor: str | None = None
