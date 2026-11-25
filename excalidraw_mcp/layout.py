@@ -73,6 +73,10 @@ def wrap_text_to_shape(
             bbox = font.getbbox(s)
             return float(bbox[2] - bbox[0])
 
+        # Keep short labels (<= 16 chars) on a single line so containers auto-expand cleanly
+        if "\n" not in cleaned and len(cleaned) <= 16 and measure_px(cleaned) <= max(safe_w, 160.0):
+            return cleaned
+
         wrapped_lines: list[str] = []
         for paragraph in cleaned.splitlines() or [""]:
             if not paragraph.strip():

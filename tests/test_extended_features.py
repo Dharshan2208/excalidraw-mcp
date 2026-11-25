@@ -461,6 +461,21 @@ Some notes before diagram.
         with self.assertRaisesRegex(SceneError, "Unrecognized import format"):
             self.service.import_scene(data="not-json")
 
+    def test_import_merge_remaps_tombstone_id_collisions(self):
+        """Regression for ARCH-003: merge must remap IDs colliding with isDeleted tombstones."""
+        from excalidraw_mcp.elements import rect
+        from excalidraw_mcp.models import new_document
+
+        dead = rect(0, 0, 50, 50)
+        dead["id"] = "dup-id"
+        dead["isDeleted"] = True
+        self.service.state.replace(new_document([dead]))
+
+        incoming = json.dumps(new_document([rect(10, 10, 80, 80) | {"id": "dup-id"}]))
+        res = self.service.import_scene(data=incoming, mode="merge")
+        self.assertEqual(res["elements_imported"], 1)
+        self.assertIn("dup-id", res["id_mapping"])
+
 
 class LiveCanvasServerTests(unittest.TestCase):
     def setUp(self):

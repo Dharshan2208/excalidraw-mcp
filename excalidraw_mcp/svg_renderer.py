@@ -491,7 +491,10 @@ def render_scene_svg(
                     [0.0, 0.0],
                     [float(container.get("width", 0.0)), float(container.get("height", 0.0))],
                 ]
-                if len(container_pts) >= 2:
+                if len(container_pts) > 2 and "x" in t and "y" in t and t.get("width") and t.get("height"):
+                    cx = tx(float(t["x"]) + float(t["width"]) / 2.0)
+                    cy = ty(float(t["y"]) + float(t["height"]) / 2.0)
+                elif len(container_pts) >= 2:
                     p0 = container_pts[0]
                     p1 = container_pts[-1]
                     cx = tx(float(container.get("x", 0.0)) + (float(p0[0]) + float(p1[0])) / 2.0)
@@ -501,8 +504,15 @@ def render_scene_svg(
                     cy = ty(container.get("y", 0.0))
 
                 # Background mask rectangle behind label text
-                approx_w = max(len(line) for line in lines) * font_size * 0.6 + 12.0
-                approx_h = len(lines) * line_height + 6.0
+                try:
+                    from excalidraw_mcp.fonts import measure_text_dimensions
+
+                    mw, mh, _ = measure_text_dimensions(text_content, font_family=font_fam, font_size=font_size)
+                    approx_w = mw + 12.0
+                    approx_h = mh + 6.0
+                except Exception:
+                    approx_w = max(len(line) for line in lines) * font_size * 0.6 + 12.0
+                    approx_h = len(lines) * line_height + 6.0
                 svg_parts.append(
                     f'  <rect x="{cx - approx_w / 2.0:.2f}" y="{cy - approx_h / 2.0:.2f}" '
                     f'width="{approx_w:.2f}" height="{approx_h:.2f}" rx="4" fill="{canvas_bg}" />\n'
@@ -530,13 +540,24 @@ def render_scene_svg(
         else:
             px = tx(t.get("x", 0))
             py = ty(t.get("y", 0)) + font_size * 0.85
+            tw = float(t.get("width", 0.0))
+            t_align = t.get("textAlign", "left")
+            if t_align == "center":
+                anchor_attr = 'text-anchor="middle"'
+                ax_pos = px + tw / 2.0
+            elif t_align == "right":
+                anchor_attr = 'text-anchor="end"'
+                ax_pos = px + tw
+            else:
+                anchor_attr = 'text-anchor="start"'
+                ax_pos = px
             svg_parts.append(
-                f'  <text x="{px:.2f}" y="{py:.2f}" fill="{stroke}" '
+                f'  <text x="{ax_pos:.2f}" y="{py:.2f}" {anchor_attr} fill="{stroke}" '
                 f'font-size="{font_size}" font-family="{css_font}" {opacity_attr}>\n'
             )
             for idx, line in enumerate(lines):
                 dy_attr = f'dy="{line_height:.2f}"' if idx > 0 else 'dy="0"'
-                svg_parts.append(f'    <tspan x="{px:.2f}" {dy_attr}>{html.escape(line)}</tspan>\n')
+                svg_parts.append(f'    <tspan x="{ax_pos:.2f}" {dy_attr}>{html.escape(line)}</tspan>\n')
             svg_parts.append("  </text>\n")
 
     svg_parts.append("</svg>\n")

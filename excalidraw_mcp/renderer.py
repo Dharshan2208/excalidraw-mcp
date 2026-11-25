@@ -85,13 +85,12 @@ def _compute_bounds(
         if etype in ("arrow", "line", "freedraw"):
             points = el.get("points") or [[0.0, 0.0], [w, h]]
             if abs(angle) > 1e-4:
-                cx = x + w / 2.0
-                cy = y + h / 2.0
+                wpts = [(x + float(pt[0]), y + float(pt[1])) for pt in points]
+                cx = (min(p[0] for p in wpts) + max(p[0] for p in wpts)) / 2.0
+                cy = (min(p[1] for p in wpts) + max(p[1] for p in wpts)) / 2.0
                 cos_a = math.cos(angle)
                 sin_a = math.sin(angle)
-                for pt in points:
-                    px = x + float(pt[0])
-                    py = y + float(pt[1])
+                for px, py in wpts:
                     rx = cx + (px - cx) * cos_a - (py - cy) * sin_a
                     ry = cy + (px - cx) * sin_a + (py - cy) * cos_a
                     min_x = min(min_x, rx)
