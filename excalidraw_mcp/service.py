@@ -201,6 +201,156 @@ def _move_arrow_endpoints(el, dx, dy, start, end):
     el["height"] = max(p[1] for p in world) - min(p[1] for p in world)
 
 
+_STANDARD_FONT_NAMES = frozenset({
+    "1", "2", "3", "4", "5", "8",
+    "excalifont", "virgil", "sans-serif", "sans", "helvetica", "normal",
+    "monospace", "mono", "code", "cascadia",
+    "comic-shanns", "comic", "comic shanns", "handwriting", "hand-drawn", "hand",
+})
+
+
+def _apply_font_family(text_el, font_family):
+    """Apply font_family to a text element and sync/clear customData['fontFamily']."""
+    text_el["fontFamily"] = normalize_font_family(font_family)
+    if isinstance(font_family, str) and font_family.strip().lower() not in _STANDARD_FONT_NAMES:
+        text_el.setdefault("customData", {})["fontFamily"] = font_family.strip()
+    elif isinstance(text_el.get("customData"), dict) and "fontFamily" in text_el["customData"]:
+        del text_el["customData"]["fontFamily"]
+
+
+def _validate_frame_id(index, frame_id):
+    """Validate that frame_id refers to an existing frame element."""
+    if frame_id:
+        frame_el = _require(index, frame_id)
+        if frame_el.get("type") != "frame":
+            raise SceneError(f"Element '{frame_id}' is not a frame")
+
+
+def _apply_move(index, element_id, x, y):
+    """Move an element (and its group/frame/bound dependents) within an active index."""
+    if not _finite_number(x) or not _finite_number(y):
+        raise SceneError("Move coordinates must be finite numbers")
+    el = _require(index, element_id)
+    if el.get("locked"):
+        raise SceneError(f"Cannot move locked element '{element_id}'")
+    if el.get("containerId"):
+        raise SceneError(
+            "Move the label's container instead of moving bound text independently"
+        )
+    dx, dy = x - el["x"], y - el["y"]
+    if not dx and not dy:
+        return {"status": "moved", "element_id": element_id, "x": x, "y": y}
+    if el["type"] == "arrow" and el.get("elbowed"):
+        raise SceneError("Moving elbowed arrows is not supported yet")
+
+    grouped_members = []
+    if el.get("groupIds"):
+        target_groups = set(el["groupIds"])
+        for other in index.values():
+            if other["id"] != element_id and any(
+                g in target_groups for g in other.get("groupIds", [])
+            ):
+                if other.get("locked"):
+                    raise SceneError(
+                        f"Cannot move locked element '{other['id']}' in group"
+                    )
+                grouped_members.append(other)
+
+    if el["type"] == "frame":
+        for child in index.values():
+            if child.get("frameId") == element_id:
+                if child.get("locked"):
+                    raise SceneError(
+                        f"Cannot move locked element '{child['id']}' in frame"
+                    )
+
+    moved_targets = {element_id}
+    _translate(el, dx, dy)
+    owned_labels = {
+        label["containerId"]: label
+        for label in index.values()
+        if label.get("containerId")
+    }
+    for member in grouped_members:
+        if member["id"] not in moved_targets and not member.get("containerId"):
+            _translate(member, dx, dy)
+            moved_targets.add(member["id"])
+    if el["type"] == "frame":
+        for child in index.values():
+            if child.get("frameId") == element_id and child["id"] not in moved_targets and not child.get("containerId"):
+                if child["type"] == "arrow":
+                    sb = (child.get("startBinding") or {}).get("elementId")
+                    eb = (child.get("endBinding") or {}).get("elementId")
+                    if sb and index.get(sb, {}).get("frameId") != element_id:
+                        continue
+                    if eb and index.get(eb, {}).get("frameId") != element_id:
+                        continue
+                _translate(child, dx, dy)
+                moved_targets.add(child["id"])
+    for label in index.values():
+        if label.get("containerId") in moved_targets and label["id"] not in moved_targets:
+            _translate(label, dx, dy)
+            moved_targets.add(label["id"])
+    if el["type"] == "arrow":
+        # A coordinate move intentionally detaches the arrow from shapes.
+        el["startBinding"] = None
+        el["endBinding"] = None
+    for connector in index.values():
+        if connector["type"] != "arrow" or connector["id"] in moved_targets:
+            continue
+        start = (connector.get("startBinding") or {}).get(
+            "elementId"
+        ) in moved_targets
+        end = (connector.get("endBinding") or {}).get(
+            "elementId"
+        ) in moved_targets
+        if start or end:
+            _move_arrow_endpoints(connector, dx, dy, start, end)
+            # Preserve the label's offset from the endpoint midpoint.
+            label = owned_labels.get(connector["id"])
+            if label:
+                _translate(
+                    label,
+                    dx * (int(start) + int(end)) / 2,
+                    dy * (int(start) + int(end)) / 2,
+                )
+    return {"status": "moved", "element_id": element_id, "x": x, "y": y}
+
+
+def _apply_resize(index, element_id, width, height):
+    """Resize an element, recenter its label, and reroute bound connectors."""
+    if (
+        not _finite_number(width)
+        or not _finite_number(height)
+        or width <= 0
+        or height <= 0
+    ):
+        raise SceneError("width and height must be positive finite numbers")
+    el = _require(index, element_id)
+    if el.get("locked"):
+        raise SceneError(f"Cannot resize locked element '{element_id}'")
+    if el["type"] not in (*SHAPES, "frame"):
+        raise SceneError(
+            "Only rectangle, ellipse, diamond and frame elements can be resized"
+        )
+    el["width"], el["height"] = width, height
+    label = _label_for(index, element_id)
+    if label:
+        _center_label(label, el)
+    for connector in index.values():
+        if connector["type"] == "arrow" and any(
+            (connector.get(end) or {}).get("elementId") == element_id
+            for end in ("startBinding", "endBinding")
+        ):
+            _reroute_connector(index, connector)
+    return {
+        "status": "resized",
+        "element_id": element_id,
+        "width": width,
+        "height": height,
+    }
+
+
 class SceneService:
     def __init__(
         self,
@@ -257,7 +407,14 @@ class SceneService:
         if shape not in SHAPES:
             raise SceneError("Shape must be rectangle, ellipse or diamond")
         elements = _shape_elements(shape, x, y, w, h, label, style, frame_id=frame_id)
-        ids = self.state.add_many(elements)
+
+        def append_shape(document):
+            if frame_id:
+                _validate_frame_id(_active(document), frame_id)
+            document["elements"].extend(elements)
+            return [el["id"] for el in elements]
+
+        ids = self.state.apply(append_shape)
         key = {
             "rectangle": "rectangle_id",
             "ellipse": "circle_id",
@@ -298,7 +455,14 @@ class SceneService:
             fontFamily=font_family or 2,
             **style,
         )
-        return {"text_id": self.state.add(element)}
+
+        def append_text(document):
+            if frame_id:
+                _validate_frame_id(_active(document), frame_id)
+            document["elements"].append(element)
+            return element["id"]
+
+        return {"text_id": self.state.apply(append_text)}
 
     def get_element(self, element_id):
         element, revision = self.state.get_with_revision(element_id)
@@ -371,84 +535,7 @@ class SceneService:
             raise SceneError("Move coordinates must be finite numbers")
 
         def move_elements(document):
-            index = _active(document)
-            el = _require(index, element_id)
-            if el.get("locked"):
-                raise SceneError(f"Cannot move locked element '{element_id}'")
-            if el.get("containerId"):
-                raise SceneError(
-                    "Move the label's container instead of moving bound text independently"
-                )
-            dx, dy = x - el["x"], y - el["y"]
-            if not dx and not dy:
-                return {"status": "moved", "element_id": element_id, "x": x, "y": y}
-            if el["type"] == "arrow" and el.get("elbowed"):
-                raise SceneError("Moving elbowed arrows is not supported yet")
-
-            grouped_members = []
-            if el.get("groupIds"):
-                target_groups = set(el["groupIds"])
-                for other in index.values():
-                    if other["id"] != element_id and any(
-                        g in target_groups for g in other.get("groupIds", [])
-                    ):
-                        if other.get("locked"):
-                            raise SceneError(
-                                f"Cannot move locked element '{other['id']}' in group"
-                            )
-                        grouped_members.append(other)
-
-            if el["type"] == "frame":
-                for child in index.values():
-                    if child.get("frameId") == element_id:
-                        if child.get("locked"):
-                            raise SceneError(
-                                f"Cannot move locked element '{child['id']}' in frame"
-                            )
-
-            _translate(el, dx, dy)
-            moved_targets = {element_id}
-            owned_labels = {
-                label["containerId"]: label
-                for label in index.values()
-                if label.get("containerId")
-            }
-            for member in grouped_members:
-                _translate(member, dx, dy)
-                moved_targets.add(member["id"])
-            if el["type"] == "frame":
-                for child in index.values():
-                    if child.get("frameId") == element_id:
-                        _translate(child, dx, dy)
-                        moved_targets.add(child["id"])
-            for label in index.values():
-                if label.get("containerId") in moved_targets:
-                    _translate(label, dx, dy)
-                    moved_targets.add(label["id"])
-            if el["type"] == "arrow":
-                # A coordinate move intentionally detaches the arrow from shapes.
-                el["startBinding"] = None
-                el["endBinding"] = None
-            for connector in index.values():
-                if connector["type"] != "arrow" or connector["id"] in moved_targets:
-                    continue
-                start = (connector.get("startBinding") or {}).get(
-                    "elementId"
-                ) in moved_targets
-                end = (connector.get("endBinding") or {}).get(
-                    "elementId"
-                ) in moved_targets
-                if start or end:
-                    _move_arrow_endpoints(connector, dx, dy, start, end)
-                    # Preserve the label's offset from the endpoint midpoint.
-                    label = owned_labels.get(connector["id"])
-                    if label:
-                        _translate(
-                            label,
-                            dx * (int(start) + int(end)) / 2,
-                            dy * (int(start) + int(end)) / 2,
-                        )
-            return {"status": "moved", "element_id": element_id, "x": x, "y": y}
+            return _apply_move(_active(document), element_id, x, y)
 
         return self.state.apply(move_elements)
 
@@ -462,30 +549,7 @@ class SceneService:
             raise SceneError("width and height must be positive finite numbers")
 
         def resize_element(document):
-            index = _active(document)
-            el = _require(index, element_id)
-            if el.get("locked"):
-                raise SceneError(f"Cannot resize locked element '{element_id}'")
-            if el["type"] not in (*SHAPES, "frame"):
-                raise SceneError(
-                    "Only rectangle, ellipse, diamond and frame elements can be resized"
-                )
-            el["width"], el["height"] = width, height
-            label = _label_for(index, element_id)
-            if label:
-                _center_label(label, el)
-            for connector in index.values():
-                if connector["type"] == "arrow" and any(
-                    (connector.get(end) or {}).get("elementId") == element_id
-                    for end in ("startBinding", "endBinding")
-                ):
-                    _reroute_connector(index, connector)
-            return {
-                "status": "resized",
-                "element_id": element_id,
-                "width": width,
-                "height": height,
-            }
+            return _apply_resize(_active(document), element_id, width, height)
 
         return self.state.apply(resize_element)
 
@@ -505,6 +569,10 @@ class SceneService:
         elbowed=None,
         font_family=None,
         font_size=None,
+        x=None,
+        y=None,
+        width=None,
+        height=None,
     ):
         updates = {
             "strokeColor": stroke_color,
@@ -533,14 +601,28 @@ class SceneService:
             and not updates
             and font_family is None
             and font_size is None
+            and x is None
+            and y is None
+            and width is None
+            and height is None
         ):
-            raise SceneError("Provide a label or at least one style or font update")
+            raise SceneError("Provide a label or at least one style, position, size, or font update")
 
         def update(document):
             index = _active(document)
             el = _require(index, element_id)
             if el.get("locked"):
                 raise SceneError(f"Cannot update locked element '{element_id}'")
+
+            extra_result = {}
+            if width is not None or height is not None:
+                w_val = float(width if width is not None else el.get("width", 100))
+                h_val = float(height if height is not None else el.get("height", 100))
+                extra_result.update(_apply_resize(index, element_id, w_val, h_val))
+            if x is not None or y is not None:
+                x_val = float(x if x is not None else el.get("x", 0))
+                y_val = float(y if y is not None else el.get("y", 0))
+                extra_result.update(_apply_move(index, element_id, x_val, y_val))
 
             if frame_id is not None:
                 if frame_id == "":
@@ -666,6 +748,7 @@ class SceneService:
 
                 el.update(updates)
                 return {
+                    **extra_result,
                     "status": "updated",
                     "element_id": element_id,
                     "label_id": label_id,
@@ -744,7 +827,7 @@ class SceneService:
                         if font_size is not None:
                             target["fontSize"] = font_size
                         if font_family is not None:
-                            target["fontFamily"] = normalize_font_family(font_family)
+                            _apply_font_family(target, font_family)
 
                         if c_type in ("rectangle", "ellipse", "diamond"):
                             wrapped = wrap_text_to_shape(
@@ -779,7 +862,7 @@ class SceneService:
                     if font_size is not None:
                         target["fontSize"] = font_size
                     if font_family is not None:
-                        target["fontFamily"] = normalize_font_family(font_family)
+                        _apply_font_family(target, font_family)
 
                     c_type = el.get("type", "rectangle")
                     c_w = float(el.get("width", 100.0))
@@ -817,6 +900,7 @@ class SceneService:
                     _center_label(target, el)
                 el.update(updates)
                 return {
+                    **extra_result,
                     "status": "updated",
                     "element_id": element_id,
                     "label_id": label_id,
@@ -1404,6 +1488,7 @@ class SceneService:
                 expected_revision=revision,
                 font_family=style.get("font_family"),
                 font_size=style.get("font_size"),
+                resolve=True,
             )
         else:
             result = self.draw_graph(
@@ -1414,8 +1499,8 @@ class SceneService:
                 expected_revision=revision,
                 font_family=style.get("font_family"),
                 font_size=style.get("font_size"),
+                resolve=True,
             )
-        self.resolve_layout()
         return {
             **result,
             "url": None,
@@ -1441,6 +1526,10 @@ class SceneService:
             if element_ids:
                 for eid in element_ids:
                     target = _require(index, eid)
+                    if target.get("containerId"):
+                        raise SceneError(
+                            f"Cannot add bound label '{eid}' directly to a frame; add its container instead"
+                        )
                     target["frameId"] = frame_el["id"]
                     lbl = _label_for(index, eid)
                     if lbl:
@@ -2757,6 +2846,7 @@ class SceneService:
         font_family=None,
         font_size=None,
         cycle_fallback=False,
+        resolve=False,
     ):
         style = dict(style or {})
         if roundness is not None:
@@ -3024,7 +3114,12 @@ class SceneService:
                 "element_id": connector["id"],
                 "label_id": label_id,
             }
-        self.state.replace(new_document(elements), expected_revision=revision)
+        doc = new_document(elements)
+        if resolve:
+            from .layout import resolve_scene_layout
+
+            doc = resolve_scene_layout(doc)
+        self.state.replace(doc, expected_revision=revision)
         result = {
             "status": "graph drawn",
             "nodes": len(nodes),
@@ -3192,6 +3287,7 @@ class SceneService:
         layout: str = "layered",
         elbowed: bool = False,
         roundness: str | None = None,
+        style: dict[str, Any] | None = None,
     ):
         from .mermaid import parse_mermaid
 
@@ -3210,6 +3306,7 @@ class SceneService:
             direction=parsed_direction,
             elbowed=elbowed,
             roundness=roundness,
+            style=style,
             cycle_fallback=True,
         )
 

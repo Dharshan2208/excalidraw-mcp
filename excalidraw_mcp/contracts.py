@@ -9,7 +9,16 @@ Coordinate = Annotated[float, Field(strict=True, ge=-100_000, le=100_000)]
 Dimension = Annotated[float, Field(strict=True, gt=0, le=100_000)]
 Label = Annotated[str, Field(strict=True, max_length=2_000)]
 ElementId = Annotated[str, Field(strict=True, min_length=1, max_length=200)]
-Color = Annotated[str, Field(strict=True, pattern=r"^(?:transparent|#[0-9A-Fa-f]{3,8})$")]
+Color = Annotated[
+    str,
+    Field(
+        strict=True,
+        pattern=r"^(?:transparent|#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{4}|#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{8})$",
+    ),
+]
+MinGap = Annotated[float, Field(strict=True, ge=0, le=1000)]
+Zoom = Annotated[float, Field(strict=True, ge=0.01, le=50.0)]
+Port = Annotated[int, Field(strict=True, ge=1, le=65535)]
 Boolean = Annotated[bool, Field(strict=True)]
 SceneName = Annotated[
     str,

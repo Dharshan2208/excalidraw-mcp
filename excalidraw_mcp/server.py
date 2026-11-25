@@ -94,11 +94,13 @@ from excalidraw_mcp.contracts import (
     LayoutType,
     LiveServerAction,
     LiveServerResult,
+    MinGap,
     NonEmptyText,
     Offset,
     Opacity,
     PageLimit,
     PngExportResult,
+    Port,
     SvgExportResult,
     PreviewFormat,
     PreviewMaxDimension,
@@ -116,6 +118,7 @@ from excalidraw_mcp.contracts import (
     StrokeWidth,
     UndoResult,
     ViewportResult,
+    Zoom,
 )
 from excalidraw_mcp.config import configured_toolset
 from excalidraw_mcp.document import MIME_TYPE
@@ -262,6 +265,12 @@ def create_server(
             startArrowhead=startArrowhead,
             endArrowhead=endArrowhead,
         )
+        has_ids = source_id is not None or target_id is not None
+        has_coords = any(v is not None for v in (x, y, x2, y2))
+        if has_ids and has_coords:
+            raise ToolError(
+                "create_connector cannot mix element bindings (source_id/target_id) with explicit coordinates (x, y, x2, y2)."
+            )
         if source_id and target_id:
             res = invoke(service.connect, source_id, target_id, label, elbowed=elbowed, **style)
         elif x is not None and y is not None and x2 is not None and y2 is not None:
@@ -433,63 +442,28 @@ def create_server(
         width: Dimension | None = None,
         height: Dimension | None = None,
     ) -> dict[str, Any]:
-        """Update element position, size, label, or visual styling."""
-        res: dict[str, Any] = {"status": "updated", "element_id": element_id}
-        if width is not None or height is not None:
-            if width is None or height is None:
-                el = invoke(service.get_element, element_id)["element"]
-                w_val = float(width if width is not None else el.get("width", 100))
-                h_val = float(height if height is not None else el.get("height", 100))
-            else:
-                w_val, h_val = width, height
-            res.update(invoke(service.resize, element_id, w_val, h_val))
-        if x is not None or y is not None:
-            if x is None or y is None:
-                el = invoke(service.get_element, element_id)["element"]
-                x_val = float(x if x is not None else el.get("x", 0))
-                y_val = float(y if y is not None else el.get("y", 0))
-            else:
-                x_val, y_val = x, y
-            res.update(invoke(service.move, element_id, x_val, y_val))
-        has_updates = any(
-            v is not None
-            for v in (
-                label,
-                strokeColor,
-                backgroundColor,
-                fillStyle,
-                strokeWidth,
-                strokeStyle,
-                opacity,
-                roughness,
-                roundness,
-                frame_id,
-                elbowed,
-                font_family,
-                font_size,
-            )
+        """Update element position, size, label, or visual styling atomically."""
+        return invoke(
+            service.update_element,
+            element_id,
+            label,
+            strokeColor,
+            backgroundColor,
+            fillStyle,
+            strokeWidth,
+            strokeStyle,
+            opacity,
+            roughness,
+            roundness=roundness,
+            frame_id=frame_id,
+            elbowed=elbowed,
+            font_family=font_family,
+            font_size=font_size,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
         )
-        if has_updates or (width is None and height is None and x is None and y is None):
-            res.update(
-                invoke(
-                    service.update_element,
-                    element_id,
-                    label,
-                    strokeColor,
-                    backgroundColor,
-                    fillStyle,
-                    strokeWidth,
-                    strokeStyle,
-                    opacity,
-                    roughness,
-                    roundness=roundness,
-                    frame_id=frame_id,
-                    elbowed=elbowed,
-                    font_family=font_family,
-                    font_size=font_size,
-                )
-            )
-        return res
 
     @mcp.tool(annotations=MUTATING)
     def batch_mutate(
@@ -507,7 +481,7 @@ def create_server(
         dry_run: Boolean = False,
         repair_scope: RepairScope = "all",
         aggressiveness: Aggressiveness = "balanced",
-        min_gap: float = 30.0,
+        min_gap: MinGap = 30.0,
         verbose: Boolean = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
@@ -790,8 +764,19 @@ def create_server(
             roughness: Roughness | None = None,
             ctx: Context | None = None,
         ) -> DiagramResult:
-            """Generate diagrams from Mermaid syntax, architecture text prompts, or graphs."""
+            """Generate diagrams from Mermaid syntax, architecture text prompts, or graphs (replaces active scene)."""
             _report_tool_progress(ctx, 10, 100, f"Initializing diagram generation for format='{format}'")
+            style = _style_kwargs(
+                strokeColor=strokeColor,
+                backgroundColor=backgroundColor,
+                fillStyle=fillStyle,
+                strokeWidth=strokeWidth,
+                strokeStyle=strokeStyle,
+                opacity=opacity,
+                roughness=roughness,
+                font_family=font_family,
+                font_size=font_size,
+            )
             if format == "mermaid":
                 if not mermaid_code or not mermaid_code.strip():
                     raise ToolError("generate_diagram(format='mermaid') requires non-empty mermaid_code parameter.")
@@ -803,6 +788,7 @@ def create_server(
                     layout=layout,
                     elbowed=elbowed,
                     roundness=roundness,
+                    style=style or None,
                 )
                 _report_tool_progress(ctx, 100, 100, "Mermaid diagram generated successfully")
                 return res
@@ -810,17 +796,6 @@ def create_server(
                 if not prompt or not prompt.strip():
                     raise ToolError("generate_diagram(format='architecture') requires non-empty prompt parameter.")
                 _report_tool_progress(ctx, 40, 100, "Synthesizing architecture layout from prompt")
-                style = _style_kwargs(
-                    strokeColor=strokeColor,
-                    backgroundColor=backgroundColor,
-                    fillStyle=fillStyle,
-                    strokeWidth=strokeWidth,
-                    strokeStyle=strokeStyle,
-                    opacity=opacity,
-                    roughness=roughness,
-                    font_family=font_family,
-                    font_size=font_size,
-                )
                 res = invoke(service.draw_architecture, prompt, **style)
                 _report_tool_progress(ctx, 100, 100, "Architecture diagram generated successfully")
                 return res
@@ -839,6 +814,7 @@ def create_server(
                     direction=direction or "horizontal",
                     elbowed=elbowed,
                     roundness=roundness,
+                    style=style or None,
                     font_family=font_family,
                     font_size=font_size,
                     cycle_fallback=cycle_fallback,
@@ -881,7 +857,7 @@ def create_server(
         def set_viewport(
             scroll_x: Coordinate | None = None,
             scroll_y: Coordinate | None = None,
-            zoom: float | None = None,
+            zoom: Zoom | None = None,
             background_color: Color | None = None,
             focus_element_ids: list[ElementId] | None = None,
             padding: PreviewPadding = 50,
@@ -917,7 +893,7 @@ def create_server(
         def live_server(
             action: LiveServerAction = "start",
             host: str = "127.0.0.1",
-            port: int = 8080,
+            port: Port = 8080,
         ) -> LiveServerResult:
             """Start or stop the background browser live canvas synchronization server."""
             if action == "start":
