@@ -67,6 +67,7 @@ def _report_tool_progress(
 from excalidraw_mcp.contracts import (
     Aggressiveness,
     Arrowhead,
+    BatchOperation,
     BatchResult,
     Boolean,
     Color,
@@ -467,7 +468,7 @@ def create_server(
 
     @mcp.tool(annotations=MUTATING)
     def batch_mutate(
-        operations: list[dict[str, Any]],
+        operations: list[BatchOperation],
     ) -> BatchResult:
         """Atomically execute a batch of canvas mutations in a single revision step."""
         return invoke(

@@ -1873,12 +1873,16 @@ class SceneService:
                             "opacity",
                             "roughness",
                             "roundness",
+                            "font_family",
+                            "font_size",
+                            "fontFamily",
+                            "fontSize",
                         )
                         and v is not None
                     }
                     frame_id = resolve(op.get("frame_id"))
                     if frame_id:
-                        _require(index, frame_id)
+                        _validate_frame_id(index, frame_id)
                     els = _shape_elements(
                         shape,
                         x,
@@ -1982,6 +1986,11 @@ class SceneService:
                             "strokeStyle",
                             "opacity",
                             "roughness",
+                            "roundness",
+                            "startArrowhead",
+                            "endArrowhead",
+                            "start_arrowhead",
+                            "end_arrowhead",
                         )
                         and v is not None
                     }
@@ -2124,8 +2133,6 @@ class SceneService:
                         "h": target["height"],
                         "angle": target.get("angle", 0),
                     }
-                    start = boundary_point(source_node, target_node, 1)
-                    end = boundary_point(target_node, source_node, -1)
                     elbowed = op.get("elbowed", False)
                     style = {
                         k: v
@@ -2133,14 +2140,66 @@ class SceneService:
                         if k
                         in (
                             "strokeColor",
+                            "backgroundColor",
                             "strokeWidth",
                             "strokeStyle",
                             "opacity",
                             "roughness",
+                            "roundness",
+                            "startArrowhead",
+                            "endArrowhead",
+                            "start_arrowhead",
+                            "end_arrowhead",
+                            "font_family",
+                            "font_size",
+                            "fontFamily",
+                            "fontSize",
                         )
                         and v is not None
                     }
-                    connector = arrow(*start, *end, elbowed=elbowed, **style)
+                    if elbowed:
+                        from .routing import route_orthogonal_connector
+
+                        shapes = [
+                            e
+                            for e in index.values()
+                            if e["type"] in SHAPES
+                            and not e.get("isDeleted")
+                            and (e.get("customData") or {}).get("type") not in ("code_block_header",)
+                        ]
+                        pair_arrows = [
+                            e
+                            for e in index.values()
+                            if e["type"] in ("arrow", "line")
+                            and not e.get("isDeleted")
+                            and {
+                                (e.get("startBinding") or {}).get("elementId"),
+                                (e.get("endBinding") or {}).get("elementId"),
+                            }
+                            == {source_id, target_id}
+                        ]
+                        slot_offset = len(pair_arrows) * 20.0
+                        world_pts = route_orthogonal_connector(
+                            source,
+                            target,
+                            obstacles=shapes,
+                            clearance=15.0,
+                            s_offset=slot_offset,
+                            t_offset=slot_offset,
+                        )
+                        start = world_pts[0]
+                        end = world_pts[-1]
+                        origin_x, origin_y = world_pts[0]
+                        connector = arrow(origin_x, origin_y, end[0], end[1], elbowed=True, **style)
+                        connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
+                        all_x = [pt[0] for pt in world_pts]
+                        all_y = [pt[1] for pt in world_pts]
+                        connector["width"] = max(all_x) - min(all_x)
+                        connector["height"] = max(all_y) - min(all_y)
+                    else:
+                        start = boundary_point(source_node, target_node, 1)
+                        end = boundary_point(target_node, source_node, -1)
+                        connector = arrow(*start, *end, elbowed=elbowed, **style)
                     connector["startBinding"] = {
                         "elementId": source_id,
                         "focus": 0,
@@ -2370,7 +2429,7 @@ class SceneService:
                             if tgt_lbl:
                                 tgt_lbl["frameId"] = None
                         else:
-                            _require(index, target_frame_id)
+                            _validate_frame_id(index, target_frame_id)
                             el["frameId"] = target_frame_id
                             tgt_lbl = _label_for(index, eid)
                             if tgt_lbl:
@@ -2378,42 +2437,14 @@ class SceneService:
                     if el["type"] == "frame" and label is not None:
                         el["name"] = label
                     elif el["type"] == "text":
+                        from .fonts import measure_text_dimensions
+
                         cid = el.get("containerId")
                         container = index.get(cid) if cid else None
                         if f_fam is not None:
-                            el["fontFamily"] = normalize_font_family(f_fam)
-                            if isinstance(f_fam, str) and f_fam.strip().lower() not in (
-                                "1",
-                                "2",
-                                "3",
-                                "4",
-                                "excalifont",
-                                "virgil",
-                                "sans-serif",
-                                "sans",
-                                "helvetica",
-                                "normal",
-                                "monospace",
-                                "mono",
-                                "code",
-                                "cascadia",
-                                "comic-shanns",
-                                "comic",
-                                "comic shanns",
-                                "handwriting",
-                                "hand-drawn",
-                                "hand",
-                            ):
-                                el.setdefault("customData", {})["fontFamily"] = f_fam.strip()
-                            elif "customData" in el and "fontFamily" in el["customData"]:
-                                el["customData"]["fontFamily"] = str(f_fam)
+                            _apply_font_family(el, f_fam)
                         if f_size is not None:
                             el["fontSize"] = f_size
-                            lines = el["text"].split("\n")
-                            el["width"] = max(map(len, lines)) * el["fontSize"] * 0.6
-                            el["height"] = len(lines) * el["fontSize"] * el.get("lineHeight", 1.25)
-                            if container:
-                                _center_label(el, container)
                         if label is not None:
                             if not label:
                                 if container is None:
@@ -2428,20 +2459,20 @@ class SceneService:
                                 index.pop(el["id"], None)
                             else:
                                 el["text"] = el["originalText"] = label
-                                el["width"] = (
-                                    max(map(len, label.split("\n")))
-                                    * el["fontSize"]
-                                    * 0.6
-                                )
-                                el["height"] = (
-                                    len(label.split("\n"))
-                                    * el["fontSize"]
-                                    * el["lineHeight"]
-                                )
-                                if container:
-                                    _center_label(el, container)
+                        if label is None or label:
+                            eff_ff = (el.get("customData") or {}).get("fontFamily") or el.get("fontFamily")
+                            tw, th, _ = measure_text_dimensions(
+                                el["text"], font_family=eff_ff, font_size=el.get("fontSize", 20)
+                            )
+                            el["width"] = tw
+                            el["height"] = th
+                            if container:
+                                _center_label(el, container)
                         el.update(updates)
                     else:
+                        from .fonts import measure_text_dimensions
+                        from .layout import wrap_text_to_shape
+
                         target = _label_for(index, eid)
                         if label is not None:
                             if target is None and label:
@@ -2455,14 +2486,34 @@ class SceneService:
                                     ),
                                 }
                                 fs = f_size if f_size is not None else (14 if el["type"] == "arrow" else 20)
+                                c_type = el["type"]
+                                c_w = float(el.get("width", 100.0))
+                                c_h = float(el.get("height", 100.0))
+                                wrapped_lbl = (
+                                    wrap_text_to_shape(label, shape=c_type, target_w=c_w, font_size=fs, font_family=f_fam)
+                                    if c_type in ("rectangle", "ellipse", "diamond")
+                                    else label
+                                )
                                 target = text(
                                     el["x"],
                                     el["y"],
-                                    label,
+                                    wrapped_lbl,
                                     fontSize=fs,
                                     fontFamily=f_fam or 2,
                                     **lbl_style,
                                 )
+                                tw, th, _ = measure_text_dimensions(
+                                    wrapped_lbl, font_family=f_fam or target.get("fontFamily"), font_size=fs
+                                )
+                                target["width"] = tw
+                                target["height"] = th
+                                if c_type in ("rectangle", "ellipse", "diamond"):
+                                    min_w, min_h = required_container_size(c_type, tw, th)
+                                    if min_w > c_w or min_h > c_h:
+                                        new_w, new_h = max(c_w, min_w), max(c_h, min_h)
+                                        el["x"] = (el["x"] + c_w / 2.0) - new_w / 2.0
+                                        el["y"] = (el["y"] + c_h / 2.0) - new_h / 2.0
+                                        el["width"], el["height"] = new_w, new_h
                                 if el.get("frameId"):
                                     target["frameId"] = el["frameId"]
                                 bind_text(target, el)
@@ -2477,30 +2528,61 @@ class SceneService:
                                 ]
                                 index.pop(target["id"], None)
                             elif target is not None:
-                                target["text"] = target["originalText"] = label
                                 if f_size is not None:
                                     target["fontSize"] = f_size
                                 if f_fam is not None:
-                                    target["fontFamily"] = normalize_font_family(f_fam)
-                                target["width"] = (
-                                    max(map(len, label.split("\n")))
-                                    * target["fontSize"]
-                                    * 0.6
+                                    _apply_font_family(target, f_fam)
+                                c_type = el["type"]
+                                c_w = float(el.get("width", 100.0))
+                                c_h = float(el.get("height", 100.0))
+                                eff_ff = (target.get("customData") or {}).get("fontFamily") or target.get("fontFamily")
+                                eff_fs = target.get("fontSize", 20)
+                                wrapped = (
+                                    wrap_text_to_shape(label, shape=c_type, target_w=c_w, font_size=eff_fs, font_family=eff_ff)
+                                    if c_type in ("rectangle", "ellipse", "diamond")
+                                    else label
                                 )
-                                target["height"] = (
-                                    len(label.split("\n"))
-                                    * target["fontSize"]
-                                    * target["lineHeight"]
-                                )
+                                target["text"] = target["originalText"] = wrapped
+                                tw, th, _ = measure_text_dimensions(wrapped, font_family=eff_ff, font_size=eff_fs)
+                                target["width"] = tw
+                                target["height"] = th
+                                if c_type in ("rectangle", "ellipse", "diamond"):
+                                    min_w, min_h = required_container_size(c_type, tw, th)
+                                    if min_w > c_w or min_h > c_h:
+                                        new_w, new_h = max(c_w, min_w), max(c_h, min_h)
+                                        el["x"] = (el["x"] + c_w / 2.0) - new_w / 2.0
+                                        el["y"] = (el["y"] + c_h / 2.0) - new_h / 2.0
+                                        el["width"], el["height"] = new_w, new_h
                                 _center_label(target, el)
                         elif target is not None:
                             if f_size is not None:
                                 target["fontSize"] = f_size
                             if f_fam is not None:
-                                target["fontFamily"] = normalize_font_family(f_fam)
-                            lines = target["text"].split("\n")
-                            target["width"] = max(map(len, lines)) * target["fontSize"] * 0.6
-                            target["height"] = len(lines) * target["fontSize"] * target.get("lineHeight", 1.25)
+                                _apply_font_family(target, f_fam)
+                            c_type = el.get("type", "rectangle")
+                            c_w = float(el.get("width", 100.0))
+                            c_h = float(el.get("height", 100.0))
+                            eff_ff = (target.get("customData") or {}).get("fontFamily") or target.get("fontFamily")
+                            eff_fs = target.get("fontSize", 20)
+                            if c_type in ("rectangle", "ellipse", "diamond"):
+                                wrapped = wrap_text_to_shape(
+                                    target.get("originalText", target["text"]),
+                                    shape=c_type,
+                                    target_w=c_w,
+                                    font_size=eff_fs,
+                                    font_family=eff_ff,
+                                )
+                                target["text"] = wrapped
+                            tw, th, _ = measure_text_dimensions(target["text"], font_family=eff_ff, font_size=eff_fs)
+                            target["width"] = tw
+                            target["height"] = th
+                            if c_type in ("rectangle", "ellipse", "diamond"):
+                                min_w, min_h = required_container_size(c_type, tw, th)
+                                if min_w > c_w or min_h > c_h:
+                                    new_w, new_h = max(c_w, min_w), max(c_h, min_h)
+                                    el["x"] = (el["x"] + c_w / 2.0) - new_w / 2.0
+                                    el["y"] = (el["y"] + c_h / 2.0) - new_h / 2.0
+                                    el["width"], el["height"] = new_w, new_h
                             _center_label(target, el)
                         el.update(updates)
                     results.append(
@@ -2534,7 +2616,7 @@ class SceneService:
                         if el["id"] not in removed
                     ]
                     for el in document["elements"]:
-                        if el.get("frameId") == eid:
+                        if el.get("frameId") in removed:
                             el["frameId"] = None
                         if el["type"] == "arrow" and not el.get("isDeleted"):
                             for end in ("startBinding", "endBinding"):
@@ -2810,7 +2892,7 @@ class SceneService:
                             document["appState"] = fix_res["document"]["appState"]
                         index.clear()
                         index.update(
-                            {el["id"]: el for el in document["elements"] if el.get("id")}
+                            {el["id"]: el for el in document["elements"] if el.get("id") and not el.get("isDeleted")}
                         )
                     fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
                     results.append({"action": "auto_fix_layout", **fix_res_clean})
