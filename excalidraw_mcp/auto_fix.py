@@ -384,7 +384,7 @@ def diagnose_layout_issues(
         if not sid:
             continue
         bound_t = bound_map.get(sid)
-        if not bound_t:
+        if not bound_t or _cd(s).get("type") in ("code_block", "code-block"):
             continue
 
         raw_text = bound_t.get("text") or ""
@@ -394,7 +394,7 @@ def diagnose_layout_issues(
         cur_w = abs(_coord(s, "width"))
         cur_h = abs(_coord(s, "height"))
 
-        is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, t)
+        is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, bound_t)
         if is_clipped and (deficit_w > TEXT_DEFICIT_THRESHOLD_PX or deficit_h > TEXT_DEFICIT_THRESHOLD_PX):
             severity = "critical" if (deficit_w > 25.0 or deficit_h > 20.0) else "warning"
             issues.append(
@@ -402,11 +402,11 @@ def diagnose_layout_issues(
                     "id": f"text-clip-{sid}",
                     "type": "text_clipping",
                     "severity": severity,
-                    "element_ids": [sid, t["id"]],
+                    "element_ids": [sid, bound_t["id"]],
                     "description": f"Text in shape '{raw_text[:24]}...' overflows container by ({deficit_w}px w, {deficit_h}px h).",
                     "details": {
                         "shape_id": sid,
-                        "text_id": t["id"],
+                        "text_id": bound_t["id"],
                         "current_width": round(cur_w, 1),
                         "current_height": round(cur_h, 1),
                         "required_width": req_w,
@@ -1136,6 +1136,8 @@ def _resolve_node_overlaps(
                             }
                         )
                         any_moved = True
+                    x1_min, y1_min = _coord(s1, "x"), _coord(s1, "y")
+                    x1_max, y1_max = x1_min + abs(_coord(s1, "width")), y1_min + abs(_coord(s1, "height"))
 
         if not had_overlap:
             break
@@ -1221,14 +1223,14 @@ def apply_layout_repairs(
                 continue
 
             bound_t = bound_map.get(sid)
-            if not bound_t:
+            if not bound_t or _cd(s).get("type") in ("code_block", "code-block"):
                 continue
 
             raw_text = bound_t.get("text") or ""
             if not raw_text.strip():
                 continue
 
-            is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, t, warnings=warnings)
+            is_clipped, req_w, req_h, deficit_w, deficit_h = measure_shape_text_containment(s, bound_t, warnings=warnings)
             if is_clipped and (deficit_w > TEXT_DEFICIT_THRESHOLD_PX or deficit_h > TEXT_DEFICIT_THRESHOLD_PX):
                 cur_w = abs(_coord(s, "width"))
                 cur_h = abs(_coord(s, "height"))
@@ -1248,12 +1250,15 @@ def apply_layout_repairs(
                 s["height"] = round(new_h, 1)
 
                 # Re-center bound text inside expanded container
-                tw, th, wrapped = _safe_wrap_and_measure(s, t, target_w=new_w, warnings=warnings)
+                tw, th, wrapped = _safe_wrap_and_measure(s, bound_t, target_w=new_w, warnings=warnings)
+                if wrapped != raw_text:
+                    bound_t["text"] = wrapped
+                    bound_t["originalText"] = wrapped
 
-                t["x"] = round(cx - tw / 2.0, 1)
-                t["y"] = round(cy - th / 2.0, 1)
-                t["width"] = round(tw, 1)
-                t["height"] = round(th, 1)
+                bound_t["x"] = round(cx - tw / 2.0, 1)
+                bound_t["y"] = round(cy - th / 2.0, 1)
+                bound_t["width"] = round(tw, 1)
+                bound_t["height"] = round(th, 1)
 
                 applied_changes.append(
                     {
@@ -1750,10 +1755,10 @@ def auto_fix_scene_layout(
     # Step 10: Status classification
     scope_type_map = {
         "text": {"text_clipping"},
-        "overlaps": {"shape_overlap"},
+        "overlaps": {"node_overlap", "shape_overlap"},
         "containment": {"frame_containment"},
         "connectors": {"connector_collision"},
-        "spacing": {"crowded_spacing"},
+        "spacing": {"inconsistent_spacing", "crowded_spacing"},
     }
     target_issue_types = scope_type_map.get(scope) if scope != "all" else None
     if target_issue_types is not None:
