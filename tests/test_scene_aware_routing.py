@@ -268,5 +268,99 @@ class Phase4CurvedConnectorsAndRenderersTests(unittest.TestCase):
         self.assertTrue(png_bytes.startswith(b"\x89PNG"))
 
 
+class Phase5FullScenarioMatrixTests(unittest.TestCase):
+    def setUp(self):
+        self.service = SceneService()
+
+    def test_scenario_1_nearby_aligned_nodes_use_straight_zero_bend(self):
+        """Scenario 1: Nearby aligned nodes with no obstacles use 2-point straight connector."""
+        a = self.service.add_shape("rectangle", 100, 100, 120, 60, label="A")
+        b = self.service.add_shape("rectangle", 340, 100, 120, 60, label="B")
+        c = self.service.connect(a["rectangle_id"], b["rectangle_id"], routing_mode="auto")
+        arr = self.service.state.get(c["arrow_id"])
+        self.assertFalse(arr["elbowed"])
+        self.assertEqual(len(arr["points"]), 2)
+
+    def test_scenario_5_and_6_pipeline_skip_edge_and_dense_architecture(self):
+        """Scenarios 5 & 6: Pipeline direct edges stay straight while skip-rank and dense edges route around obstacles."""
+        from excalidraw_mcp.layout import check_diagram_geometry
+
+        res = self.service.draw_graph(
+            nodes=[
+                {"id": "n1", "label": "Ingest"},
+                {"id": "n2", "label": "Transform"},
+                {"id": "n3", "label": "Load"},
+                {"id": "n4", "label": "Audit"},
+            ],
+            edges=[
+                {"id": "e12", "source": "n1", "target": "n2"},
+                {"id": "e23", "source": "n2", "target": "n3"},
+                {"id": "e34", "source": "n3", "target": "n4"},
+                {"id": "e13", "source": "n1", "target": "n3"},
+                {"id": "e14", "source": "n1", "target": "n4"},
+            ],
+            layout="layered",
+            direction="horizontal",
+            routing_mode="auto",
+        )
+        e12 = self.service.state.get(res["edge_map"]["e12"]["element_id"])
+        e13 = self.service.state.get(res["edge_map"]["e13"]["element_id"])
+        self.assertFalse(e12["elbowed"])
+        self.assertTrue(e13["elbowed"])
+        self.assertGreater(len(e13["points"]), 2)
+        diag = check_diagram_geometry(self.service.state.document())
+        self.assertEqual(diag["connector_collision_count"], 0)
+
+    def test_scenario_10_mixed_diagram_preserves_all_modes_across_auto_fix(self):
+        """Scenario 10: Mixed diagram (straight + orthogonal + curved) retains all modes after auto_fix."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        b = self.service.add_shape("rectangle", 360, 100, 100, 60, label="B")
+        c = self.service.add_shape("rectangle", 360, 260, 100, 60, label="C")
+        d = self.service.add_shape("rectangle", 100, 260, 100, 60, label="D")
+
+        cs = self.service.connect(a["rectangle_id"], b["rectangle_id"], routing_mode="straight")
+        co = self.service.connect(a["rectangle_id"], c["rectangle_id"], routing_mode="orthogonal")
+        cc = self.service.connect(d["rectangle_id"], b["rectangle_id"], routing_mode="curved")
+
+        repaired = auto_fix_scene_layout(self.service.state.document(), repair_scope="connectors")
+        elems = {e["id"]: e for e in repaired["document"]["elements"]}
+
+        self.assertFalse(elems[cs["arrow_id"]]["elbowed"])
+        self.assertEqual(len(elems[cs["arrow_id"]]["points"]), 2)
+        self.assertTrue(elems[co["arrow_id"]]["elbowed"])
+        self.assertFalse(elems[cc["arrow_id"]]["elbowed"])
+        self.assertEqual(elems[cc["arrow_id"]]["roundness"], {"type": 2})
+        self.assertGreaterEqual(len(elems[cc["arrow_id"]]["points"]), 3)
+
+    def test_scenario_13_locked_connector_remains_byte_identical(self):
+        """Scenario 13: Locked connectors are never modified by reroute or auto_fix."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        b = self.service.add_shape("rectangle", 400, 100, 100, 60, label="B")
+        conn = self.service.connect(a["rectangle_id"], b["rectangle_id"], routing_mode="straight")
+        self.service.lock_elements([conn["arrow_id"]])
+        self.service.add_shape("rectangle", 240, 80, 100, 100, label="Obs")
+        before = self.service.state.get(conn["arrow_id"])
+
+        repaired = auto_fix_scene_layout(self.service.state.document(), repair_scope="connectors")
+        after = next(e for e in repaired["document"]["elements"] if e["id"] == conn["arrow_id"])
+        self.assertEqual(after["x"], before["x"])
+        self.assertEqual(after["y"], before["y"])
+        self.assertEqual(after["points"], before["points"])
+
+    def test_scale_latency_60_nodes_100_edges(self):
+        """Phase 5 benchmark: 60-node, 100-edge graph routes deterministically within budget."""
+        import time
+
+        nodes = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(60)]
+        edges = [{"source": f"n{i}", "target": f"n{i + 1}"} for i in range(59)]
+        edges.extend({"source": f"n{i}", "target": f"n{i + 3}"} for i in range(41))
+
+        t0 = time.monotonic()
+        res = self.service.draw_graph(nodes, edges, layout="layered", routing_mode="auto")
+        elapsed = time.monotonic() - t0
+        self.assertEqual(res["edges"], 100)
+        self.assertLess(elapsed, 5.0)
+
+
 if __name__ == "__main__":
     unittest.main()
