@@ -576,11 +576,11 @@ def route_orthogonal_connector(
             ys.add(oy2)
 
         if context is not None:
-            for f in context.frames:
-                fx = float(f.get("x", 0.0))
-                fy = float(f.get("y", 0.0))
-                fw = float(f.get("width", 0.0))
-                fh = float(f.get("height", 0.0))
+            for frame in context.frames:
+                fx = float(frame.get("x", 0.0))
+                fy = float(frame.get("y", 0.0))
+                fw = float(frame.get("width", 0.0))
+                fh = float(frame.get("height", 0.0))
                 xs.add(fx - clearance)
                 xs.add(fx + fw + clearance)
                 ys.add(fy - clearance)

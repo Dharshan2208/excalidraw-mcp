@@ -234,7 +234,7 @@ def _reroute_connector(index, connector):
 
 def _reroute_blocked_non_incident(index, moved_ids):
     """Reroute any non-incident 'auto' straight connector whose path is now blocked."""
-    from .routing import build_scene_routing_context, resolve_arrow_routing_mode, segment_intersects_rect
+    from .routing import resolve_arrow_routing_mode, segment_intersects_rect
 
     moved_shapes = [
         index[mid]
