@@ -1249,11 +1249,8 @@ def apply_layout_repairs(
                 s["width"] = round(new_w, 1)
                 s["height"] = round(new_h, 1)
 
-                # Re-center bound text inside expanded container
-                tw, th, wrapped = _safe_wrap_and_measure(s, bound_t, target_w=new_w, warnings=warnings)
-                if wrapped != raw_text:
-                    bound_t["text"] = wrapped
-                    bound_t["originalText"] = wrapped
+                # Re-center bound text inside expanded container without altering user text
+                tw, th, _ = _safe_wrap_and_measure(s, bound_t, target_w=new_w, warnings=warnings)
 
                 bound_t["x"] = round(cx - tw / 2.0, 1)
                 bound_t["y"] = round(cy - th / 2.0, 1)

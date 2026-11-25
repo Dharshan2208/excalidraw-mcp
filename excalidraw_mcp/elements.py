@@ -166,8 +166,15 @@ def text(
         custom_data["fontFamily"] = ff.strip()
 
     lines = content.split("\n")
-    text_w = max(map(len, lines)) * fs * 0.6 if lines else 20.0
-    text_h = len(lines) * fs * 1.25 if lines else float(fs) * 1.25
+    try:
+        from .fonts import measure_text_dimensions
+
+        eff_ff = custom_data.get("fontFamily", ff) if custom_data else ff
+        text_w, text_h, _ = measure_text_dimensions(content, font_family=eff_ff, font_size=fs)
+        text_w = max(text_w, 1.0)
+    except Exception:
+        text_w = max(map(len, lines)) * fs * 0.6 if lines else 20.0
+        text_h = len(lines) * fs * 1.25 if lines else float(fs) * 1.25
 
     el = {
         "id": str(uuid.uuid4()),
