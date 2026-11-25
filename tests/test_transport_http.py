@@ -180,7 +180,7 @@ class TestStreamableHttpIntegration(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(health_resp.status_code, 200)
                 health_data = health_resp.json()
                 self.assertEqual(health_data["status"], "healthy")
-                self.assertEqual(health_data["version"], "0.4.0")
+                self.assertEqual(health_data["version"], "0.5.0")
 
             async with Client(url, timeout=5) as client:
                 tools = await client.list_tools()

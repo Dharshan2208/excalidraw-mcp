@@ -129,7 +129,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(len(res.contents) > 0)
             data = json.loads(res.contents[0].content)
             self.assertEqual(data["active_toolset"], mode)
-            self.assertEqual(data["server_version"], "0.4.0")
+            self.assertEqual(data["server_version"], "0.5.0")
             self.assertIn("capabilities", data)
             self.assertIn("full_only_features", data["capabilities"])
             self.assertEqual(data["tool_count"], 21 if mode == "full" else 12)
@@ -154,7 +154,7 @@ class ToolsetRegistrationTests(unittest.IsolatedAsyncioTestCase):
 
         # excalidraw://capabilities resource via get_resource
         cap_res = get_resource(service, uri="excalidraw://capabilities")
-        self.assertEqual(cap_res["server_version"], "0.4.0")
+        self.assertEqual(cap_res["server_version"], "0.5.0")
         self.assertIn(cap_res["tool_count"], (12, 21))
 
     async def test_documentation_and_font_resources(self):

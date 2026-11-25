@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-25
+
+### Added
+- **Scene-Aware Connector Routing**: Added adaptive connector routing supporting `auto`, `straight`, `orthogonal`, and `curved` modes (`routing_mode` per connector and scene-wide routing policy).
+- **SceneRouter & Multi-Criteria A***: Added `SceneRoutingContext`, multi-criteria A* routing penalties (obstacle/frame clearance, bends, crossings), and fan-in/fan-out port distribution to prevent overlapping connector endpoints and parallel runs.
+- **Curved Connector Rendering**: Added curved connector routing and Catmull-Rom spline rendering across PNG and SVG exports.
+- **Routing Inspection & Label Placement**: Upgraded connector label placement along routed paths, exposed `routing_mode` in scene inspection, and added dynamic rerouting when connected or blocking elements move.
+- **Architecture & Routing Docs/Benchmarks**: Added technical audit remediation notes (`FIX.md`), scene-aware routing design specification (`docs/ROUTING_DESIGN.md`), and a 13-scenario scene-aware routing test matrix and latency benchmark.
+
+### Fixed
+- **Auto-Fix & Batch Atomicity**: Fixed bound text lookup, scope map handling, code block behavior, `BatchOperation` schema exposure, `batch_mutate` alignment with `SceneService`, and atomic validation/rollback in `update_element` and `draw_architecture`.
+- **Text Sizing & Containment**: Aligned `text()` sizing with font metrics, improved pixel-accurate text wrapping, and tightened diamond text containment bounds.
+- **Connector & Bounds Geometry**: Fixed A* stub collisions, port clamping, graph elbowed routing, and bound element movement/resizing.
+- **Export Consistency**: Aligned SVG/PNG connector labels, text alignment, rotation bounding boxes, and import merge behavior.
+- **CI & Type Safety**: Resolved Ruff unused-import and Mypy variable-shadowing errors and trimmed redundant non-Linux CI matrix targets.
+
 ## [0.4.0] - 2026-11-23
 
 ### Added

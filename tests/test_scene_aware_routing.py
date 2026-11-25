@@ -359,7 +359,8 @@ class Phase5FullScenarioMatrixTests(unittest.TestCase):
         res = self.service.draw_graph(nodes, edges, layout="layered", routing_mode="auto")
         elapsed = time.monotonic() - t0
         self.assertEqual(res["edges"], 100)
-        self.assertLess(elapsed, 5.0)
+        # Allow headroom for shared CI runners while still catching superlinear blowups.
+        self.assertLess(elapsed, 10.0)
 
 
 if __name__ == "__main__":

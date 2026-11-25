@@ -160,7 +160,7 @@ def get_server_version() -> str:
         from importlib.metadata import version
         return version("exca-mcp")
     except Exception:
-        return "0.4.0"
+        return "0.5.0"
 
 
 def create_server(

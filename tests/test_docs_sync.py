@@ -54,11 +54,11 @@ class DocumentationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(version_match, "Could not find version in pyproject.toml")
         expected_version = version_match.group(1)
         self.assertEqual(excalidraw_mcp.__version__, expected_version)
-        self.assertEqual(excalidraw_mcp.__version__, "0.4.0")
+        self.assertEqual(excalidraw_mcp.__version__, "0.5.0")
 
         # 2. SECURITY.md includes current major.minor
         security_md = (repo_root / "SECURITY.md").read_text(encoding="utf-8")
-        self.assertIn("0.4.x", security_md)
+        self.assertIn("0.5.x", security_md)
 
         # 3. docs/tools.md parameter names match implementation
         tools_md = (repo_root / "docs" / "tools.md").read_text(encoding="utf-8")
