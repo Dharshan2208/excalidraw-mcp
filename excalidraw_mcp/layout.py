@@ -42,34 +42,75 @@ def wrap_text_to_shape(
     if not label:
         return ""
     font_size = font_size or 20
+    scale = float(font_size) / 20.0
     if target_w is not None and target_w > 0:
         if shape == "ellipse":
             # Inscribed rectangle inside ellipse: width * (1 / sqrt(2)) ~ 0.707 * width
             safe_w = max(60.0, (target_w * 0.707) - 32.0)
         elif shape == "diamond":
-            # Inscribed rhombus: safe width at ~middle height is ~0.55 * width
-            safe_w = max(60.0, (target_w * 0.55) - 32.0)
+            # Inscribed rhombus: safe width at ~middle height is ~0.5 * width
+            safe_w = max(60.0, (target_w * 0.50) - 24.0)
         else:
             # Rectangle: width minus horizontal padding (20px each side)
             safe_w = max(60.0, target_w - 40.0)
     else:
         if shape == "ellipse":
-            safe_w = 140.0
+            safe_w = 140.0 * scale
         elif shape == "diamond":
-            safe_w = 130.0
+            safe_w = 130.0 * scale
         else:
-            safe_w = 180.0
+            safe_w = 180.0 * scale
 
     from .fonts import get_font
+
+    cleaned = label.replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
     try:
         font = get_font(font_family, font_size)
-        bbox = font.getbbox("M")
-        char_w = max(7.0, float(bbox[2] - bbox[0]) * 0.85)
+
+        def measure_px(s: str) -> float:
+            if not s:
+                return 0.0
+            bbox = font.getbbox(s)
+            return float(bbox[2] - bbox[0])
+
+        # Keep short labels (<= 16 chars) on a single line so containers auto-expand cleanly
+        if "\n" not in cleaned and len(cleaned) <= 16 and measure_px(cleaned) <= max(safe_w, 160.0):
+            return cleaned
+
+        wrapped_lines: list[str] = []
+        for paragraph in cleaned.splitlines() or [""]:
+            if not paragraph.strip():
+                wrapped_lines.append("")
+                continue
+            words = paragraph.split(" ")
+            current = ""
+            for word in words:
+                candidate = f"{current} {word}" if current else word
+                if measure_px(candidate) <= safe_w:
+                    current = candidate
+                else:
+                    if current:
+                        wrapped_lines.append(current)
+                        current = ""
+                    if measure_px(word) <= safe_w or len(word) < 14:
+                        current = word
+                    else:
+                        # Break long unspaced token at pixel boundary
+                        chunk = ""
+                        for ch in word:
+                            if chunk and measure_px(chunk + ch) > safe_w:
+                                wrapped_lines.append(chunk)
+                                chunk = ch
+                            else:
+                                chunk += ch
+                        current = chunk
+            if current or not wrapped_lines:
+                wrapped_lines.append(current)
+        return "\n".join(wrapped_lines)
     except Exception:
         char_w = max(7.0, float(font_size) * 0.55)
-
-    max_chars = max(20, int(safe_w / char_w))
-    return wrap_label(label, max_chars=max_chars)
+        max_chars = max(4, int(safe_w / char_w))
+        return wrap_label(cleaned, max_chars=max_chars)
 
 
 def shape_dimensions(
@@ -102,8 +143,8 @@ def shape_dimensions(
 
     if shape == "diamond":
         # For a diamond (rhombus), corner fits inside: W_t/W + H_t/H <= 1.0
-        min_w = text_w * 1.65 + 60.0
-        min_h = text_h * 1.65 + 50.0
+        min_w = text_w * 2.0 + 60.0
+        min_h = text_h * 2.0 + 50.0
         return max(180.0, min_w), max(130.0, min_h)
 
     # Rectangle: text width + padding on left/right, text height + padding on top/bottom

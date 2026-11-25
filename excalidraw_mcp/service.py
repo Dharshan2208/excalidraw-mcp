@@ -110,7 +110,7 @@ def _label_for(index, container_id):
     )
 
 
-def _center_label(label, container):
+def _center_label(label, container, index=None):
     if (container.get("customData") or {}).get("type") in ("code_block", "code-block"):
         return
     if container["type"] == "arrow" and container.get("points"):
@@ -121,7 +121,36 @@ def _center_label(label, container):
             world_pts = [(ax + float(p[0]), ay + float(p[1])) for p in pts]
             lw = float(label.get("width", 80.0))
             lh = float(label.get("height", 25.0))
-            lx, ly = position_connector_label(world_pts, lw, lh)
+            obstacles = None
+            existing_lbls = None
+            if index:
+                obstacles = [
+                    e
+                    for e in index.values()
+                    if e.get("type") in SHAPES and not e.get("isDeleted")
+                ]
+                existing_lbls = [
+                    (
+                        float(t.get("x", 0.0)) - 6.0,
+                        float(t.get("y", 0.0)) - 6.0,
+                        float(t.get("x", 0.0)) + float(t.get("width", 40.0)) + 6.0,
+                        float(t.get("y", 0.0)) + float(t.get("height", 20.0)) + 6.0,
+                        t.get("containerId"),
+                    )
+                    for t in index.values()
+                    if t.get("type") == "text"
+                    and not t.get("isDeleted")
+                    and t.get("id") != label.get("id")
+                    and t.get("containerId") not in index
+                ]
+            lx, ly = position_connector_label(
+                world_pts,
+                lw,
+                lh,
+                obstacles=obstacles,
+                existing_label_boxes=existing_lbls,
+                arrow_id=container.get("id"),
+            )
             label["x"] = lx
             label["y"] = ly
             return
@@ -158,26 +187,82 @@ def _as_layout_node(el):
 
 
 def _reroute_connector(index, connector):
-    if connector.get("elbowed") or connector.get("angle", 0):
+    if connector.get("angle", 0):
         raise SceneError(
-            "Resizing shapes attached to elbowed or rotated arrows is not supported yet"
+            "Resizing shapes attached to rotated arrows is not supported yet"
         )
     start_id = (connector.get("startBinding") or {}).get("elementId")
     end_id = (connector.get("endBinding") or {}).get("elementId")
     if not start_id or not end_id or start_id not in index or end_id not in index:
         return
     source, target = index[start_id], index[end_id]
-    start = boundary_point(_as_layout_node(source), _as_layout_node(target), 1)
-    end = boundary_point(_as_layout_node(target), _as_layout_node(source), -1)
-    connector["x"], connector["y"] = start
-    connector["points"] = [[0, 0], [end[0] - start[0], end[1] - start[1]]]
-    connector["width"], connector["height"] = (
-        abs(end[0] - start[0]),
-        abs(end[1] - start[1]),
-    )
+    from .routing import build_scene_routing_context, resolve_arrow_routing_mode, route_connector_scene_aware
+
+    mode = resolve_arrow_routing_mode(connector, default="auto")
+    if mode in ("orthogonal", "curved", "auto"):
+        ctx = build_scene_routing_context(list(index.values()), exclude_arrow_ids={connector["id"]})
+        cd = connector.get("customData") or {}
+        pref = (str(cd["source_face"]), str(cd["target_face"])) if cd.get("source_face") and cd.get("target_face") else None
+        world_pts, chosen = route_connector_scene_aware(
+            source, target, ctx, routing_mode=mode, preferred_faces=pref, clearance=15.0
+        )
+        connector["elbowed"] = chosen == "orthogonal"
+        if chosen == "curved":
+            connector["roundness"] = {"type": 2}
+        origin_x, origin_y = world_pts[0]
+        connector["x"] = origin_x
+        connector["y"] = origin_y
+        connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
+        all_x = [pt[0] for pt in world_pts]
+        all_y = [pt[1] for pt in world_pts]
+        connector["width"] = max(all_x) - min(all_x)
+        connector["height"] = max(all_y) - min(all_y)
+    else:
+        start = boundary_point(_as_layout_node(source), _as_layout_node(target), 1)
+        end = boundary_point(_as_layout_node(target), _as_layout_node(source), -1)
+        connector["elbowed"] = False
+        connector["x"], connector["y"] = start
+        connector["points"] = [[0, 0], [end[0] - start[0], end[1] - start[1]]]
+        connector["width"], connector["height"] = (
+            abs(end[0] - start[0]),
+            abs(end[1] - start[1]),
+        )
     label = _label_for(index, connector["id"])
     if label:
-        _center_label(label, connector)
+        _center_label(label, connector, index=index)
+
+
+def _reroute_blocked_non_incident(index, moved_ids):
+    """Reroute any non-incident 'auto' straight connector whose path is now blocked."""
+    from .routing import build_scene_routing_context, resolve_arrow_routing_mode, segment_intersects_rect
+
+    moved_shapes = [
+        index[mid]
+        for mid in moved_ids
+        if mid in index and index[mid].get("type") in SHAPES and not index[mid].get("isDeleted")
+    ]
+    if not moved_shapes:
+        return
+    for conn in list(index.values()):
+        if conn.get("type") != "arrow" or conn.get("isDeleted") or conn.get("locked"):
+            continue
+        sb = (conn.get("startBinding") or {}).get("elementId")
+        eb = (conn.get("endBinding") or {}).get("elementId")
+        if not sb or not eb or sb in moved_ids or eb in moved_ids:
+            continue
+        if resolve_arrow_routing_mode(conn, default="auto") != "auto" or conn.get("elbowed"):
+            continue
+        ax, ay = float(conn.get("x", 0.0)), float(conn.get("y", 0.0))
+        pts = conn.get("points") or [[0.0, 0.0], [float(conn.get("width", 0.0)), float(conn.get("height", 0.0))]]
+        wpts = [(ax + float(p[0]), ay + float(p[1])) for p in pts]
+        blocked = False
+        for ms in moved_shapes:
+            box = (float(ms["x"]), float(ms["y"]), float(ms["x"]) + float(ms["width"]), float(ms["y"]) + float(ms["height"]))
+            if any(segment_intersects_rect(wpts[i], wpts[i + 1], box, margin=2.0) for i in range(len(wpts) - 1)):
+                blocked = True
+                break
+        if blocked:
+            _reroute_connector(index, conn)
 
 
 def _move_arrow_endpoints(el, dx, dy, start, end):
@@ -199,6 +284,162 @@ def _move_arrow_endpoints(el, dx, dy, start, end):
     el["points"] = [[x - el["x"], y - el["y"]] for x, y in world]
     el["width"] = max(p[0] for p in world) - min(p[0] for p in world)
     el["height"] = max(p[1] for p in world) - min(p[1] for p in world)
+
+
+_STANDARD_FONT_NAMES = frozenset({
+    "1", "2", "3", "4", "5", "8",
+    "excalifont", "virgil", "sans-serif", "sans", "helvetica", "normal",
+    "monospace", "mono", "code", "cascadia",
+    "comic-shanns", "comic", "comic shanns", "handwriting", "hand-drawn", "hand",
+})
+
+
+def _apply_font_family(text_el, font_family):
+    """Apply font_family to a text element and sync/clear customData['fontFamily']."""
+    text_el["fontFamily"] = normalize_font_family(font_family)
+    if isinstance(font_family, str) and font_family.strip().lower() not in _STANDARD_FONT_NAMES:
+        text_el.setdefault("customData", {})["fontFamily"] = font_family.strip()
+    elif isinstance(text_el.get("customData"), dict) and "fontFamily" in text_el["customData"]:
+        del text_el["customData"]["fontFamily"]
+
+
+def _validate_frame_id(index, frame_id):
+    """Validate that frame_id refers to an existing frame element."""
+    if frame_id:
+        frame_el = _require(index, frame_id)
+        if frame_el.get("type") != "frame":
+            raise SceneError(f"Element '{frame_id}' is not a frame")
+
+
+def _apply_move(index, element_id, x, y):
+    """Move an element (and its group/frame/bound dependents) within an active index."""
+    if not _finite_number(x) or not _finite_number(y):
+        raise SceneError("Move coordinates must be finite numbers")
+    el = _require(index, element_id)
+    if el.get("locked"):
+        raise SceneError(f"Cannot move locked element '{element_id}'")
+    if el.get("containerId"):
+        raise SceneError(
+            "Move the label's container instead of moving bound text independently"
+        )
+    dx, dy = x - el["x"], y - el["y"]
+    if not dx and not dy:
+        return {"status": "moved", "element_id": element_id, "x": x, "y": y}
+    if el["type"] == "arrow" and el.get("elbowed"):
+        raise SceneError("Moving elbowed arrows is not supported yet")
+
+    grouped_members = []
+    if el.get("groupIds"):
+        target_groups = set(el["groupIds"])
+        for other in index.values():
+            if other["id"] != element_id and any(
+                g in target_groups for g in other.get("groupIds", [])
+            ):
+                if other.get("locked"):
+                    raise SceneError(
+                        f"Cannot move locked element '{other['id']}' in group"
+                    )
+                grouped_members.append(other)
+
+    if el["type"] == "frame":
+        for child in index.values():
+            if child.get("frameId") == element_id:
+                if child.get("locked"):
+                    raise SceneError(
+                        f"Cannot move locked element '{child['id']}' in frame"
+                    )
+
+    moved_targets = {element_id}
+    _translate(el, dx, dy)
+    owned_labels = {
+        label["containerId"]: label
+        for label in index.values()
+        if label.get("containerId")
+    }
+    for member in grouped_members:
+        if member["id"] not in moved_targets and not member.get("containerId"):
+            _translate(member, dx, dy)
+            moved_targets.add(member["id"])
+    if el["type"] == "frame":
+        for child in index.values():
+            if child.get("frameId") == element_id and child["id"] not in moved_targets and not child.get("containerId"):
+                if child["type"] == "arrow":
+                    sb = (child.get("startBinding") or {}).get("elementId")
+                    eb = (child.get("endBinding") or {}).get("elementId")
+                    if sb and index.get(sb, {}).get("frameId") != element_id:
+                        continue
+                    if eb and index.get(eb, {}).get("frameId") != element_id:
+                        continue
+                _translate(child, dx, dy)
+                moved_targets.add(child["id"])
+    for label in index.values():
+        if label.get("containerId") in moved_targets and label["id"] not in moved_targets:
+            _translate(label, dx, dy)
+            moved_targets.add(label["id"])
+    if el["type"] == "arrow":
+        # A coordinate move intentionally detaches the arrow from shapes.
+        el["startBinding"] = None
+        el["endBinding"] = None
+    for connector in index.values():
+        if connector["type"] != "arrow" or connector["id"] in moved_targets:
+            continue
+        start = (connector.get("startBinding") or {}).get(
+            "elementId"
+        ) in moved_targets
+        end = (connector.get("endBinding") or {}).get(
+            "elementId"
+        ) in moved_targets
+        if start or end:
+            explicit_mode = (connector.get("customData") or {}).get("routing_mode")
+            if not (start and end) and (connector.get("elbowed") or explicit_mode == "auto"):
+                _reroute_connector(index, connector)
+            else:
+                _move_arrow_endpoints(connector, dx, dy, start, end)
+                # Preserve the label's offset from the endpoint midpoint.
+                label = owned_labels.get(connector["id"])
+                if label:
+                    _translate(
+                        label,
+                        dx * (int(start) + int(end)) / 2,
+                        dy * (int(start) + int(end)) / 2,
+                    )
+    _reroute_blocked_non_incident(index, moved_targets)
+    return {"status": "moved", "element_id": element_id, "x": x, "y": y}
+
+
+def _apply_resize(index, element_id, width, height):
+    """Resize an element, recenter its label, and reroute bound connectors."""
+    if (
+        not _finite_number(width)
+        or not _finite_number(height)
+        or width <= 0
+        or height <= 0
+    ):
+        raise SceneError("width and height must be positive finite numbers")
+    el = _require(index, element_id)
+    if el.get("locked"):
+        raise SceneError(f"Cannot resize locked element '{element_id}'")
+    if el["type"] not in (*SHAPES, "frame"):
+        raise SceneError(
+            "Only rectangle, ellipse, diamond and frame elements can be resized"
+        )
+    el["width"], el["height"] = width, height
+    label = _label_for(index, element_id)
+    if label:
+        _center_label(label, el)
+    for connector in index.values():
+        if connector["type"] == "arrow" and any(
+            (connector.get(end) or {}).get("elementId") == element_id
+            for end in ("startBinding", "endBinding")
+        ):
+            _reroute_connector(index, connector)
+    _reroute_blocked_non_incident(index, {element_id})
+    return {
+        "status": "resized",
+        "element_id": element_id,
+        "width": width,
+        "height": height,
+    }
 
 
 class SceneService:
@@ -257,7 +498,14 @@ class SceneService:
         if shape not in SHAPES:
             raise SceneError("Shape must be rectangle, ellipse or diamond")
         elements = _shape_elements(shape, x, y, w, h, label, style, frame_id=frame_id)
-        ids = self.state.add_many(elements)
+
+        def append_shape(document):
+            if frame_id:
+                _validate_frame_id(_active(document), frame_id)
+            document["elements"].extend(elements)
+            return [el["id"] for el in elements]
+
+        ids = self.state.apply(append_shape)
         key = {
             "rectangle": "rectangle_id",
             "ellipse": "circle_id",
@@ -298,7 +546,14 @@ class SceneService:
             fontFamily=font_family or 2,
             **style,
         )
-        return {"text_id": self.state.add(element)}
+
+        def append_text(document):
+            if frame_id:
+                _validate_frame_id(_active(document), frame_id)
+            document["elements"].append(element)
+            return element["id"]
+
+        return {"text_id": self.state.apply(append_text)}
 
     def get_element(self, element_id):
         element, revision = self.state.get_with_revision(element_id)
@@ -371,84 +626,7 @@ class SceneService:
             raise SceneError("Move coordinates must be finite numbers")
 
         def move_elements(document):
-            index = _active(document)
-            el = _require(index, element_id)
-            if el.get("locked"):
-                raise SceneError(f"Cannot move locked element '{element_id}'")
-            if el.get("containerId"):
-                raise SceneError(
-                    "Move the label's container instead of moving bound text independently"
-                )
-            dx, dy = x - el["x"], y - el["y"]
-            if not dx and not dy:
-                return {"status": "moved", "element_id": element_id, "x": x, "y": y}
-            if el["type"] == "arrow" and el.get("elbowed"):
-                raise SceneError("Moving elbowed arrows is not supported yet")
-
-            grouped_members = []
-            if el.get("groupIds"):
-                target_groups = set(el["groupIds"])
-                for other in index.values():
-                    if other["id"] != element_id and any(
-                        g in target_groups for g in other.get("groupIds", [])
-                    ):
-                        if other.get("locked"):
-                            raise SceneError(
-                                f"Cannot move locked element '{other['id']}' in group"
-                            )
-                        grouped_members.append(other)
-
-            if el["type"] == "frame":
-                for child in index.values():
-                    if child.get("frameId") == element_id:
-                        if child.get("locked"):
-                            raise SceneError(
-                                f"Cannot move locked element '{child['id']}' in frame"
-                            )
-
-            _translate(el, dx, dy)
-            moved_targets = {element_id}
-            owned_labels = {
-                label["containerId"]: label
-                for label in index.values()
-                if label.get("containerId")
-            }
-            for member in grouped_members:
-                _translate(member, dx, dy)
-                moved_targets.add(member["id"])
-            if el["type"] == "frame":
-                for child in index.values():
-                    if child.get("frameId") == element_id:
-                        _translate(child, dx, dy)
-                        moved_targets.add(child["id"])
-            for label in index.values():
-                if label.get("containerId") in moved_targets:
-                    _translate(label, dx, dy)
-                    moved_targets.add(label["id"])
-            if el["type"] == "arrow":
-                # A coordinate move intentionally detaches the arrow from shapes.
-                el["startBinding"] = None
-                el["endBinding"] = None
-            for connector in index.values():
-                if connector["type"] != "arrow" or connector["id"] in moved_targets:
-                    continue
-                start = (connector.get("startBinding") or {}).get(
-                    "elementId"
-                ) in moved_targets
-                end = (connector.get("endBinding") or {}).get(
-                    "elementId"
-                ) in moved_targets
-                if start or end:
-                    _move_arrow_endpoints(connector, dx, dy, start, end)
-                    # Preserve the label's offset from the endpoint midpoint.
-                    label = owned_labels.get(connector["id"])
-                    if label:
-                        _translate(
-                            label,
-                            dx * (int(start) + int(end)) / 2,
-                            dy * (int(start) + int(end)) / 2,
-                        )
-            return {"status": "moved", "element_id": element_id, "x": x, "y": y}
+            return _apply_move(_active(document), element_id, x, y)
 
         return self.state.apply(move_elements)
 
@@ -462,30 +640,7 @@ class SceneService:
             raise SceneError("width and height must be positive finite numbers")
 
         def resize_element(document):
-            index = _active(document)
-            el = _require(index, element_id)
-            if el.get("locked"):
-                raise SceneError(f"Cannot resize locked element '{element_id}'")
-            if el["type"] not in (*SHAPES, "frame"):
-                raise SceneError(
-                    "Only rectangle, ellipse, diamond and frame elements can be resized"
-                )
-            el["width"], el["height"] = width, height
-            label = _label_for(index, element_id)
-            if label:
-                _center_label(label, el)
-            for connector in index.values():
-                if connector["type"] == "arrow" and any(
-                    (connector.get(end) or {}).get("elementId") == element_id
-                    for end in ("startBinding", "endBinding")
-                ):
-                    _reroute_connector(index, connector)
-            return {
-                "status": "resized",
-                "element_id": element_id,
-                "width": width,
-                "height": height,
-            }
+            return _apply_resize(_active(document), element_id, width, height)
 
         return self.state.apply(resize_element)
 
@@ -505,6 +660,11 @@ class SceneService:
         elbowed=None,
         font_family=None,
         font_size=None,
+        x=None,
+        y=None,
+        width=None,
+        height=None,
+        routing_mode=None,
     ):
         updates = {
             "strokeColor": stroke_color,
@@ -527,20 +687,42 @@ class SceneService:
                 updates["roundness"] = roundness
         if elbowed is not None:
             updates["elbowed"] = bool(elbowed)
+        if routing_mode is not None:
+            if routing_mode == "orthogonal":
+                updates["elbowed"] = True
+            elif routing_mode in ("straight", "curved"):
+                updates["elbowed"] = False
+            if routing_mode == "curved" and "roundness" not in updates:
+                updates["roundness"] = {"type": 2}
         if (
             label is None
             and frame_id is None
             and not updates
             and font_family is None
             and font_size is None
+            and x is None
+            and y is None
+            and width is None
+            and height is None
+            and routing_mode is None
         ):
-            raise SceneError("Provide a label or at least one style or font update")
+            raise SceneError("Provide a label or at least one style, position, size, or font update")
 
         def update(document):
             index = _active(document)
             el = _require(index, element_id)
             if el.get("locked"):
                 raise SceneError(f"Cannot update locked element '{element_id}'")
+
+            extra_result = {}
+            if width is not None or height is not None:
+                w_val = float(width if width is not None else el.get("width", 100))
+                h_val = float(height if height is not None else el.get("height", 100))
+                extra_result.update(_apply_resize(index, element_id, w_val, h_val))
+            if x is not None or y is not None:
+                x_val = float(x if x is not None else el.get("x", 0))
+                y_val = float(y if y is not None else el.get("y", 0))
+                extra_result.update(_apply_move(index, element_id, x_val, y_val))
 
             if frame_id is not None:
                 if frame_id == "":
@@ -666,6 +848,7 @@ class SceneService:
 
                 el.update(updates)
                 return {
+                    **extra_result,
                     "status": "updated",
                     "element_id": element_id,
                     "label_id": label_id,
@@ -744,7 +927,7 @@ class SceneService:
                         if font_size is not None:
                             target["fontSize"] = font_size
                         if font_family is not None:
-                            target["fontFamily"] = normalize_font_family(font_family)
+                            _apply_font_family(target, font_family)
 
                         if c_type in ("rectangle", "ellipse", "diamond"):
                             wrapped = wrap_text_to_shape(
@@ -779,7 +962,7 @@ class SceneService:
                     if font_size is not None:
                         target["fontSize"] = font_size
                     if font_family is not None:
-                        target["fontFamily"] = normalize_font_family(font_family)
+                        _apply_font_family(target, font_family)
 
                     c_type = el.get("type", "rectangle")
                     c_w = float(el.get("width", 100.0))
@@ -816,7 +999,15 @@ class SceneService:
 
                     _center_label(target, el)
                 el.update(updates)
+                if el.get("type") == "arrow" and (routing_mode is not None or elbowed is not None):
+                    from .routing import set_arrow_routing_mode
+
+                    eff_mode = routing_mode or ("orthogonal" if elbowed else "straight")
+                    set_arrow_routing_mode(el, eff_mode)
+                    if (el.get("startBinding") or {}).get("elementId") and (el.get("endBinding") or {}).get("elementId"):
+                        _reroute_connector(index, el)
                 return {
+                    **extra_result,
                     "status": "updated",
                     "element_id": element_id,
                     "label_id": label_id,
@@ -824,9 +1015,22 @@ class SceneService:
 
         return self.state.apply(update)
 
-    def connect(self, source_id, target_id, label="", elbowed=False, **style):
+    def connect(self, source_id, target_id, label="", elbowed=None, **style):
         if source_id == target_id:
             raise SceneError("A connector requires two different elements")
+
+        routing_mode = style.pop("routing_mode", None)
+        s_face = style.pop("source_face", None)
+        t_face = style.pop("target_face", None)
+        if routing_mode is None:
+            if elbowed is True:
+                effective_mode = "orthogonal"
+            elif elbowed is False:
+                effective_mode = "straight"
+            else:
+                effective_mode = "auto"
+        else:
+            effective_mode = routing_mode
 
         def add_connection(document):
             index = _active(document)
@@ -835,32 +1039,10 @@ class SceneService:
                 raise SceneError(
                     "Connectors can target rectangle, ellipse or diamond elements"
                 )
-            source_node = {
-                "shape": source["type"],
-                "x": source["x"],
-                "y": source["y"],
-                "w": source["width"],
-                "h": source["height"],
-                "angle": source.get("angle", 0),
-            }
-            target_node = {
-                "shape": target["type"],
-                "x": target["x"],
-                "y": target["y"],
-                "w": target["width"],
-                "h": target["height"],
-                "angle": target.get("angle", 0),
-            }
-            if elbowed:
-                from .routing import route_orthogonal_connector
+            if effective_mode in ("orthogonal", "curved", "auto"):
+                from .routing import build_scene_routing_context, route_connector_scene_aware
 
-                shapes = [
-                    e
-                    for e in index.values()
-                    if e["type"] in SHAPES
-                    and not e.get("isDeleted")
-                    and (e.get("customData") or {}).get("type") not in ("code_block_header",)
-                ]
+                ctx = build_scene_routing_context(list(index.values()))
                 pair_arrows = [
                     e
                     for e in index.values()
@@ -873,29 +1055,57 @@ class SceneService:
                     == {source_id, target_id}
                 ]
                 slot_offset = len(pair_arrows) * 20.0
-                world_pts = route_orthogonal_connector(
+                pref_faces = (s_face, t_face) if (s_face and t_face) else None
+                world_pts, chosen = route_connector_scene_aware(
                     source,
                     target,
-                    obstacles=shapes,
-                    clearance=15.0,
+                    ctx,
+                    routing_mode=effective_mode,
                     s_offset=slot_offset,
                     t_offset=slot_offset,
+                    preferred_faces=pref_faces,
+                    clearance=15.0,
+                    parallel_count=len(pair_arrows) + 1,
+                    lane_offset=slot_offset,
                 )
                 start = world_pts[0]
                 end = world_pts[-1]
                 origin_x, origin_y = world_pts[0]
-                connector = arrow(origin_x, origin_y, end[0], end[1], elbowed=True, **style)
+                connector = arrow(
+                    origin_x, origin_y, end[0], end[1],
+                    elbowed=(chosen == "orthogonal"), routing_mode=routing_mode, **style,
+                )
+                if chosen == "curved":
+                    connector["roundness"] = {"type": 2}
                 connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
                 all_x = [pt[0] for pt in world_pts]
                 all_y = [pt[1] for pt in world_pts]
                 connector["width"] = max(all_x) - min(all_x)
                 connector["height"] = max(all_y) - min(all_y)
             else:
+                source_node = {
+                    "shape": source["type"],
+                    "x": source["x"],
+                    "y": source["y"],
+                    "w": source["width"],
+                    "h": source["height"],
+                    "angle": source.get("angle", 0),
+                }
+                target_node = {
+                    "shape": target["type"],
+                    "x": target["x"],
+                    "y": target["y"],
+                    "w": target["width"],
+                    "h": target["height"],
+                    "angle": target.get("angle", 0),
+                }
                 start, end = (
                     boundary_point(source_node, target_node, 1),
                     boundary_point(target_node, source_node, -1),
                 )
-                connector = arrow(*start, *end, elbowed=elbowed, **style)
+                connector = arrow(
+                    *start, *end, elbowed=False, routing_mode=routing_mode, **style
+                )
             connector["startBinding"] = {
                 "elementId": source_id,
                 "focus": 0,
@@ -921,7 +1131,7 @@ class SceneService:
                     **style,
                 )
                 bind_text(label_el, connector)
-                _center_label(label_el, connector)
+                _center_label(label_el, connector, index=index)
                 document["elements"].append(label_el)
                 label_id = label_el["id"]
             return {
@@ -1404,6 +1614,7 @@ class SceneService:
                 expected_revision=revision,
                 font_family=style.get("font_family"),
                 font_size=style.get("font_size"),
+                resolve=True,
             )
         else:
             result = self.draw_graph(
@@ -1414,8 +1625,8 @@ class SceneService:
                 expected_revision=revision,
                 font_family=style.get("font_family"),
                 font_size=style.get("font_size"),
+                resolve=True,
             )
-        self.resolve_layout()
         return {
             **result,
             "url": None,
@@ -1441,6 +1652,10 @@ class SceneService:
             if element_ids:
                 for eid in element_ids:
                     target = _require(index, eid)
+                    if target.get("containerId"):
+                        raise SceneError(
+                            f"Cannot add bound label '{eid}' directly to a frame; add its container instead"
+                        )
                     target["frameId"] = frame_el["id"]
                     lbl = _label_for(index, eid)
                     if lbl:
@@ -1784,12 +1999,16 @@ class SceneService:
                             "opacity",
                             "roughness",
                             "roundness",
+                            "font_family",
+                            "font_size",
+                            "fontFamily",
+                            "fontSize",
                         )
                         and v is not None
                     }
                     frame_id = resolve(op.get("frame_id"))
                     if frame_id:
-                        _require(index, frame_id)
+                        _validate_frame_id(index, frame_id)
                     els = _shape_elements(
                         shape,
                         x,
@@ -1893,6 +2112,11 @@ class SceneService:
                             "strokeStyle",
                             "opacity",
                             "roughness",
+                            "roundness",
+                            "startArrowhead",
+                            "endArrowhead",
+                            "start_arrowhead",
+                            "end_arrowhead",
                         )
                         and v is not None
                     }
@@ -2035,23 +2259,88 @@ class SceneService:
                         "h": target["height"],
                         "angle": target.get("angle", 0),
                     }
-                    start = boundary_point(source_node, target_node, 1)
-                    end = boundary_point(target_node, source_node, -1)
-                    elbowed = op.get("elbowed", False)
+                    elbowed = op.get("elbowed")
+                    op_routing_mode = op.get("routing_mode")
+                    if op_routing_mode is None:
+                        eff_op_mode = "orthogonal" if elbowed is True else "auto"
+                    else:
+                        eff_op_mode = op_routing_mode
                     style = {
                         k: v
                         for k, v in op.items()
                         if k
                         in (
                             "strokeColor",
+                            "backgroundColor",
                             "strokeWidth",
                             "strokeStyle",
                             "opacity",
                             "roughness",
+                            "roundness",
+                            "startArrowhead",
+                            "endArrowhead",
+                            "start_arrowhead",
+                            "end_arrowhead",
+                            "font_family",
+                            "font_size",
+                            "fontFamily",
+                            "fontSize",
+                            "source_face",
+                            "target_face",
                         )
                         and v is not None
                     }
-                    connector = arrow(*start, *end, elbowed=elbowed, **style)
+                    if eff_op_mode in ("orthogonal", "curved"):
+                        from .routing import build_scene_routing_context, route_connector_scene_aware
+
+                        ctx = build_scene_routing_context(list(index.values()))
+                        pair_arrows = [
+                            e
+                            for e in index.values()
+                            if e["type"] in ("arrow", "line")
+                            and not e.get("isDeleted")
+                            and {
+                                (e.get("startBinding") or {}).get("elementId"),
+                                (e.get("endBinding") or {}).get("elementId"),
+                            }
+                            == {source_id, target_id}
+                        ]
+                        slot_offset = len(pair_arrows) * 20.0
+                        sf = style.pop("source_face", None)
+                        tf = style.pop("target_face", None)
+                        pref = (sf, tf) if (sf and tf) else None
+                        world_pts, chosen = route_connector_scene_aware(
+                            source,
+                            target,
+                            ctx,
+                            routing_mode=eff_op_mode,
+                            s_offset=slot_offset,
+                            t_offset=slot_offset,
+                            preferred_faces=pref,
+                            clearance=15.0,
+                            parallel_count=len(pair_arrows) + 1,
+                            lane_offset=slot_offset,
+                        )
+                        start = world_pts[0]
+                        end = world_pts[-1]
+                        origin_x, origin_y = world_pts[0]
+                        connector = arrow(
+                            origin_x, origin_y, end[0], end[1],
+                            elbowed=(chosen == "orthogonal"), routing_mode=op_routing_mode, **style,
+                        )
+                        if chosen == "curved":
+                            connector["roundness"] = {"type": 2}
+                        connector["points"] = [[pt[0] - origin_x, pt[1] - origin_y] for pt in world_pts]
+                        all_x = [pt[0] for pt in world_pts]
+                        all_y = [pt[1] for pt in world_pts]
+                        connector["width"] = max(all_x) - min(all_x)
+                        connector["height"] = max(all_y) - min(all_y)
+                    else:
+                        start = boundary_point(source_node, target_node, 1)
+                        end = boundary_point(target_node, source_node, -1)
+                        connector = arrow(
+                            *start, *end, elbowed=False, routing_mode=op_routing_mode, **style
+                        )
                     connector["startBinding"] = {
                         "elementId": source_id,
                         "focus": 0,
@@ -2281,7 +2570,7 @@ class SceneService:
                             if tgt_lbl:
                                 tgt_lbl["frameId"] = None
                         else:
-                            _require(index, target_frame_id)
+                            _validate_frame_id(index, target_frame_id)
                             el["frameId"] = target_frame_id
                             tgt_lbl = _label_for(index, eid)
                             if tgt_lbl:
@@ -2289,42 +2578,14 @@ class SceneService:
                     if el["type"] == "frame" and label is not None:
                         el["name"] = label
                     elif el["type"] == "text":
+                        from .fonts import measure_text_dimensions
+
                         cid = el.get("containerId")
                         container = index.get(cid) if cid else None
                         if f_fam is not None:
-                            el["fontFamily"] = normalize_font_family(f_fam)
-                            if isinstance(f_fam, str) and f_fam.strip().lower() not in (
-                                "1",
-                                "2",
-                                "3",
-                                "4",
-                                "excalifont",
-                                "virgil",
-                                "sans-serif",
-                                "sans",
-                                "helvetica",
-                                "normal",
-                                "monospace",
-                                "mono",
-                                "code",
-                                "cascadia",
-                                "comic-shanns",
-                                "comic",
-                                "comic shanns",
-                                "handwriting",
-                                "hand-drawn",
-                                "hand",
-                            ):
-                                el.setdefault("customData", {})["fontFamily"] = f_fam.strip()
-                            elif "customData" in el and "fontFamily" in el["customData"]:
-                                el["customData"]["fontFamily"] = str(f_fam)
+                            _apply_font_family(el, f_fam)
                         if f_size is not None:
                             el["fontSize"] = f_size
-                            lines = el["text"].split("\n")
-                            el["width"] = max(map(len, lines)) * el["fontSize"] * 0.6
-                            el["height"] = len(lines) * el["fontSize"] * el.get("lineHeight", 1.25)
-                            if container:
-                                _center_label(el, container)
                         if label is not None:
                             if not label:
                                 if container is None:
@@ -2339,20 +2600,20 @@ class SceneService:
                                 index.pop(el["id"], None)
                             else:
                                 el["text"] = el["originalText"] = label
-                                el["width"] = (
-                                    max(map(len, label.split("\n")))
-                                    * el["fontSize"]
-                                    * 0.6
-                                )
-                                el["height"] = (
-                                    len(label.split("\n"))
-                                    * el["fontSize"]
-                                    * el["lineHeight"]
-                                )
-                                if container:
-                                    _center_label(el, container)
+                        if label is None or label:
+                            eff_ff = (el.get("customData") or {}).get("fontFamily") or el.get("fontFamily")
+                            tw, th, _ = measure_text_dimensions(
+                                el["text"], font_family=eff_ff, font_size=el.get("fontSize", 20)
+                            )
+                            el["width"] = tw
+                            el["height"] = th
+                            if container:
+                                _center_label(el, container)
                         el.update(updates)
                     else:
+                        from .fonts import measure_text_dimensions
+                        from .layout import wrap_text_to_shape
+
                         target = _label_for(index, eid)
                         if label is not None:
                             if target is None and label:
@@ -2366,14 +2627,34 @@ class SceneService:
                                     ),
                                 }
                                 fs = f_size if f_size is not None else (14 if el["type"] == "arrow" else 20)
+                                c_type = el["type"]
+                                c_w = float(el.get("width", 100.0))
+                                c_h = float(el.get("height", 100.0))
+                                wrapped_lbl = (
+                                    wrap_text_to_shape(label, shape=c_type, target_w=c_w, font_size=fs, font_family=f_fam)
+                                    if c_type in ("rectangle", "ellipse", "diamond")
+                                    else label
+                                )
                                 target = text(
                                     el["x"],
                                     el["y"],
-                                    label,
+                                    wrapped_lbl,
                                     fontSize=fs,
                                     fontFamily=f_fam or 2,
                                     **lbl_style,
                                 )
+                                tw, th, _ = measure_text_dimensions(
+                                    wrapped_lbl, font_family=f_fam or target.get("fontFamily"), font_size=fs
+                                )
+                                target["width"] = tw
+                                target["height"] = th
+                                if c_type in ("rectangle", "ellipse", "diamond"):
+                                    min_w, min_h = required_container_size(c_type, tw, th)
+                                    if min_w > c_w or min_h > c_h:
+                                        new_w, new_h = max(c_w, min_w), max(c_h, min_h)
+                                        el["x"] = (el["x"] + c_w / 2.0) - new_w / 2.0
+                                        el["y"] = (el["y"] + c_h / 2.0) - new_h / 2.0
+                                        el["width"], el["height"] = new_w, new_h
                                 if el.get("frameId"):
                                     target["frameId"] = el["frameId"]
                                 bind_text(target, el)
@@ -2388,30 +2669,61 @@ class SceneService:
                                 ]
                                 index.pop(target["id"], None)
                             elif target is not None:
-                                target["text"] = target["originalText"] = label
                                 if f_size is not None:
                                     target["fontSize"] = f_size
                                 if f_fam is not None:
-                                    target["fontFamily"] = normalize_font_family(f_fam)
-                                target["width"] = (
-                                    max(map(len, label.split("\n")))
-                                    * target["fontSize"]
-                                    * 0.6
+                                    _apply_font_family(target, f_fam)
+                                c_type = el["type"]
+                                c_w = float(el.get("width", 100.0))
+                                c_h = float(el.get("height", 100.0))
+                                eff_ff = (target.get("customData") or {}).get("fontFamily") or target.get("fontFamily")
+                                eff_fs = target.get("fontSize", 20)
+                                wrapped = (
+                                    wrap_text_to_shape(label, shape=c_type, target_w=c_w, font_size=eff_fs, font_family=eff_ff)
+                                    if c_type in ("rectangle", "ellipse", "diamond")
+                                    else label
                                 )
-                                target["height"] = (
-                                    len(label.split("\n"))
-                                    * target["fontSize"]
-                                    * target["lineHeight"]
-                                )
+                                target["text"] = target["originalText"] = wrapped
+                                tw, th, _ = measure_text_dimensions(wrapped, font_family=eff_ff, font_size=eff_fs)
+                                target["width"] = tw
+                                target["height"] = th
+                                if c_type in ("rectangle", "ellipse", "diamond"):
+                                    min_w, min_h = required_container_size(c_type, tw, th)
+                                    if min_w > c_w or min_h > c_h:
+                                        new_w, new_h = max(c_w, min_w), max(c_h, min_h)
+                                        el["x"] = (el["x"] + c_w / 2.0) - new_w / 2.0
+                                        el["y"] = (el["y"] + c_h / 2.0) - new_h / 2.0
+                                        el["width"], el["height"] = new_w, new_h
                                 _center_label(target, el)
                         elif target is not None:
                             if f_size is not None:
                                 target["fontSize"] = f_size
                             if f_fam is not None:
-                                target["fontFamily"] = normalize_font_family(f_fam)
-                            lines = target["text"].split("\n")
-                            target["width"] = max(map(len, lines)) * target["fontSize"] * 0.6
-                            target["height"] = len(lines) * target["fontSize"] * target.get("lineHeight", 1.25)
+                                _apply_font_family(target, f_fam)
+                            c_type = el.get("type", "rectangle")
+                            c_w = float(el.get("width", 100.0))
+                            c_h = float(el.get("height", 100.0))
+                            eff_ff = (target.get("customData") or {}).get("fontFamily") or target.get("fontFamily")
+                            eff_fs = target.get("fontSize", 20)
+                            if c_type in ("rectangle", "ellipse", "diamond"):
+                                wrapped = wrap_text_to_shape(
+                                    target.get("originalText", target["text"]),
+                                    shape=c_type,
+                                    target_w=c_w,
+                                    font_size=eff_fs,
+                                    font_family=eff_ff,
+                                )
+                                target["text"] = wrapped
+                            tw, th, _ = measure_text_dimensions(target["text"], font_family=eff_ff, font_size=eff_fs)
+                            target["width"] = tw
+                            target["height"] = th
+                            if c_type in ("rectangle", "ellipse", "diamond"):
+                                min_w, min_h = required_container_size(c_type, tw, th)
+                                if min_w > c_w or min_h > c_h:
+                                    new_w, new_h = max(c_w, min_w), max(c_h, min_h)
+                                    el["x"] = (el["x"] + c_w / 2.0) - new_w / 2.0
+                                    el["y"] = (el["y"] + c_h / 2.0) - new_h / 2.0
+                                    el["width"], el["height"] = new_w, new_h
                             _center_label(target, el)
                         el.update(updates)
                     results.append(
@@ -2445,7 +2757,7 @@ class SceneService:
                         if el["id"] not in removed
                     ]
                     for el in document["elements"]:
-                        if el.get("frameId") == eid:
+                        if el.get("frameId") in removed:
                             el["frameId"] = None
                         if el["type"] == "arrow" and not el.get("isDeleted"):
                             for end in ("startBinding", "endBinding"):
@@ -2721,7 +3033,7 @@ class SceneService:
                             document["appState"] = fix_res["document"]["appState"]
                         index.clear()
                         index.update(
-                            {el["id"]: el for el in document["elements"] if el.get("id")}
+                            {el["id"]: el for el in document["elements"] if el.get("id") and not el.get("isDeleted")}
                         )
                     fix_res_clean = {k: v for k, v in fix_res.items() if k != "document"}
                     results.append({"action": "auto_fix_layout", **fix_res_clean})
@@ -2750,13 +3062,15 @@ class SceneService:
         clusters=None,
         layout="layered",
         direction="horizontal",
-        elbowed=False,
+        elbowed=None,
         roundness=None,
         style=None,
         expected_revision=None,
         font_family=None,
         font_size=None,
         cycle_fallback=False,
+        resolve=False,
+        routing_mode=None,
     ):
         style = dict(style or {})
         if roundness is not None:
@@ -2978,15 +3292,37 @@ class SceneService:
                 "strokeStyle",
                 "opacity",
                 "roughness",
+                "roundness",
+                "startArrowhead",
+                "endArrowhead",
+                "start_arrowhead",
+                "end_arrowhead",
                 "fontFamily",
                 "font_family",
                 "fontSize",
                 "font_size",
+                "source_face",
+                "target_face",
             ):
                 if edge.get(k) is not None:
                     edge_style[k] = edge[k]
-            edge_elbowed = edge.get("elbowed", elbowed)
-            connector = arrow(*start, *end, elbowed=edge_elbowed, **edge_style)
+            diag_mode = routing_mode
+            if diag_mode is None:
+                if elbowed is True:
+                    diag_mode = "orthogonal"
+                else:
+                    diag_mode = "auto"
+            if edge.get("routing_mode") is not None:
+                edge_mode = edge["routing_mode"]
+            elif edge.get("elbowed") is True:
+                edge_mode = "orthogonal"
+            elif edge.get("elbowed") is False:
+                edge_mode = "straight"
+            else:
+                edge_mode = diag_mode
+            edge_elbowed = edge_mode == "orthogonal"
+            stored_mode = edge.get("routing_mode") or routing_mode
+            connector = arrow(*start, *end, elbowed=edge_elbowed, routing_mode=stored_mode, **edge_style)
             connector["startBinding"] = {
                 "elementId": id_map[edge["source"]]["element_id"],
                 "focus": 0,
@@ -3024,7 +3360,24 @@ class SceneService:
                 "element_id": connector["id"],
                 "label_id": label_id,
             }
-        self.state.replace(new_document(elements), expected_revision=revision)
+        if any(
+            e.get("type") == "arrow"
+            and (
+                e.get("elbowed")
+                or (e.get("customData") or {}).get("routing_mode") in ("auto", "orthogonal", "curved")
+            )
+            for e in elements
+        ) or routing_mode in ("auto", "orthogonal", "curved"):
+            from .routing import reroute_scene_arrows
+
+            only_elb = routing_mode is None and elbowed is None and any(e.get("elbowed") for e in elements)
+            reroute_scene_arrows(elements, clearance=15.0, only_elbowed=only_elb)
+        doc = new_document(elements)
+        if resolve:
+            from .layout import resolve_scene_layout
+
+            doc = resolve_scene_layout(doc)
+        self.state.replace(doc, expected_revision=revision)
         result = {
             "status": "graph drawn",
             "nodes": len(nodes),
@@ -3190,8 +3543,10 @@ class SceneService:
         mermaid_code: str,
         direction: str | None = None,
         layout: str = "layered",
-        elbowed: bool = False,
+        elbowed: bool | None = None,
         roundness: str | None = None,
+        style: dict[str, Any] | None = None,
+        routing_mode: str | None = None,
     ):
         from .mermaid import parse_mermaid
 
@@ -3210,7 +3565,9 @@ class SceneService:
             direction=parsed_direction,
             elbowed=elbowed,
             roundness=roundness,
+            style=style,
             cycle_fallback=True,
+            routing_mode=routing_mode,
         )
 
     def get_viewport(self):
@@ -3423,6 +3780,8 @@ class SceneService:
                 )
 
             elif el["type"] == "arrow":
+                from .routing import build_scene_routing_context, recommend_routing_mode, resolve_arrow_routing_mode
+
                 src = (el.get("startBinding") or {}).get("elementId")
                 tgt = (el.get("endBinding") or {}).get("elementId")
                 if src:
@@ -3430,6 +3789,11 @@ class SceneService:
                 if tgt:
                     connected_shape_ids.add(tgt)
                 lbl = _label_for(index, el["id"])
+                r_mode = resolve_arrow_routing_mode(el)
+                rec_mode = r_mode
+                if src in index and tgt in index:
+                    r_ctx = build_scene_routing_context(elements, exclude_arrow_ids={el["id"]})
+                    rec_mode = recommend_routing_mode(index[src], index[tgt], r_ctx)
                 connectors.append(
                     {
                         "id": el["id"],
@@ -3437,6 +3801,8 @@ class SceneService:
                         "target": tgt,
                         "label": lbl.get("text") if lbl else None,
                         "elbowed": el.get("elbowed", False),
+                        "routing_mode": r_mode,
+                        "recommended_routing_mode": rec_mode,
                     }
                 )
 
@@ -3681,6 +4047,8 @@ class SceneService:
         connections = []
         for el in elements:
             if el["type"] == "arrow":
+                from .routing import build_scene_routing_context, recommend_routing_mode, resolve_arrow_routing_mode
+
                 src = (el.get("startBinding") or {}).get("elementId")
                 tgt = (el.get("endBinding") or {}).get("elementId")
                 src_lbl = (
@@ -3694,6 +4062,11 @@ class SceneService:
                     else (index.get(tgt, {}).get("text") if tgt in index else tgt)
                 )
                 lbl = _label_for(index, el["id"])
+                r_mode = resolve_arrow_routing_mode(el)
+                rec_mode = r_mode
+                if src in index and tgt in index:
+                    r_ctx = build_scene_routing_context(elements, exclude_arrow_ids={el["id"]})
+                    rec_mode = recommend_routing_mode(index[src], index[tgt], r_ctx)
                 edge_info = {
                     "arrow_id": el["id"],
                     "source_id": src,
@@ -3702,6 +4075,8 @@ class SceneService:
                     "target_label": tgt_lbl,
                     "label": lbl.get("text") if lbl else None,
                     "elbowed": el.get("elbowed", False),
+                    "routing_mode": r_mode,
+                    "recommended_routing_mode": rec_mode,
                 }
                 connections.append(edge_info)
 

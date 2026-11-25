@@ -9,7 +9,16 @@ Coordinate = Annotated[float, Field(strict=True, ge=-100_000, le=100_000)]
 Dimension = Annotated[float, Field(strict=True, gt=0, le=100_000)]
 Label = Annotated[str, Field(strict=True, max_length=2_000)]
 ElementId = Annotated[str, Field(strict=True, min_length=1, max_length=200)]
-Color = Annotated[str, Field(strict=True, pattern=r"^(?:transparent|#[0-9A-Fa-f]{3,8})$")]
+Color = Annotated[
+    str,
+    Field(
+        strict=True,
+        pattern=r"^(?:transparent|#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{4}|#[0-9A-Fa-f]{6}|#[0-9A-Fa-f]{8})$",
+    ),
+]
+MinGap = Annotated[float, Field(strict=True, ge=0, le=1000)]
+Zoom = Annotated[float, Field(strict=True, ge=0.01, le=50.0)]
+Port = Annotated[int, Field(strict=True, ge=1, le=65535)]
 Boolean = Annotated[bool, Field(strict=True)]
 SceneName = Annotated[
     str,
@@ -58,6 +67,8 @@ NonEmptyText = Annotated[
 ]
 RepairScope = Literal["all", "overlaps", "connectors", "containment", "text", "spacing"]
 Aggressiveness = Literal["gentle", "balanced", "aggressive"]
+RoutingMode = Literal["auto", "straight", "orthogonal", "curved"]
+ConnectorFace = Literal["top", "bottom", "left", "right"]
 
 
 class GraphNode(BaseModel):
@@ -89,7 +100,11 @@ class GraphEdge(BaseModel):
     source: ElementId
     target: ElementId
     label: Label = ""
-    elbowed: Boolean = False
+    elbowed: Boolean | None = None
+    routing_mode: RoutingMode | None = None
+    roundness: Roundness | None = None
+    source_face: ConnectorFace | None = None
+    target_face: ConnectorFace | None = None
     startArrowhead: Arrowhead | None = None
     endArrowhead: Arrowhead | None = None
     strokeColor: Color | None = None
@@ -208,6 +223,9 @@ class BatchOperation(BaseModel):
     font_family: FontFamily | None = None
     line_numbers: bool | None = None
     elbowed: bool | None = None
+    routing_mode: RoutingMode | None = None
+    source_face: ConnectorFace | None = None
+    target_face: ConnectorFace | None = None
     roundness: Roundness | None = None
     strokeColor: str | None = None
     backgroundColor: str | None = None

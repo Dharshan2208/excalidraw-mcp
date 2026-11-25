@@ -227,6 +227,72 @@ class MCPExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data["status"], "graph drawn")
             self.assertEqual(data["nodes"], 2)
 
+    async def test_update_element_is_atomic_on_error_and_single_undo(self):
+        service = SceneService()
+        server = create_server(service, toolset="core")
+        created = service.add_shape("rectangle", 10, 20, 100, 80, label="Old")
+        eid = created["rectangle_id"]
+        rev_before = service.state.revision
+
+        async with Client(server) as client:
+            res = await client.call_tool(
+                "update_element",
+                {
+                    "element_id": eid,
+                    "x": 200,
+                    "y": 300,
+                    "width": 250,
+                    "height": 150,
+                    "frame_id": "nonexistent",
+                },
+                raise_on_error=False,
+            )
+            self.assertTrue(res.is_error)
+            self.assertEqual(service.state.revision, rev_before)
+            el = service.state.get(eid)
+            self.assertEqual((el["x"], el["y"], el["width"], el["height"]), (10, 20, 100, 80))
+
+            ok_res = await client.call_tool(
+                "update_element",
+                {"element_id": eid, "x": 200, "y": 300, "width": 250, "height": 150, "label": "New"},
+            )
+            self.assertFalse(ok_res.is_error)
+            self.assertEqual(service.state.revision, rev_before + 1)
+
+    async def test_generate_diagram_forwards_styles_and_connector_rejects_mixed_modes(self):
+        service = SceneService()
+        server = create_server(service, toolset="full")
+        async with Client(server) as client:
+            res = await client.call_tool(
+                "generate_diagram",
+                {
+                    "format": "graph",
+                    "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+                    "edges": [{"source": "a", "target": "b"}],
+                    "strokeColor": "#1971c2",
+                    "backgroundColor": "#e7f5ff",
+                },
+            )
+            self.assertFalse(res.is_error)
+            data = json.loads(res.content[0].text)
+            a_el = service.state.get(data["node_map"]["a"]["element_id"])
+            self.assertEqual(a_el["strokeColor"], "#1971c2")
+            self.assertEqual(a_el["backgroundColor"], "#e7f5ff")
+
+            mixed = await client.call_tool(
+                "create_connector",
+                {
+                    "source_id": data["node_map"]["a"]["element_id"],
+                    "target_id": data["node_map"]["b"]["element_id"],
+                    "x": 0,
+                    "y": 0,
+                    "x2": 100,
+                    "y2": 100,
+                },
+                raise_on_error=False,
+            )
+            self.assertTrue(mixed.is_error)
+
 
 if __name__ == "__main__":
     unittest.main()

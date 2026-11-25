@@ -56,9 +56,12 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(normalize_document(document), document)
 
     def test_multiline_text_and_bound_alignment(self):
+        from excalidraw_mcp.fonts import measure_text_dimensions
+
         label = text(25, 25, "API\n日本語", fontSize=20)
         self.assertEqual(label["height"], 50)
-        self.assertEqual(label["width"], 36)
+        expected_w, _, _ = measure_text_dimensions("API\n日本語", font_family=2, font_size=20)
+        self.assertAlmostEqual(label["width"], expected_w, places=1)
         self.assertEqual(label["originalText"], "API\n日本語")
         self.assertEqual(label["fontFamily"], 2)
         container = rect(0, 0, 100, 100)

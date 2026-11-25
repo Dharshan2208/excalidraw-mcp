@@ -114,6 +114,7 @@ class StateTests(unittest.TestCase):
 
     def test_read_waits_for_complete_transaction(self):
         result = self.service.add_shape("rectangle", 0, 0, 100, 100, "label")
+        initial_label_x = self.state.get(result["label_id"])["x"]
         edited, release, reading = Event(), Event(), Event()
 
         def mutate(document):
@@ -139,7 +140,7 @@ class StateTests(unittest.TestCase):
             writer.result(timeout=3)
             snapshot = reader.result(timeout=3)
         self.assertEqual(snapshot["elements"][0]["x"], 100)
-        self.assertEqual(snapshot["elements"][1]["x"], 120)
+        self.assertEqual(snapshot["elements"][1]["x"], initial_label_x + 100)
         self.assertEqual(snapshot["elements"][1]["containerId"], result["rectangle_id"])
 
     def test_replacement_revision_guard_preserves_newer_work(self):

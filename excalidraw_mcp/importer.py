@@ -259,7 +259,7 @@ def import_scene(
     # Merge mode
     def apply_merge(current_document: dict[str, Any]) -> dict[str, Any]:
         existing_elements = current_document.get("elements", [])
-        existing_ids = {el["id"] for el in existing_elements if not el.get("isDeleted")}
+        existing_ids = {el["id"] for el in existing_elements if el.get("id")}
 
         id_map: dict[str, str] = {}
         # Identify duplicate IDs and generate collision-free replacements

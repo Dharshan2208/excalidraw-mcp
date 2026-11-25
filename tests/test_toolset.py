@@ -248,6 +248,44 @@ class Phase2ConsolidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("move", tools)
         self.assertNotIn("resize", tools)
 
+    async def test_batch_mutate_exposes_batch_operation_schema_and_matches_service_parity(self):
+        from excalidraw_mcp.service import SceneService
+        service = SceneService()
+        server = create_server(service, toolset="core")
+        batch_tool = await server.get_tool("batch_mutate")
+        schema_str = json.dumps(batch_tool.parameters)
+        self.assertIn("add_code_block", schema_str)
+        self.assertIn("connect", schema_str)
+
+        async with Client(server) as client:
+            res = await client.call_tool(
+                "batch_mutate",
+                {
+                    "operations": [
+                        {"action": "add_rectangle", "client_id": "a", "x": 100, "y": 100, "w": 100, "h": 60, "label": "A", "font_size": 14},
+                        {"action": "add_rectangle", "client_id": "obs", "x": 250, "y": 80, "w": 100, "h": 100, "label": "Obs"},
+                        {"action": "add_rectangle", "client_id": "b", "x": 420, "y": 100, "w": 100, "h": 60, "label": "B"},
+                        {"action": "connect", "client_id": "conn", "source_id": "a", "target_id": "b", "elbowed": True, "endArrowhead": "diamond"},
+                    ]
+                },
+            )
+            self.assertFalse(res.is_error)
+            data = json.loads(res.content[0].text)
+            conn_el = service.state.get(data["ref_map"]["conn"])
+            self.assertGreater(len(conn_el["points"]), 2)
+            self.assertEqual(conn_el["endArrowhead"], "diamond")
+
+            bad_frame = await client.call_tool(
+                "batch_mutate",
+                {
+                    "operations": [
+                        {"action": "update_element", "element_id": data["ref_map"]["a"], "frame_id": data["ref_map"]["b"]}
+                    ]
+                },
+                raise_on_error=False,
+            )
+            self.assertTrue(bad_frame.is_error)
+
 
 if __name__ == "__main__":
     unittest.main()

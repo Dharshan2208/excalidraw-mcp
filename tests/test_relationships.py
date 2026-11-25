@@ -134,7 +134,8 @@ class RelationshipTests(unittest.TestCase):
         self.assertEqual(self.state.all(), [])
 
     def test_unsupported_connector_edit_rolls_back_whole_move(self):
-        for property_name, value in (("elbowed", True), ("angle", 0.5)):
+        # elbowed=True is now supported via rerouting; rotated (angle != 0) remains unsupported
+        for property_name, value in (("angle", 0.5),):
             a, _, connector, _ = self.connected_scene()
             document = self.state.document()
             next(el for el in document["elements"] if el["id"] == connector)[

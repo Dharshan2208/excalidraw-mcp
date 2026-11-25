@@ -126,8 +126,8 @@ class TextContainmentTests(unittest.TestCase):
             rect_after["y"] + rect_after["height"] / 2.0,
         )
 
-        # Shape width and height expanded
-        self.assertGreater(rect_after["width"], rect_before["width"])
+        # Shape expanded (height grows for wrapped lines; width stays >= original)
+        self.assertGreaterEqual(rect_after["width"], rect_before["width"])
         self.assertGreater(rect_after["height"], rect_before["height"])
 
         # Center point was preserved (within floating point precision)
@@ -160,6 +160,30 @@ class TextContainmentTests(unittest.TestCase):
         w, h = shape_dimensions("rectangle", "日本語認証サーバー", font_size=20)
         self.assertGreater(w, 180.0)
         self.assertGreater(h, 60.0)
+
+    def test_add_text_uses_actual_font_metrics(self):
+        """Regression for BUG-010: text() must use measure_text_dimensions, not 0.6 * len."""
+        w_wide = self.service.state.get(self.service.add_text(0, 0, "WWWWWWWWWW", font_size=20)["text_id"])["width"]
+        w_narrow = self.service.state.get(self.service.add_text(0, 0, "iiiiiiiiii", font_size=20)["text_id"])["width"]
+        self.assertGreater(w_wide, w_narrow)
+        expected_w, _, _ = measure_text_dimensions("WWWWWWWWWW", font_family=2, font_size=20)
+        self.assertAlmostEqual(w_wide, expected_w, places=1)
+
+    def test_wrap_text_to_shape_wraps_narrow_containers(self):
+        """Regression for BUG-011: narrow shapes must wrap below 20 chars using pixel width."""
+        wrapped = wrap_text_to_shape("ABCDEFGHIJKLMNOPQRST", shape="rectangle", target_w=100, font_size=20)
+        self.assertIn("\n", wrapped)
+        for line in wrapped.splitlines():
+            lw, _, _ = measure_text_dimensions(line, font_size=20)
+            self.assertLessEqual(lw, 70.0)
+
+    def test_required_container_size_diamond_satisfies_rhombus_inequality(self):
+        """Regression for BUG-012: diamond required_container_size must satisfy tw/W + th/H <= 1.0."""
+        from excalidraw_mcp.text_padding import required_container_size
+
+        for tw, th in ((400.0, 120.0), (200.0, 200.0), (80.0, 30.0)):
+            w, h = required_container_size("diamond", tw, th)
+            self.assertLess((tw / w) + (th / h), 1.0)
 
 
 if __name__ == "__main__":

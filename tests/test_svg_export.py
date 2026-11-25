@@ -158,6 +158,36 @@ class SvgExportMcpToolTests(unittest.IsolatedAsyncioTestCase):
                 root = ET.fromstring(content)
                 self.assertEqual(root.tag, "{http://www.w3.org/2000/svg}svg")
 
+    def test_svg_multipoint_arrow_label_uses_placed_coordinates_and_text_align(self):
+        """Regression for ARCH-001: SVG must place multi-point arrow labels at t.x/t.y and honor textAlign."""
+        from excalidraw_mcp.elements import arrow, text
+        from excalidraw_mcp.models import new_document
+        from excalidraw_mcp.svg_renderer import render_scene_svg
+
+        arr = arrow(0, 0, 200, 0, elbowed=True)
+        arr["points"] = [[0, 0], [0, 120], [200, 120], [200, 0]]
+        arr["width"] = 200
+        arr["height"] = 120
+        lbl = text(60, 110, "Detour", fontSize=14)
+        lbl["containerId"] = arr["id"]
+        lbl["width"] = 80.0
+        lbl["height"] = 20.0
+        arr["boundElements"] = [{"id": lbl["id"], "type": "text"}]
+
+        standalone = text(100, 200, "Centered", fontSize=20)
+        standalone["textAlign"] = "center"
+        standalone["width"] = 100.0
+
+        svg_str, _, _ = render_scene_svg(new_document([arr, lbl, standalone]), padding=40)
+        root = ET.fromstring(svg_str)
+        ns = {"svg": "http://www.w3.org/2000/svg"}
+        texts = {("".join(el.itertext())).strip(): el for el in root.findall(".//svg:text", ns)}
+        detour_el = next(el for k, el in texts.items() if "Detour" in k)
+        # Placed label center is at y = 110 + 10 = 120 (plus padding offset 40 = 160), NOT chord y=0 (40)
+        self.assertGreater(float(detour_el.attrib["y"]), 100.0)
+        centered_el = next(el for k, el in texts.items() if "Centered" in k)
+        self.assertEqual(centered_el.attrib.get("text-anchor"), "middle")
+
 
 if __name__ == "__main__":
     unittest.main()

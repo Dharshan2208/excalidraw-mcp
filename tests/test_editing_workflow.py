@@ -94,6 +94,34 @@ class EditingWorkflowTests(unittest.TestCase):
             self.assertEqual(json.loads(self.service.read_saved_scene("alpha")), before)
             self.assertEqual(self.state.revision, revision)
 
+    def test_draw_architecture_is_single_undo_step(self):
+        self.service.draw_architecture("box: API, box: DB")
+        self.assertEqual(self.state.revision, 1)
+        self.service.undo()
+        self.assertEqual(self.state.all(), [])
+
+    def test_move_grouped_bound_label_is_not_double_translated(self):
+        r1 = self.service.add_shape("rectangle", 100, 100, 120, 80, label="Node")
+        self.service.group_elements([r1["rectangle_id"], r1["label_id"]])
+        before_lbl = self.state.get(r1["label_id"])
+        self.service.move(r1["rectangle_id"], 200, 250)
+        after_lbl = self.state.get(r1["label_id"])
+        self.assertAlmostEqual(after_lbl["x"] - before_lbl["x"], 100.0)
+        self.assertAlmostEqual(after_lbl["y"] - before_lbl["y"], 150.0)
+
+    def test_add_shape_and_text_validate_frame_id(self):
+        with self.assertRaises(SceneError):
+            self.service.add_shape("rectangle", 0, 0, 100, 100, frame_id="missing-frame")
+        with self.assertRaises(SceneError):
+            self.service.add_text(0, 0, "hello", frame_id="missing-frame")
+
+    def test_update_element_clears_stale_custom_font_family_on_container(self):
+        r = self.service.add_shape("rectangle", 0, 0, 140, 80, label="Hello", font_family="JetBrains Mono")
+        self.service.update_element(r["rectangle_id"], font_family="sans-serif")
+        lbl = self.state.get(r["label_id"])
+        self.assertEqual(lbl["fontFamily"], 2)
+        self.assertNotIn("fontFamily", lbl.get("customData") or {})
+
 
 if __name__ == "__main__":
     unittest.main()

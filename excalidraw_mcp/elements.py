@@ -166,8 +166,15 @@ def text(
         custom_data["fontFamily"] = ff.strip()
 
     lines = content.split("\n")
-    text_w = max(map(len, lines)) * fs * 0.6 if lines else 20.0
-    text_h = len(lines) * fs * 1.25 if lines else float(fs) * 1.25
+    try:
+        from .fonts import measure_text_dimensions
+
+        eff_ff = custom_data.get("fontFamily", ff) if custom_data else ff
+        text_w, text_h, _ = measure_text_dimensions(content, font_family=eff_ff, font_size=fs)
+        text_w = max(text_w, 1.0)
+    except Exception:
+        text_w = max(map(len, lines)) * fs * 0.6 if lines else 20.0
+        text_h = len(lines) * fs * 1.25 if lines else float(fs) * 1.25
 
     el = {
         "id": str(uuid.uuid4()),
@@ -193,9 +200,25 @@ def text(
 
 
 def arrow(x, y, x2, y2, elbowed=False, **style):
+    routing_mode = style.pop("routing_mode", style.pop("routingMode", None))
+    source_face = style.pop("source_face", style.pop("sourceFace", None))
+    target_face = style.pop("target_face", style.pop("targetFace", None))
     is_elbowed = bool(style.pop("elbowed", elbowed))
+    if routing_mode == "orthogonal":
+        is_elbowed = True
+    elif routing_mode in ("straight", "curved"):
+        is_elbowed = False
+    if routing_mode == "curved" and "roundness" not in style:
+        style["roundness"] = "round"
     start_arrowhead = style.pop("startArrowhead", style.pop("start_arrowhead", None))
     end_arrowhead = style.pop("endArrowhead", style.pop("end_arrowhead", "arrow"))
+    custom_data = dict(style.pop("customData", None) or {})
+    if routing_mode is not None:
+        custom_data["routing_mode"] = routing_mode
+    if source_face is not None:
+        custom_data["source_face"] = source_face
+    if target_face is not None:
+        custom_data["target_face"] = target_face
     el = {
         "id": str(uuid.uuid4()),
         "type": "arrow",
@@ -211,6 +234,8 @@ def arrow(x, y, x2, y2, elbowed=False, **style):
         "lastCommittedPoint": None,
         "elbowed": is_elbowed,
     }
+    if custom_data:
+        el["customData"] = custom_data
     _apply_style(el, style)
     return el
 

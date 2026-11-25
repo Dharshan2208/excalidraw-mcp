@@ -83,10 +83,12 @@ class AuditFixesServiceTests(unittest.TestCase):
             "type": "arrow",
             "x": 100,
             "y": 50,
+            "width": 200,
+            "height": 0,
             "points": [[0, 0], [200, 0]],
             "startBinding": {"elementId": shape_a["id"]},
             "endBinding": {"elementId": shape_b["id"]},
-            "elbowed": True,
+            "angle": 0.5,
         }
         self.state.replace(new_document([shape_a, shape_b, arr]))
         with self.assertRaisesRegex(SceneError, "not supported yet"):

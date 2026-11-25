@@ -1429,6 +1429,55 @@ class AutoFixAdversarialStressAndEdgeCaseTests(unittest.TestCase):
         res = self.service.auto_fix_layout(min_gap=1000)
         self.assertIn(res["status"], ("repaired", "partially_repaired", "no_changes_needed"))
 
+    def test_diagnose_and_repair_multiple_shapes_uses_each_shapes_own_bound_text(self):
+        """Regression for BUG-001: diagnose/repair must check each shape's own bound text, not texts[-1]."""
+        r1 = self.service.add_shape("rectangle", 100, 100, 180, 80, label="Very Long Overflowing Microservice Coordinator Label")
+        self.service.resize(r1["rectangle_id"], width=70, height=30)
+        r2 = self.service.add_shape("rectangle", 400, 100, 220, 100, label="OK")
+
+        doc = self.service.state.document()
+        issues = diagnose_layout_issues(doc)
+        text_clips = [i for i in issues if i["type"] == "text_clipping"]
+        self.assertEqual(len(text_clips), 1)
+        self.assertEqual(text_clips[0]["details"]["shape_id"], r1["rectangle_id"])
+        self.assertEqual(text_clips[0]["details"]["text_id"], r1["label_id"])
+
+        repaired = auto_fix_scene_layout(doc, repair_scope="text")
+        self.assertEqual(repaired["status"], "repaired")
+        elems = {e["id"]: e for e in repaired["document"]["elements"]}
+        self.assertGreater(elems[r1["rectangle_id"]]["width"], 70.0)
+        self.assertEqual(elems[r2["rectangle_id"]]["width"], 220.0)
+        # r2's label must remain centered inside r2, not moved to r1
+        self.assertGreater(elems[r2["label_id"]]["x"], 400.0)
+
+    def test_scoped_overlaps_reports_partially_repaired_when_locked_overlap_remains(self):
+        """Regression for BUG-002: scope_type_map must match 'node_overlap'."""
+        s1 = rect(100.0, 100.0, 100.0, 100.0)
+        s1["id"] = "s1"
+        s1["locked"] = True
+        s2 = rect(120.0, 100.0, 100.0, 100.0)
+        s2["id"] = "s2"
+        s2["locked"] = True
+        s3 = rect(400.0, 100.0, 100.0, 100.0)
+        s3["id"] = "s3"
+        s4 = rect(420.0, 100.0, 100.0, 100.0)
+        s4["id"] = "s4"
+
+        doc = new_document([s1, s2, s3, s4])
+        res = auto_fix_scene_layout(doc, repair_scope="overlaps")
+        self.assertEqual(res["status"], "partially_repaired")
+
+    def test_auto_fix_does_not_corrupt_code_block_text(self):
+        """Regression for BUG-014: code_block containers must not be re-wrapped or re-centered."""
+        cb = self.service.add_code_block("def foo(x):\n    return x + 1", language="python", x=100, y=100)
+        self.service.resize(cb["container_id"], width=60, height=40)
+        doc = self.service.state.document()
+        before_text = next(e["text"] for e in doc["elements"] if e["id"] == cb["text_id"])
+
+        repaired = auto_fix_scene_layout(doc, repair_scope="text")
+        after_text = next(e["text"] for e in repaired["document"]["elements"] if e["id"] == cb["text_id"])
+        self.assertEqual(after_text, before_text)
+
 
 if __name__ == "__main__":
     unittest.main()
