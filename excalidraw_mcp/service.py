@@ -110,7 +110,7 @@ def _label_for(index, container_id):
     )
 
 
-def _center_label(label, container):
+def _center_label(label, container, index=None):
     if (container.get("customData") or {}).get("type") in ("code_block", "code-block"):
         return
     if container["type"] == "arrow" and container.get("points"):
@@ -121,7 +121,36 @@ def _center_label(label, container):
             world_pts = [(ax + float(p[0]), ay + float(p[1])) for p in pts]
             lw = float(label.get("width", 80.0))
             lh = float(label.get("height", 25.0))
-            lx, ly = position_connector_label(world_pts, lw, lh)
+            obstacles = None
+            existing_lbls = None
+            if index:
+                obstacles = [
+                    e
+                    for e in index.values()
+                    if e.get("type") in SHAPES and not e.get("isDeleted")
+                ]
+                existing_lbls = [
+                    (
+                        float(t.get("x", 0.0)) - 6.0,
+                        float(t.get("y", 0.0)) - 6.0,
+                        float(t.get("x", 0.0)) + float(t.get("width", 40.0)) + 6.0,
+                        float(t.get("y", 0.0)) + float(t.get("height", 20.0)) + 6.0,
+                        t.get("containerId"),
+                    )
+                    for t in index.values()
+                    if t.get("type") == "text"
+                    and not t.get("isDeleted")
+                    and t.get("id") != label.get("id")
+                    and t.get("containerId") not in index
+                ]
+            lx, ly = position_connector_label(
+                world_pts,
+                lw,
+                lh,
+                obstacles=obstacles,
+                existing_label_boxes=existing_lbls,
+                arrow_id=container.get("id"),
+            )
             label["x"] = lx
             label["y"] = ly
             return
@@ -198,7 +227,7 @@ def _reroute_connector(index, connector):
         )
     label = _label_for(index, connector["id"])
     if label:
-        _center_label(label, connector)
+        _center_label(label, connector, index=index)
 
 
 def _reroute_blocked_non_incident(index, moved_ids):
@@ -1098,7 +1127,7 @@ class SceneService:
                     **style,
                 )
                 bind_text(label_el, connector)
-                _center_label(label_el, connector)
+                _center_label(label_el, connector, index=index)
                 document["elements"].append(label_el)
                 label_id = label_el["id"]
             return {
@@ -3748,6 +3777,8 @@ class SceneService:
                 )
 
             elif el["type"] == "arrow":
+                from .routing import build_scene_routing_context, recommend_routing_mode, resolve_arrow_routing_mode
+
                 src = (el.get("startBinding") or {}).get("elementId")
                 tgt = (el.get("endBinding") or {}).get("elementId")
                 if src:
@@ -3755,6 +3786,11 @@ class SceneService:
                 if tgt:
                     connected_shape_ids.add(tgt)
                 lbl = _label_for(index, el["id"])
+                r_mode = resolve_arrow_routing_mode(el)
+                rec_mode = r_mode
+                if src in index and tgt in index:
+                    r_ctx = build_scene_routing_context(elements, exclude_arrow_ids={el["id"]})
+                    rec_mode = recommend_routing_mode(index[src], index[tgt], r_ctx)
                 connectors.append(
                     {
                         "id": el["id"],
@@ -3762,6 +3798,8 @@ class SceneService:
                         "target": tgt,
                         "label": lbl.get("text") if lbl else None,
                         "elbowed": el.get("elbowed", False),
+                        "routing_mode": r_mode,
+                        "recommended_routing_mode": rec_mode,
                     }
                 )
 
@@ -4006,6 +4044,8 @@ class SceneService:
         connections = []
         for el in elements:
             if el["type"] == "arrow":
+                from .routing import build_scene_routing_context, recommend_routing_mode, resolve_arrow_routing_mode
+
                 src = (el.get("startBinding") or {}).get("elementId")
                 tgt = (el.get("endBinding") or {}).get("elementId")
                 src_lbl = (
@@ -4019,6 +4059,11 @@ class SceneService:
                     else (index.get(tgt, {}).get("text") if tgt in index else tgt)
                 )
                 lbl = _label_for(index, el["id"])
+                r_mode = resolve_arrow_routing_mode(el)
+                rec_mode = r_mode
+                if src in index and tgt in index:
+                    r_ctx = build_scene_routing_context(elements, exclude_arrow_ids={el["id"]})
+                    rec_mode = recommend_routing_mode(index[src], index[tgt], r_ctx)
                 edge_info = {
                     "arrow_id": el["id"],
                     "source_id": src,
@@ -4027,6 +4072,8 @@ class SceneService:
                     "target_label": tgt_lbl,
                     "label": lbl.get("text") if lbl else None,
                     "elbowed": el.get("elbowed", False),
+                    "routing_mode": r_mode,
+                    "recommended_routing_mode": rec_mode,
                 }
                 connections.append(edge_info)
 

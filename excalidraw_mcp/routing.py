@@ -682,12 +682,13 @@ def position_connector_label(
     label_w: float,
     label_h: float,
     obstacles: Optional[List[dict]] = None,
+    existing_label_boxes: Optional[List[Tuple[float, float, float, float, Optional[str]]]] = None,
+    arrow_id: Optional[str] = None,
 ) -> Tuple[float, float]:
-    """Position a connector label along clear corridor segments away from obstacles."""
+    """Position a connector label along clear corridor segments away from obstacles and sibling labels."""
     if len(route_points) < 2:
         return (route_points[0][0] - label_w / 2.0, route_points[0][1] - label_h / 2.0)
 
-    # Segment candidate ranking: length, not immediate stub
     candidates = []
     n_segs = len(route_points) - 1
 
@@ -701,11 +702,11 @@ def position_connector_label(
             score -= 40.0
         if i == n_segs - 1 and n_segs > 1:
             score -= 40.0
-        candidates.append((score, i, p1, p2))
+        candidates.append((score, i, p1, p2, length))
 
     candidates.sort(key=lambda c: c[0], reverse=True)
     best_x, best_y = 0.0, 0.0
-    min_collisions = float("inf")
+    best_rank = (float("inf"), float("inf"), float("inf"), float("inf"))
 
     obs_rects = []
     if obstacles:
@@ -716,23 +717,51 @@ def position_connector_label(
             oh = float(o.get("height", o.get("h", 0.0)))
             obs_rects.append((ox, oy, ox + ow, oy + oh))
 
-    for _, _, p1, p2 in candidates:
-        mx = (p1[0] + p2[0]) / 2.0
-        my = (p1[1] + p2[1]) / 2.0
-        lx = mx - label_w / 2.0
-        ly = my - label_h / 2.0
+    lbl_rects = []
+    if existing_label_boxes:
+        for bx1, by1, bx2, by2, cid in existing_label_boxes:
+            if arrow_id and cid == arrow_id:
+                continue
+            lbl_rects.append((bx1, by1, bx2, by2))
 
-        # Count obstacle overlaps
-        colls = 0
-        for bx1, by1, bx2, by2 in obs_rects:
-            if not (lx + label_w < bx1 or lx > bx2 or ly + label_h < by1 or ly > by2):
-                colls += 1
+    for idx_c, (seg_score, _, p1, p2, length) in enumerate(candidates):
+        dx = p2[0] - p1[0]
+        dy = p2[1] - p1[1]
+        if length > 1e-4:
+            ux, uy = dx / length, dy / length
+            nx, ny = -uy, ux
+        else:
+            ux, uy, nx, ny = 1.0, 0.0, 0.0, 1.0
 
-        if colls < min_collisions:
-            min_collisions = colls
-            best_x, best_y = lx, ly
-            if colls == 0:
-                break
+        # Evaluate center first, then longitudinal & perpendicular shifts
+        long_shifts = (0.0, -0.25 * length, 0.25 * length) if length >= label_w + 16.0 else (0.0,)
+        perp_step = label_h / 2.0 + 12.0
+        perp_shifts = (0.0, perp_step, -perp_step)
+
+        for p_off in perp_shifts:
+            for l_off in long_shifts:
+                cx = (p1[0] + p2[0]) / 2.0 + ux * l_off + nx * p_off
+                cy = (p1[1] + p2[1]) / 2.0 + uy * l_off + ny * p_off
+                lx = cx - label_w / 2.0
+                ly = cy - label_h / 2.0
+
+                obs_colls = 0
+                for bx1, by1, bx2, by2 in obs_rects:
+                    if not (lx + label_w <= bx1 or lx >= bx2 or ly + label_h <= by1 or ly >= by2):
+                        obs_colls += 1
+
+                lbl_colls = 0
+                for bx1, by1, bx2, by2 in lbl_rects:
+                    if not (lx + label_w <= bx1 or lx >= bx2 or ly + label_h <= by1 or ly >= by2):
+                        lbl_colls += 1
+
+                total_colls = obs_colls + lbl_colls
+                rank = (total_colls, abs(p_off), abs(l_off), -seg_score)
+                if rank < best_rank:
+                    best_rank = rank
+                    best_x, best_y = lx, ly
+                    if total_colls == 0 and abs(p_off) < 1e-4 and abs(l_off) < 1e-4 and idx_c == 0:
+                        return best_x, best_y
 
     return best_x, best_y
 
@@ -1044,7 +1073,14 @@ def reroute_scene_arrows(
         if arrow_lbl:
             lw = float(arrow_lbl.get("width", 80.0))
             lh = float(arrow_lbl.get("height", 25.0))
-            lx, ly = position_connector_label(world_pts, lw, lh, obstacles=ctx.shapes)
+            lx, ly = position_connector_label(
+                world_pts,
+                lw,
+                lh,
+                obstacles=ctx.shapes,
+                existing_label_boxes=ctx.label_boxes,
+                arrow_id=aid,
+            )
             arrow_lbl["x"] = lx
             arrow_lbl["y"] = ly
             ctx.label_boxes.append((lx - 6.0, ly - 6.0, lx + lw + 6.0, ly + lh + 6.0, aid))

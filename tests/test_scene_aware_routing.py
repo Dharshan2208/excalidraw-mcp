@@ -186,5 +186,49 @@ class Phase2SceneRouterAndMultiCriteriaTests(unittest.TestCase):
         self.assertEqual(len(set(ends)), 3)
 
 
+class Phase3LabelPlacementAndInspectTests(unittest.TestCase):
+    def setUp(self):
+        self.service = SceneService()
+
+    def test_position_connector_label_avoids_obstacles_and_sibling_labels(self):
+        """Phase 3: Connector labels avoid shapes and previously placed sibling labels."""
+        from excalidraw_mcp.routing import position_connector_label
+
+        pts = [(100.0, 100.0), (400.0, 100.0)]
+        obs = [rect(210.0, 80.0, 80.0, 40.0)]
+        lx1, ly1 = position_connector_label(pts, 70.0, 20.0, obstacles=obs)
+        # Must not overlap obstacle (210..290, 80..120)
+        self.assertTrue(
+            lx1 + 70.0 <= 210.0 or lx1 >= 290.0 or ly1 + 20.0 <= 80.0 or ly1 >= 120.0
+        )
+
+        # Second label on same route must dodge the first label box
+        pts2 = [(100.0, 110.0), (400.0, 110.0)]
+        existing_lbls = [(lx1 - 4.0, ly1 - 4.0, lx1 + 74.0, ly1 + 24.0, "a1")]
+        lx2, ly2 = position_connector_label(
+            pts2, 70.0, 20.0, obstacles=obs, existing_label_boxes=existing_lbls
+        )
+        self.assertTrue(
+            lx2 + 70.0 <= lx1 or lx2 >= lx1 + 70.0 or ly2 + 20.0 <= ly1 or ly2 >= ly1 + 20.0
+        )
+
+    def test_inspect_scene_summary_and_describe_expose_routing_mode(self):
+        """Phase 3: get_scene_summary and describe_scene report routing_mode and recommended_routing_mode."""
+        a = self.service.add_shape("rectangle", 100, 100, 100, 60, label="A")
+        obs = self.service.add_shape("rectangle", 240, 80, 100, 100, label="Obs")
+        b = self.service.add_shape("rectangle", 400, 100, 100, 60, label="B")
+        self.service.connect(a["rectangle_id"], b["rectangle_id"], label="direct", routing_mode="straight")
+
+        summary = self.service.get_scene_summary()
+        conn_sum = summary["connectors"][0]
+        self.assertEqual(conn_sum["routing_mode"], "straight")
+        self.assertEqual(conn_sum["recommended_routing_mode"], "orthogonal")
+
+        desc = self.service.describe_scene()
+        conn_desc = desc["connections"][0]
+        self.assertEqual(conn_desc["routing_mode"], "straight")
+        self.assertEqual(conn_desc["recommended_routing_mode"], "orthogonal")
+
+
 if __name__ == "__main__":
     unittest.main()
